@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["@cloudflare/workers-types", "node"],
+    "lib": ["ES2022", "DOM"],
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@/*": ["./packages/core/dashboard/src/*"]
+    }
+  },
+  "include": ["packages/**/*.ts", "packages/**/*.tsx", "tests/**/*.ts"],
+  "exclude": ["packages/core/dashboard", "**/dist/**", "**/node_modules/**"]
+}

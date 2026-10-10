@@ -1,0 +1,22 @@
+{
+  "name": "@flared/platform",
+  "version": "0.2.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "private": true,
+  "files": [
+    "dist",
+    "src",
+    "bootstrap",
+    "migrations",
+    "README.md"
+  ],
+  "dependencies": {
+    "agents": "0.28.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auersperg/flared.git",
+    "directory": "packages/core"
+  }
+}

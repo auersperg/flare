@@ -1,0 +1,78 @@
+{
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "limits": {
+    "cpu_ms": 1000
+  },
+  "name": "flared-runtime",
+  "main": "packages/core/dist/runtime.js",
+  "worker_loaders": [
+    {
+      "binding": "LOADER"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SUPERVISORS",
+        "class_name": "AppSupervisor"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AppSupervisor"]
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUNDLES",
+      "bucket_name": "flared-builds"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "JOBS",
+        "queue": "flared-jobs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "flared-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "flared-jobs-dlq"
+      }
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "RATE_LIMITER",
+      "namespace_id": "17916201",
+      "simple": {
+        "limit": 600,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "RUNTIME_URL": "https://api.example.com",
+    "DEV_TOKEN_ISSUER": "https://api.example.com"
+  },
+  "services": [
+    {
+      "binding": "ADMIN_API",
+      "service": "flared-admin",
+      "entrypoint": "AdminControl"
+    }
+  ]
+}

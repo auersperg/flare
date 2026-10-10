@@ -1,0 +1,28 @@
+{
+  "name": "@flared/cli",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Thin Flared build/deployment tooling; no local dashboard or backend server",
+  "type": "module",
+  "license": "UNLICENSED",
+  "bin": {
+    "flared": "./bin/flared.mjs"
+  },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "dependencies": {
+    "@flared/sdk": "0.2.0",
+    "esbuild": "0.28.2",
+    "json-schema-to-typescript": "16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auersperg/flared.git",
+    "directory": "packages/cli"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "flared-kernel-test",
+  "main": "../../artifacts/kernel.js",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "worker_loaders": [
+    {
+      "binding": "LOADER"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SUPERVISORS",
+        "class_name": "KernelSupervisor"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["KernelSupervisor"]
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUNDLES",
+      "bucket_name": "flared-kernel-test"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "JOBS",
+        "queue": "flared-kernel-test-jobs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "flared-kernel-test-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "flared-kernel-test-dlq"
+      }
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

@@ -1,0 +1,8 @@
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY,name TEXT NOT NULL,createdAt INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY,customerId TEXT NOT NULL REFERENCES customers(id),name TEXT NOT NULL,createdAt INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS environments (projectId TEXT NOT NULL REFERENCES projects(id),env TEXT NOT NULL CHECK(env IN ('dev','prod')),origins TEXT NOT NULL DEFAULT '[]',oidc TEXT,PRIMARY KEY(projectId,env));
+CREATE TABLE IF NOT EXISTS members (email TEXT PRIMARY KEY,role TEXT NOT NULL CHECK(role IN ('owner','editor','viewer')));
+CREATE TABLE IF NOT EXISTS credentials (hash TEXT PRIMARY KEY,projectId TEXT NOT NULL REFERENCES projects(id),actor TEXT NOT NULL,expiresAt INTEGER NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY,at INTEGER NOT NULL,actor TEXT NOT NULL,projectId TEXT,env TEXT,operation TEXT NOT NULL,status TEXT NOT NULL,detail TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS audit_project ON audit(projectId,at);

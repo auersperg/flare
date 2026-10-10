@@ -1,0 +1,16 @@
+node_modules/
+**/node_modules/
+**/dist/
+**/.astro/
+**/release/
+artifacts/
+.private/
+.wrangler/
+package-lock.json
+
+**/.flared/
+**/.dev-session.json
+admin.wrangler.json
+runtime.wrangler.json
+tests/kernel/wrangler.cloud.json
+coverage/

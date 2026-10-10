@@ -1,0 +1,40 @@
+{
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "limits": {
+    "cpu_ms": 1000
+  },
+  "name": "flared-admin",
+  "main": "packages/core/dist/admin.js",
+  "assets": {
+    "directory": "packages/core/dist/dashboard",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "CATALOG",
+      "database_name": "flared-catalog",
+      "database_id": "YOUR_D1_DATABASE_ID",
+      "migrations_dir": "packages/core/migrations"
+    }
+  ],
+  "services": [
+    {
+      "binding": "RUNTIME",
+      "service": "flared-runtime",
+      "entrypoint": "RuntimeControl"
+    }
+  ],
+  "vars": {
+    "RUNTIME_URL": "https://api.example.com",
+    "ACCESS_ISSUER": "https://YOUR_TEAM.cloudflareaccess.com",
+    "ACCESS_AUD": "YOUR_ACCESS_APPLICATION_AUD"
+  }
+}
