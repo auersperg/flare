@@ -28,7 +28,7 @@ There is one SDK/CLI tarball and no overrides:
 }
 ```
 
-After future registry publication, this becomes `bun add @auersperg/flare`; commands remain `bunx --bun --package @auersperg/flare flare dev` and `bunx --bun --package @auersperg/flare flare deploy`. Registry publication and a portable platform installer are separate unfinished work.
+After future registry publication, this becomes `bun add @auersperg/flare@next`; commands remain `bunx --bun --package @auersperg/flare@next flare dev` and `bunx --bun --package @auersperg/flare@next flare deploy`. Registry publication and a portable platform installer are separate unfinished work.
 
 ## Verification
 
@@ -47,7 +47,7 @@ private core/dashboard retain their existing UNLICENSED status. Only
 For an application:
 
 ```sh
-bun add @auersperg/flare
+bun add @auersperg/flare@next
 bun run --bun flare dev
 ```
 

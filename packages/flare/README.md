@@ -18,7 +18,7 @@ export default defineSchema({
 });
 ```
 
-Functions import typed declarations from `./_generated/server`; `bunx --bun --package @auersperg/flare flare dev` generates this module before compilation. Read: `db.get(table,id)`, `db.query(table).withIndex(name,q=>q.eq(field,value)).order("desc").paginate({limit,cursor})`, `take(100)` and `first()`. Write: `insert`, `patch`, `replace`, `delete`; IDs and creation timestamps are automatic. Insert/replace accept validator input types, including omitted defaults. Queries expose no SQL, writes, session or storage capability.
+Functions import typed declarations from `./_generated/server`; `bunx --bun --package @auersperg/flare@next flare dev` generates this module before compilation. Read: `db.get(table,id)`, `db.query(table).withIndex(name,q=>q.eq(field,value)).order("desc").paginate({limit,cursor})`, `take(100)` and `first()`. Write: `insert`, `patch`, `replace`, `delete`; IDs and creation timestamps are automatic. Insert/replace accept validator input types, including omitted defaults. Queries expose no SQL, writes, session or storage capability.
 
 Standard Schema / Standard JSON Schema validators define one contract for CLI, documents, function arguments/results and dashboard forms. All writes and schema activation validate data; reads decode already validated records, without running the same table validator again on each row. Output validation still applies to every function call. Mutations are transactional and capabilities expire when the invocation finishes. Unawaited database work and scheduled jobs must settle before commit.
 
@@ -45,9 +45,9 @@ Mutation outbox entries and data commit together. Native Queues batches confirm 
 The CLI is compiled separately from the portable SDK in this package. Bun 1.4.3+; no local dashboard or emulator.
 
 ```sh
-bun add @auersperg/flare       # target registry flow; currently install a private packed archive
-bunx --bun --package @auersperg/flare flare dev     # browser approval → project → native schema/types → cloud-dev watch
-bunx --bun --package @auersperg/flare flare deploy  # build and confirm production deployment
+bun add @auersperg/flare@next       # target registry flow; currently install a private packed archive
+bunx --bun --package @auersperg/flare@next flare dev     # browser approval → project → native schema/types → cloud-dev watch
+bunx --bun --package @auersperg/flare@next flare deploy  # build and confirm production deployment
 ```
 
 Schema and functions live in `flare/`. `_generated/server.ts` supplies schema-typed query/mutation declarations; `_generated/api.ts` supplies browser-safe references. SQL journals and db-generation commands are not needed. Compilation/checksums happen locally, not on an application request. Frontend changes do not trigger backend deployment; framework-prefixed public URL env entries preserve other variables.
@@ -68,10 +68,10 @@ Browser approval is protected by online Access/owner authorization and same-orig
 ## Immutable releases
 
 ```sh
-bunx --bun --package @auersperg/flare flare releases --env dev
-bunx --bun --package @auersperg/flare flare deploy --env prod --cmd "bun run build"
-bunx --bun --package @auersperg/flare flare promote --env prod --hash DEV_BUILD_HASH --cmd "bun run build"
-bunx --bun --package @auersperg/flare flare rollback --env prod --hash PREVIOUS_BUILD_HASH
+bunx --bun --package @auersperg/flare@next flare releases --env dev
+bunx --bun --package @auersperg/flare@next flare deploy --env prod --cmd "bun run build"
+bunx --bun --package @auersperg/flare@next flare promote --env prod --hash DEV_BUILD_HASH --cmd "bun run build"
+bunx --bun --package @auersperg/flare@next flare rollback --env prod --hash PREVIOUS_BUILD_HASH
 ```
 
 History keeps the last five **distinct successful backend builds**, with their first publication date. Failed candidates are not promotable. Active builds and job/outbox references are protected from garbage collection. Repeating an unchanged build is not a new version.
@@ -87,11 +87,11 @@ Isolated historical preview environments and a paired frontend/backend version c
 ## On-demand backups
 
 ```sh
-bunx --bun --package @auersperg/flare flare backup list --env dev
-bunx --bun --package @auersperg/flare flare backup create --env dev --confirm PROJECT_UUID
-bunx --bun --package @auersperg/flare flare backup restore --from dev --env prod --id BACKUP_UUID --confirm PROJECT_UUID
-bunx --bun --package @auersperg/flare flare backup status --env prod
-bunx --bun --package @auersperg/flare flare backup delete --env dev --id BACKUP_UUID --confirm PROJECT_UUID
+bunx --bun --package @auersperg/flare@next flare backup list --env dev
+bunx --bun --package @auersperg/flare@next flare backup create --env dev --confirm PROJECT_UUID
+bunx --bun --package @auersperg/flare@next flare backup restore --from dev --env prod --id BACKUP_UUID --confirm PROJECT_UUID
+bunx --bun --package @auersperg/flare@next flare backup status --env prod
+bunx --bun --package @auersperg/flare@next flare backup delete --env dev --id BACKUP_UUID --confirm PROJECT_UUID
 ```
 
 Writes require owner access and explicit confirmation (interactive `yes`, or the project UUID in CI). Creation prints its ID before sending the request; after an uncertain response retry explicitly with `--id` and that same ID. No automatic write retry. Restore copies data, IDs, creation timestamps, files and the exact backend build into the **other, empty environment of the same project**. It does not promote a release or overwrite an occupied production database.

@@ -72,11 +72,11 @@ Customer code belongs in **a separate application**, not a platform workspace. T
 Target registry installation (prepared, not published yet):
 
 ```sh
-bun add @auersperg/flare
-bunx --bun --package @auersperg/flare flare dev
+bun add @auersperg/flare@next
+bunx --bun --package @auersperg/flare@next flare dev
 ```
 
-With the private package installed from a verified local archive, `bunx --bun --package @auersperg/flare flare dev` already implements the same command interface:
+With the private package installed from a verified local archive, `bunx --bun --package @auersperg/flare@next flare dev` already implements the same command interface:
 
 1. On the first run, enter your installation's Runtime URL. Confirm the matching code in the Cloudflare Access-protected dashboard; select or create a project there.
 2. The CLI stores a project-scoped, 30-day credential outside the application in `~/.config/flare`, mode 0600. No token is copied into source or frontend env. Settings can revoke it. A new sign-in is required after expiry/revocation.
@@ -105,7 +105,7 @@ export const hello = query({
 ```
 
 ```sh
-bunx --bun --package @auersperg/flare flare deploy
+bunx --bun --package @auersperg/flare@next flare deploy
 ```
 
 This builds and deploys to **production**, with an explicit confirmation naming the project. CI uses a linked project plus `FLARE_DEPLOY_TOKEN` and `--confirm <UUID>`. Advanced build/link/custom-entry commands remain available for explicit build pipelines, but are not the normal application flow.
@@ -250,9 +250,9 @@ names are not a description of an operator's current installation.
 
 ## Release history and promotion
 
-Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx --bun --package @auersperg/flare flare promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx --bun --package @auersperg/flare flare rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
+Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx --bun --package @auersperg/flare@next flare promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx --bun --package @auersperg/flare@next flare rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
 
-`bunx --bun --package @auersperg/flare flare deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flare/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
+`bunx --bun --package @auersperg/flare@next flare deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flare/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
 
 Operator checklist: [production runbook](docs/production-runbook.md). Short acceptance does not certify a monthly bill or an unperformed load test.
 
