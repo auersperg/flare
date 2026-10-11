@@ -111,6 +111,9 @@ export function HealthView({
               <p className="text-muted-foreground">
                 Historical analytics not configured.
               </p>
+              <Button variant="outline" onClick={connect}>
+                Connect SDK
+              </Button>
             </CardContent>
           </Card>
         </>
