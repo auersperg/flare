@@ -11,11 +11,11 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
-  Flame,
   Plus,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Textarea } from "./ui/textarea";
 import { Field, FieldLabel, FieldGroup } from "./ui/field";
 import { Choice, ErrorNotice, Status, FormDialog, type Modal } from "./common";
@@ -107,8 +107,7 @@ function DashboardApp() {
   const newProject = () =>
     setModal({
       title: "Create project",
-      description:
-        "Creates isolated cloud development and production environments. Production functions stay protected until OIDC is configured.",
+      description: "Creates separate development and production environments.",
       content: (
         <FieldGroup>
           <Field>
@@ -187,17 +186,6 @@ function DashboardApp() {
     <div className="flex h-dvh min-h-0 flex-col overflow-hidden text-sm">
       <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-sidebar px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <Flame
-            className="size-6 shrink-0 text-orange-400"
-            aria-label="Flared"
-          />
-          <div
-            className="hidden size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold sm:flex"
-            title={project?.customer}
-          >
-            {(project?.customer ?? "AU").slice(0, 2).toUpperCase()}
-          </div>
-          <span className="text-muted-foreground">/</span>
           <Choice
             label="Select project"
             value={project?.id ?? ""}
@@ -206,18 +194,20 @@ function DashboardApp() {
             className="max-w-48"
           />
           {scope && (
-            <Choice
-              label="Select environment"
+            <Tabs
               value={env}
-              onChange={(v) => {
-                setEnv(v as Environment);
+              onValueChange={(v) => {
+                if (v !== "dev" && v !== "prod") return;
+                setEnv(v);
                 setModal(undefined);
               }}
-              items={[
-                { value: "dev", label: "Development (Cloud)" },
-                { value: "prod", label: "Production (Cloud)" },
-              ]}
-            />
+              aria-label="Select environment"
+            >
+              <TabsList>
+                <TabsTrigger value="dev">Dev</TabsTrigger>
+                <TabsTrigger value="prod">Production</TabsTrigger>
+              </TabsList>
+            </Tabs>
           )}
         </div>
         <div className="flex items-center gap-2">

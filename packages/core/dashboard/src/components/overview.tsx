@@ -1,5 +1,5 @@
 import ReleasesPanel from "./releases-panel";
-import { RefreshCw, Activity, ShieldCheck } from "lucide-react";
+import { RefreshCw, Activity } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
@@ -100,30 +100,17 @@ export function HealthView({
           <h2 className="section-title">Insights</h2>
           <Card>
             <CardContent className="flex flex-col items-start gap-4">
-              {env === "prod" && !s.data.oidc ? (
-                <ShieldCheck className="size-6 text-amber-500" />
-              ) : (
-                <Activity
-                  className={
-                    h.data.status === "ready"
-                      ? "size-6 text-emerald-500"
-                      : "size-6 text-amber-500"
-                  }
-                />
-              )}
-              <h2 className="text-base font-medium">
-                {env === "prod" && !s.data.oidc
-                  ? "Authentication required"
-                  : `Runtime ${h.data.status}`}
-              </h2>
-              <p className="max-w-lg text-muted-foreground">
-                {env === "prod" && !s.data.oidc
-                  ? "Configure OIDC in project settings. Protected functions remain closed."
-                  : "Current runtime snapshot. Recent function calls are in Logs; historical analytics are not configured."}
+              <Activity
+                className={
+                  h.data.status === "ready"
+                    ? "size-6 text-emerald-500"
+                    : "size-6 text-amber-500"
+                }
+              />
+              <h2 className="text-base font-medium">Runtime {h.data.status}</h2>
+              <p className="text-muted-foreground">
+                Historical analytics not configured.
               </p>
-              <Button variant="outline" onClick={connect}>
-                Connect SDK
-              </Button>
             </CardContent>
           </Card>
         </>
@@ -138,9 +125,15 @@ export function SchemaView({ project, env, session }: Scope) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="page-title">Schema</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={r.refresh} disabled={r.loading}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Reload snapshot"
+            title="Reload snapshot"
+            onClick={r.refresh}
+            disabled={r.loading}
+          >
             <RefreshCw />
-            Refresh
           </Button>
           {r.data && (
             <TableGuide tables={r.data.tables} env={env} role={session.role} />
@@ -206,9 +199,15 @@ export function LogsView({ project, env }: Scope) {
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="page-title">Logs</h1>
-        <Button variant="outline" onClick={r.refresh} disabled={r.loading}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Reload snapshot"
+          title="Reload snapshot"
+          onClick={r.refresh}
+          disabled={r.loading}
+        >
           <RefreshCw />
-          Refresh
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">

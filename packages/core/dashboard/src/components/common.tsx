@@ -57,7 +57,11 @@ export function useResource<T>(path: string) {
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
-    setState({ path, loading: true });
+    setState((previous) =>
+      previous.path === path && previous.data !== undefined
+        ? { ...previous, error: undefined, loading: false }
+        : { path, loading: true },
+    );
     void api<T>(path, undefined, abort.signal)
       .then((data) => {
         if (!abort.signal.aborted) setState({ path, data, loading: false });
@@ -68,6 +72,22 @@ export function useResource<T>(path: string) {
       });
     return () => abort.abort();
   }, [path, version]);
+  useEffect(() => {
+    let lastResume = 0;
+    const resume = () => {
+      const now = Date.now();
+      if (document.visibilityState === "visible" && now - lastResume > 500) {
+        lastResume = now;
+        setVersion((v) => v + 1);
+      }
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("focus", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
+    };
+  }, []);
   const visible = state.path === path ? state : { path, loading: true };
   return { ...visible, refresh: () => setVersion((v) => v + 1) };
 }
@@ -341,20 +361,24 @@ function FieldInput({ field: f, index: i }: { field: Field; index: number }) {
             />
           )}
         </div>
-        <Choice
-          name={`m${i}`}
-          className="w-32 shrink-0"
-          label={`Value mode for ${f.name}`}
-          value={mode}
-          onChange={setMode}
-          items={[
-            { value: "value", label: "Value" },
-            ...(!f.required || f.defaultMode
-              ? [{ value: "omit", label: f.defaultMode ? "Default" : "Omit" }]
-              : []),
-            ...(f.nullable ? [{ value: "null", label: "NULL" }] : []),
-          ]}
-        />
+        {!f.required || f.defaultMode || f.nullable ? (
+          <Choice
+            name={`m${i}`}
+            className="w-32 shrink-0"
+            label={`Value mode for ${f.name}`}
+            value={mode}
+            onChange={setMode}
+            items={[
+              { value: "value", label: "Value" },
+              ...(!f.required || f.defaultMode
+                ? [{ value: "omit", label: f.defaultMode ? "Default" : "Omit" }]
+                : []),
+              ...(f.nullable ? [{ value: "null", label: "NULL" }] : []),
+            ]}
+          />
+        ) : (
+          <input type="hidden" name={`m${i}`} value="value" />
+        )}
       </div>
       {f.description && <FieldDescription>{f.description}</FieldDescription>}
     </FormField>

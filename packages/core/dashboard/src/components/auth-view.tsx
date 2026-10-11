@@ -35,7 +35,7 @@ export default function AuthView(scope: Scope) {
     setModal({
       title,
       description:
-        "Passwords and hashes cannot be read. Password changes, blocking and session revocation disconnect affected live clients. Public registration creates users, never administrators.",
+        "Passwords are never displayed. Changes revoke existing sessions.",
       productionId: scope.env === "prod" ? scope.project.id : undefined,
       fields,
       submit: async (form) => {
@@ -68,16 +68,11 @@ export default function AuthView(scope: Scope) {
     name: "password",
     type: "password",
     required: true,
-    description: "6–128 characters. No recovery by email is configured.",
+    description: "6–128 characters.",
   };
   return (
     <div className="space-y-4 p-4">
       <h1 className="page-title">Auth</h1>
-      <p className="text-muted-foreground">
-        Login/password authentication. Users and sessions are isolated in this{" "}
-        {scope.env} environment; promotion never copies them. Credentials are
-        platform-private.
-      </p>
       <Status
         loading={users.loading || config.loading}
         error={users.error || config.error}
@@ -113,15 +108,6 @@ export default function AuthView(scope: Scope) {
               Configure
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={() => {
-              users.refresh();
-              config.refresh();
-            }}
-          >
-            Refresh
-          </Button>
           {owner && (
             <Button
               onClick={() =>
@@ -136,11 +122,6 @@ export default function AuthView(scope: Scope) {
           )}
         </div>
       )}
-      <p className="text-sm text-muted-foreground">
-        A session lasts up to 12 hours. Enabling public registration permits
-        anyone to create an account, not access everyone else's data: functions
-        must check ownership and roles.
-      </p>
       {users.data && (
         <>
           <Table>

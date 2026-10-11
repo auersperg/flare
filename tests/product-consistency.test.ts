@@ -154,7 +154,7 @@ describe("Astro/shadcn dashboard", () => {
       "logs",
     ]);
     expect(source).toContain('label="Select project"');
-    expect(source).toContain('label="Select environment"');
+    expect(source).toContain('aria-label="Select environment"');
     const authView = read(
       "packages/core/dashboard/src/components/auth-view.tsx",
     );

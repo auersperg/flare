@@ -176,9 +176,15 @@ function DataTable({
           {page && <Badge variant="secondary">{page.rows.length} rows</Badge>}
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" disabled={r.loading} onClick={r.refresh}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Reload snapshot"
+            title="Reload snapshot"
+            disabled={r.loading}
+            onClick={r.refresh}
+          >
             <RefreshCw />
-            Refresh
           </Button>
           <TableGuide
             tables={tables}
@@ -203,7 +209,9 @@ function DataTable({
             ? `${page.columns.length} columns · revision ${page.revision}`
             : "Loading table"}
         </span>
-        <span>Updates on refresh</span>
+        <span>
+          Snapshot · updates after edits and when returning to this tab
+        </span>
       </div>
       <Status {...r} />
       {page && (

@@ -110,9 +110,15 @@ export function FilesView({ project, env, session }: Scope) {
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="page-title">Files</h1>
-        <Button variant="outline" onClick={r.refresh} disabled={r.loading}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Reload snapshot"
+          title="Reload snapshot"
+          onClick={r.refresh}
+          disabled={r.loading}
+        >
           <RefreshCw />
-          Refresh
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -281,9 +287,15 @@ export function SchedulesView({ project, env, session }: Scope) {
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between">
         <h1 className="page-title">Schedules</h1>
-        <Button variant="outline" onClick={r.refresh} disabled={r.loading}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Reload snapshot"
+          title="Reload snapshot"
+          onClick={r.refresh}
+          disabled={r.loading}
+        >
           <RefreshCw />
-          Refresh
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
