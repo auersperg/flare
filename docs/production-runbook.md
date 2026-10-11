@@ -52,3 +52,9 @@ Latest short Cloudflare proof: 16 platform checks, eight backup/auth/release che
 Two independently registered password users exercise indexed ownership queries, cross-user mutation refusal and isolated live results. SDK errors from separately bundled entrypoints now retain their bounded explicit codes instead of depending on class identity; ordinary error messages remain private. Existing application bundles must be rebuilt to take this SDK correction—deploying Core alone does not rewrite an immutable application release.
 
 The 30-minute test was stopped at the owner's request, with its temporary scopes cleaned. No current soak/throughput/monthly-price certification is claimed. Local and test application data were not reset. Reports stay under ignored artifacts; repository documentation contains conclusions, never credentials or raw authenticated traffic.
+
+## Production endpoint policy
+
+The AUER installation exposes Flared only through `https://api.auer.wien` and the Access-protected `https://dashboard.auer.wien`. Native `workers.dev` and version preview URLs are disabled for both Workers. The operator's ignored Wrangler configurations persist `workers_dev: false`, `preview_urls: false` and explicit custom-domain routes so a future deployment does not restore the alternate endpoints. Internal service bindings and native RPC do not require public workers.dev URLs.
+
+The obsolete cloud kernel (Worker, DO class/namespace, R2 bucket, jobs/DLQ) and test frontend/project have been retired. Cloud acceptance can provision disposable resources explicitly; it is not permanently deployed or running in production. Keep the two shared Workers, catalog, two private R2 buckets and jobs/DLQ. Audit, permanent URL reservations and small deletion tombstones are intentional safety records, not active test applications. Other websites and their Cloudflare resources are outside Flared cleanup scope.
