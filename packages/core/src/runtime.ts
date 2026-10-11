@@ -1,3 +1,4 @@
+import { PasswordAuth } from "./auth.js";
 import { BackupStore, backupPrefix } from "./backups.js";
 import { InvocationSummaries } from "./observability.js";
 import { queueBatches, consumeBatch } from "./queue.js";
@@ -92,6 +93,7 @@ function aliases(env: Env) {
 }
 type SupervisorApi = Pick<
   EnvironmentSupervisor,
+  | "authCommand"
   | "application"
   | "socketIdentity"
   | "configuration"
@@ -170,6 +172,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       }
       if (
         ![
+          "authCommand",
           "application",
           "socketIdentity",
           "configuration",
@@ -676,6 +679,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
           s.auth.expiresAt <= Date.now()))
     )
       fail("AUTH_EXPIRED");
+    this.checkPasswordSession(s.auth);
     return s.auth;
   }
   private async snapshot(c: Connection, row: any, cache = new SnapshotCache()) {
@@ -990,10 +994,58 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       fail("FORBIDDEN");
     return this.consumeTicket(input.ticket);
   }
+  private passwordAuth?: PasswordAuth;
+  private passwords() {
+    return (this.passwordAuth ??= new PasswordAuth(
+      this.ctx.storage,
+      this.config().scope,
+      this.env.RUNTIME_URL,
+    ));
+  }
+  private checkPasswordSession(auth: Auth | null) {
+    if (typeof auth?.claims.flaredSession === "string")
+      this.passwords().assert(auth);
+  }
+  private closeRevokedSockets() {
+    for (const c of this.sockets.getConnections()) {
+      try {
+        this.passwords().assert(
+          (c.state as ConnectionAuth | null)?.auth ?? null,
+        );
+      } catch {
+        c.close(1008, "Session revoked");
+      }
+    }
+  }
+  async authCommand(input: {
+    origin: string | null;
+    authorization: string | null;
+    operation: string;
+    body: any;
+  }) {
+    await this.lifecycle.start();
+    return this.serial(async () => {
+      this.assertAvailable();
+      if (input.origin && !this.config().origins.includes(input.origin))
+        fail("FORBIDDEN");
+      if (input.operation === "preflight") return null;
+      if (input.authorization && !input.authorization.startsWith("Bearer "))
+        fail("UNAUTHORIZED");
+      const result = await this.passwords().public(
+        input.operation,
+        input.body ?? {},
+        input.authorization?.slice(7) ?? null,
+      );
+      this.closeRevokedSockets();
+      return result;
+    });
+  }
   async authenticate(token: string | null): Promise<Auth | null> {
     await this.lifecycle.start();
     const config = this.config();
     if (!token) return null;
+    if (token.startsWith("flared_session_"))
+      return this.passwords().authenticate(token);
     try {
       return await verifyDevToken(
         token,
@@ -1041,6 +1093,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       const auth = JSON.parse(String(row.auth)) as Auth | null;
       // Public subscriptions have no authorization to expire. Native hibernation
       // keeps idle sockets without a forced reconnect or a recurring wake-up.
+      this.checkPasswordSession(auth);
       const expires = auth?.expiresAt ?? null;
       if (expires !== null && expires <= Date.now()) fail("UNAUTHORIZED");
       return { auth, expires };
@@ -1061,6 +1114,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         fail("UNAUTHORIZED");
       if (definition.auth === "required" && !call.auth) fail("UNAUTHORIZED");
       if (call.auth && call.auth.expiresAt <= Date.now()) fail("AUTH_EXPIRED");
+      this.checkPasswordSession(call.auth);
       if (call.kind === "action") {
         const hash = this.current();
         this.activeActions++;
@@ -1215,7 +1269,15 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         createdAt: Number(row.createdAt),
       }));
     return store.create(
-      { format: 1, id, scope, at: Date.now(), bundle, data },
+      {
+        format: 1,
+        id,
+        scope,
+        at: Date.now(),
+        bundle,
+        data,
+        authUsers: this.passwords().backupUsers(),
+      },
       files,
     );
   }
@@ -1248,6 +1310,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       this.assertQuiet();
       await this.finishActivation();
       if (
+        this.passwords().hasUsers() ||
         this.ctx.storage.sql.exec("SELECT 1 FROM files LIMIT 1").toArray()
           .length ||
         this.ctx.storage.sql.exec("SELECT 1 FROM crons LIMIT 1").toArray()
@@ -1288,6 +1351,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       id: input.id,
       snapshot: backup.data,
     });
+    this.passwords().restoreUsers(backup.authUsers ?? []);
     const complete = {
       id: input.id,
       source,
@@ -1317,6 +1381,12 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   async admin(op: string, input: any): Promise<any> {
     await this.lifecycle.start();
     return this.serial(async () => {
+      if (op.startsWith("auth-")) {
+        this.assertAvailable();
+        const result = await this.passwords().admin(op, input);
+        this.closeRevokedSockets();
+        return result;
+      }
       if (op === "release-export") {
         if (
           !this.ctx.storage.sql
@@ -2004,19 +2074,34 @@ export default {
         return new Response("Method not allowed", { status: 405 });
       const body =
         request.method === "OPTIONS" ? null : await jsonBody(request);
-      const answer = await supervisor.application({
-        origin: requestedOrigin,
-        authorization: request.headers.get("authorization"),
-        operation:
-          request.method === "OPTIONS"
-            ? "preflight"
-            : route.operation === "live/ticket"
-              ? "ticket"
-              : "call",
-        body,
-      });
+      const answer = route.operation.startsWith("auth/")
+        ? {
+            origin: requestedOrigin,
+            response: await capture(() =>
+              supervisor.authCommand({
+                origin: requestedOrigin,
+                authorization: request.headers.get("authorization"),
+                operation:
+                  request.method === "OPTIONS"
+                    ? "preflight"
+                    : route.operation.slice(5),
+                body,
+              }),
+            ),
+          }
+        : await supervisor.application({
+            origin: requestedOrigin,
+            authorization: request.headers.get("authorization"),
+            operation:
+              request.method === "OPTIONS"
+                ? "preflight"
+                : route.operation === "live/ticket"
+                  ? "ticket"
+                  : "call",
+            body,
+          });
       origin = answer.origin;
-      const result = unwrap(answer.response);
+      const result = unwrap<any>(answer.response);
       const headers = new Headers({
         "cache-control": "no-store",
         "x-content-type-options": "nosniff",

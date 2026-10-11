@@ -29,9 +29,9 @@ export default function BackupsPanel(scope: Scope) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-muted-foreground">
-          On-demand data, files and backend code snapshots. Restore only into an
-          empty environment. Secrets and schedules are not copied. No background
-          polling.
+          On-demand data, user accounts, files and backend code snapshots.
+          Restore only into an empty environment. Sessions, secrets and
+          schedules are not copied. No background polling.
         </p>
         <Button variant="outline" onClick={() => setOpen(!open)}>
           {open ? "Close backups" : "Manage backups"}

@@ -583,3 +583,82 @@ export function createClient(options: ClientOptions) {
   };
 }
 export type FlaredClient = ReturnType<typeof createClient>;
+
+export type PasswordUser = {
+  id: string;
+  login: string;
+  disabled: boolean;
+  createdAt: number;
+};
+export type PasswordSession = {
+  token: string;
+  expiresAt: number;
+  user: PasswordUser;
+};
+/** In-memory bearer session; no automatic storage, credentials in URLs or write retries.
+ * Connect onChange to client.refreshAuth() to clear/reconnect reactive state. */
+export function createPasswordAuth(options: { url: string }) {
+  const base = options.url.replace(/\/$/, "");
+  let session: PasswordSession | null = null;
+  const listeners = new Set<() => void>();
+  const changed = () => {
+    for (const listener of listeners) listener();
+  };
+  const request = async <T>(
+    op: string,
+    input: unknown,
+    token = session?.token,
+  ): Promise<T> => {
+    const response = await fetch(base + "/v1/auth/" + op, {
+      method: "POST",
+      redirect: "error",
+      credentials: "omit",
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: "Bearer " + token } : {}),
+      },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data: any = await response.json();
+    if (!response.ok)
+      throw new FlaredError(
+        data.error ?? "AUTH_FAILED",
+        "Authentication request failed",
+      );
+    return data as T;
+  };
+  const signIn = async (op: string, login: string, password: string) => {
+    session = await request<PasswordSession>(
+      op,
+      { login, password },
+      undefined,
+    );
+    changed();
+    return session.user;
+  };
+  return {
+    getToken: () =>
+      session && session.expiresAt > Date.now() ? session.token : null,
+    onChange(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    register: (login: string, password: string) =>
+      signIn("register", login, password),
+    login: (login: string, password: string) =>
+      signIn("login", login, password),
+    me: () => request<PasswordUser>("me", {}),
+    async logout() {
+      const token = session?.token;
+      session = null;
+      changed();
+      if (token) await request("logout", {}, token);
+    },
+    async changePassword(currentPassword: string, password: string) {
+      await request("change-password", { currentPassword, password });
+      session = null;
+      changed();
+    },
+  };
+}

@@ -38,12 +38,12 @@ export function applicationUrl(
 }
 export function applicationRoute(path: string) {
   const old = path.match(
-    /^\/p\/([^/]+)\/(dev|prod)\/v1\/(call|live(?:\/ticket)?|files\/(?:upload|download))$/,
+    /^\/p\/([^/]+)\/(dev|prod)\/v1\/(call|auth\/(?:register|login|logout|me|change-password)|live(?:\/ticket)?|files\/(?:upload|download))$/,
   );
   const short = old
     ? null
     : path.match(
-        /^\/([^/]+)\/(dev|prod)\/v1\/(call|live(?:\/ticket)?|files\/(?:upload|download))$/,
+        /^\/([^/]+)\/(dev|prod)\/v1\/(call|auth\/(?:register|login|logout|me|change-password)|live(?:\/ticket)?|files\/(?:upload|download))$/,
       );
   try {
     if (old)

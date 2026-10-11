@@ -1,3 +1,4 @@
+import { validateAuthBackup, type AuthBackupUser } from "./auth.js";
 import { boundedJson, stableJson } from "../../sdk/src/protocol.js";
 import { SNAPSHOT_BYTES, type DataSnapshot } from "../../sdk/src/backup.js";
 import { fileInput, fileKey, type FileInput } from "./files.js";
@@ -18,6 +19,7 @@ export type Backup = {
   bundle: ReleaseUpload;
   data: DataSnapshot;
   files: BackupFile[];
+  authUsers?: AuthBackupUser[];
 };
 export const BACKUP_BYTES = SNAPSHOT_BYTES + 4 * 1048576;
 export const BACKUP_FILES = 100;
@@ -25,7 +27,7 @@ export const BACKUP_FILE_BYTES = 100 * 1048576;
 export function backupPrefix(scope: string, id?: string) {
   return `backups/${scopeForDeletion(scope)}/${id === undefined ? "" : uuid(id) + "/"}`;
 }
-/** Private R2 prefix, commit-last manifest, streamed file copies. No public URLs or credentials. */
+/** Private R2 prefix, commit-last manifest, streamed file copies. No public URLs or session tokens; password hashes remain inside private capsules. */
 export class BackupStore {
   constructor(
     private bucket: R2Bucket,
@@ -50,6 +52,7 @@ export class BackupStore {
       value.files.length > BACKUP_FILES
     )
       fail("INVALID_BACKUP");
+    if (value.authUsers !== undefined) validateAuthBackup(value.authUsers);
     boundedJson(value.data, SNAPSHOT_BYTES);
     await validateRelease(value.bundle);
     if (stableJson(value.data.schema) !== stableJson(value.bundle.schema))

@@ -143,6 +143,18 @@ export default defineApp({
       }),
     },
     lab: {
+      identity: query({
+        auth: "required",
+        input: empty,
+        output: z.string(),
+        handler: ({ auth }) => auth!.subject,
+      }),
+      privateEcho: action({
+        auth: "required",
+        input: empty,
+        output: z.string(),
+        handler: (ctx) => ctx.runQuery(reference("lab/identity", "query"), {}),
+      }),
       echo: action({
         auth: "public",
         input: z.object({ message: z.string() }),

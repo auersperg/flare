@@ -320,7 +320,14 @@ function FieldInput({ field: f, index: i }: { field: Field; index: number }) {
             <Input
               id={id}
               name={`v${i}`}
-              type={["number", "integer"].includes(f.type) ? "number" : "text"}
+              type={
+                f.type === "password"
+                  ? "password"
+                  : ["number", "integer"].includes(f.type)
+                    ? "number"
+                    : "text"
+              }
+              autoComplete={f.type === "password" ? "new-password" : undefined}
               step={f.type === "integer" ? 1 : "any"}
               min={f.minimum}
               max={f.maximum}

@@ -55,7 +55,7 @@ Repository cleanup is not full production certification. Remaining scope: indepe
 
 ## On-demand logical backup and empty-target recovery
 
-Settings → Backups and `flared backup` use the existing private builds R2 bucket. A capsule includes the exact validated release, native document schema/data (preserving IDs, creation timestamps and revision) and copied ready file bytes. The checksum-verified manifest is written last. Incomplete capsules are not restorable. No database credentials or signed file URLs enter the manifest.
+Settings → Backups and `flared backup` use the existing private builds R2 bucket. A capsule includes the exact validated release, native document schema/data (preserving IDs, creation timestamps and revision) and copied ready file bytes. The checksum-verified manifest is written last. Incomplete capsules are not restorable. Only salted password hashes, never plaintext passwords, are included in the private credential capsule; active sessions, deployment credentials and signed file URLs are excluded.
 
 Pause enabled cron and drain pending/running/failed jobs, actions and unfinished uploads before creation. The supervisor serial gate is held while the bounded snapshot and file copies complete: application calls may wait during this operation. This is an explicit maintenance operation, not a zero-impact background backup. Limits are 10,000 documents / 4 MiB logical data, 100 files / 100 MiB and 8 MiB manifest. Over-limit exports fail instead of truncating. Secrets, origins/OIDC configuration, schedules and historical jobs are intentionally omitted.
 
@@ -63,7 +63,7 @@ Restore is owner-only, explicitly confirmed and restricted to the other empty de
 
 Backups are on-demand, with no polling, retention timer or additional bindings. Stored copies incur R2 storage/operation usage until explicitly deleted; partial capsules also require explicit deletion. Listing is paginated and reads metadata, not full manifests. The dashboard does not request backups until Manage backups is opened. Existing application releases must be rebuilt with the current SDK to expose native backup methods; the loader does not silently emulate missing methods.
 
-Verification: 270 unit tests, 42 native checks (including forced supervisor abort during a fenced restore), independent packed installation, and six real-cloud backup/release checks PASS. Cloud proof uses disposable scopes only: 111 documents across pages, file bytes, exact release, owner/scope checks, occupied-target refusal, corrupted-file fencing, pinned deletion refusal and explicit repair/retry. `bun run test:backup:cloud` is an explicit operator workflow; it removes its own temporary project/resources after successful recovery. It is not run in CI or on customer production data.
+Verification: 276 unit tests, 43 native checks (including forced supervisor abort during a fenced restore), independent packed installation, and seven real-cloud backup/release/auth checks PASS. Cloud proof uses disposable scopes only: 111 documents across pages, file bytes, exact release, owner/scope checks, occupied-target refusal, corrupted-file fencing, pinned deletion refusal and explicit repair/retry. `bun run test:backup:cloud` is an explicit operator workflow; it removes its own temporary project/resources after successful recovery. It is not run in CI or on customer production data.
 
 ## Breaking native-data preview
 
@@ -91,17 +91,23 @@ Not implemented: isolated historical application preview URLs, coordinated front
 
 ## Release checkpoint 0.3.0-rc.1
 
-This private prerelease is a reproducible checkpoint, not a claim that all production gates are closed. It supports the existing trusted-team installation. Dashboard Access stays enabled; functions requiring authentication remain closed without a configured issuer/audience. Start with non-sensitive projects and keep schema changes additive.
+This private prerelease is a reproducible checkpoint, not a claim that all production gates are closed. It supports the existing trusted-team installation. Dashboard Access stays enabled; functions requiring authentication accept enabled built-in password sessions or an explicitly configured OIDC issuer/audience. Built-in registration stays closed until the owner enables it for the selected environment. Start with non-sensitive projects and keep schema changes additive.
 
 The native workerd harness forces supervisor abort at two real activation checkpoints: after the durable candidate journal and after facet schema commit, before marking the release active. A subsequent application query resumes activation, preserves document IDs and records successful history. Health reports `activating`, not `ready`, until recovery finishes. Fault injection is authenticated and compiled only into the test harness; it is absent from the production core.
 
 Production rollout checklist:
 
 - Run `bun run verify`, `bun run test:kernel` and `bun audit --production --audit-level=high`; deploy the tested Admin/Runtime builds explicitly.
-- For each application configure only its frontend origins, issuer/audience and required capabilities. Test unauthenticated, expired-token and cross-environment refusal before real user data.
+- For each application configure only its frontend origins, built-in auth or OIDC issuer/audience, and required capabilities. Test unauthenticated, expired-token and cross-environment refusal before real user data.
 - Use `flared dev` for cloud dev; use a tested immutable hash with `flared promote --env prod --hash HASH --cmd "bun run build"`, followed by native frontend publishing. Inspect partial-release errors; do not rewind the database automatically.
 - Pause cron/drain jobs and create a logical backup before risky maintenance. Current restore requires an empty other environment and is not in-place recovery or off-account disaster recovery.
 - Inspect failed jobs in Schedules and native Cloudflare DLQ. Automatic platform DLQ replay is not implemented; do not discard dead-letter messages. External effects must be idempotent.
 - Monitor native Cloudflare usage/billing. Idle hibernation is verified; storage, traffic and running jobs are still billable. The $5 subscription is not a maximum invoice.
 
 Not certified by this checkpoint: independent external OIDC-provider integration, arbitrary frontend/backend previews, full graceful draining under concurrent deployment, portable installation in another account, off-account disaster recovery, platform DLQ replay, comprehensive telemetry and a workload-specific monthly bill. Do not use the GitHub release label to imply those checks passed.
+
+## Password-auth operations
+
+The native auth cloud proof passes registration/login, context through query/action, wrong-origin/wrong-environment refusal, project-CLI management denial, password reset/live revocation and account blocking. This is a bounded self-hosted password feature, not a complete consumer identity product. No emails, MFA or anonymous recovery. Owner resets require Access; recovery of the Cloudflare owner account follows Cloudflare's own procedures.
+
+Private backup capsules include salted user credential hashes to preserve IDs/ownership after empty-target restore. Treat capsule access as credential-store access, not a public export. Active sessions are intentionally discarded. Target auth settings remain unchanged and must be explicitly enabled after recovery; no automatic login or copied administrative privileges. Restoring onto an environment with existing users is rejected. Sessions/counters clean up on traffic, not periodic polling; idle storage still consumes storage quota.

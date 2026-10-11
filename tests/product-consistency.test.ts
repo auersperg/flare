@@ -135,7 +135,7 @@ describe("Flared product consistency", () => {
 });
 
 describe("Astro/shadcn dashboard", () => {
-  it("has exactly the requested seven primary sections", () => {
+  it("has the requested primary sections including Auth", () => {
     const source = read("packages/core/dashboard/src/components/dashboard.tsx");
     const sections = source.slice(
       source.indexOf("export const sections"),
@@ -150,10 +150,18 @@ describe("Astro/shadcn dashboard", () => {
       "functions",
       "files",
       "schedules",
+      "auth",
       "logs",
     ]);
     expect(source).toContain('label="Select project"');
     expect(source).toContain('label="Select environment"');
+    const authView = read(
+      "packages/core/dashboard/src/components/auth-view.tsx",
+    );
+    expect(authView).toContain(
+      'cursor ? "?cursor=" + encodeURIComponent(cursor) : ""',
+    );
+    expect(authView).not.toContain('"/auth-users?cursor="');
   });
   it("uses the supplied real preset and local fonts", () => {
     const config = JSON.parse(read("packages/core/dashboard/components.json"));

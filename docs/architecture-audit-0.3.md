@@ -33,8 +33,8 @@
 
 ## Проверенные результаты текущего патча
 
-- `bun run verify`: **270 unit tests PASS**, TypeScript/Astro, форматирование, build/CSP/import boundaries и независимая установка одного tarball — PASS.
-- `bun run test:kernel`: **42 отдельных native checks PASS** (16 kernel + 10 SDK + 16 Core). Проверены SQL rollback, live invalidation, persistent upgrade, native batch jobs, R2 grants/streaming, отсутствие idle alarm, реальные JWT deadlines и anonymous subscription без лишнего wake.
+- `bun run verify`: **276 unit tests PASS**, TypeScript/Astro, форматирование, build/CSP/import boundaries и независимая установка одного tarball — PASS.
+- `bun run test:kernel`: **43 отдельных native checks PASS** (16 kernel + 10 SDK + 17 Core). Проверены SQL rollback, live invalidation, persistent upgrade, native batch jobs, R2 grants/streaming, отсутствие idle alarm, реальные JWT deadlines и anonymous subscription без лишнего wake.
 - Runtime, Admin, миграция D1 retention и test dev/prod обновлены в Cloudflare. Старые active blobs перенесены в scoped prefixes до обновления loader, без удаления app DB при смене кода.
 - **16 short cloud checks PASS**: 1002 документа, keyset, CRUD/live, auth/origin, Queues, rollback, slow ACK, code upgrade и физическая hibernation с новым boot ID и сохранением socket.
 - Test app: 9 CRUD/live/action проверок и R2 streaming/internal boundaries/outbox rollback/cancel/delay/retry/cron — PASS. Тестовый cron остановлен. Дополнительно 12 jobs из одной mutation/native Queue batch завершились с одной попытки каждый; proof rows удалены.
@@ -71,7 +71,7 @@ Cloudflare GraphQL snapshot за **13:30–14:02:50 UTC** включает soak,
 
 ## Следующий этап: backup/restore — завершён в ограниченном scope
 
-270 unit tests и 42 native checks PASS. Добавлены on-demand Settings → Backups и один CLI `backup` с create/list/restore/delete/status. Private R2 использует существующий bucket; ничего не запускается по таймеру. Snapshot сохраняет native IDs/timestamps/revision, ready files и exact code hash. Secrets/OIDC/origins/cron/job history не копируются. Restore — только в другую пустую среду того же проекта; это не promote и не in-place database rollback.
+276 unit tests и 43 native checks PASS. Добавлены on-demand Settings → Backups и один CLI `backup` с create/list/restore/delete/status. Private R2 использует существующий bucket; ничего не запускается по таймеру. Snapshot сохраняет native IDs/timestamps/revision, ready files и exact code hash. Secrets/OIDC/origins/cron/job history не копируются. Restore — только в другую пустую среду того же проекта; это не promote и не in-place database rollback.
 
 Пять real-cloud checks PASS: 111 документов с keyset pagination, file bytes и hash, auth/scope/confirmation, refusal непустой цели, corrupt-file fence и source pin, repair/explicit retry/idempotence. Workerd дополнительно проверил forced supervisor abort с сохранением fence. Результат: ignored artifacts/backup-cloud-acceptance.json; временный проект/Worker и его ресурсы удалены. Admin/Runtime, Local/test backend releases и test tarball обновлены без удаления существующих app rows. Девять test CRUD/live/action checks PASS.
 

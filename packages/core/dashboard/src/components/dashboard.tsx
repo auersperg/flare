@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
+  Shield,
   Activity,
   Database,
   Box,
@@ -34,6 +35,7 @@ const SchedulesView = lazy(() =>
 );
 const DataView = lazy(() => import("./data-view"));
 const FunctionsView = lazy(() => import("./functions-view"));
+const AuthView = lazy(() => import("./auth-view"));
 const SettingsView = lazy(() => import("./settings-view"));
 const SdkView = lazy(() => import("./sdk-view"));
 export const sections = [
@@ -43,6 +45,7 @@ export const sections = [
   { key: "functions", label: "Functions", icon: Code },
   { key: "files", label: "Files", icon: File },
   { key: "schedules", label: "Schedules", icon: Timer },
+  { key: "auth", label: "Auth", icon: Shield },
   { key: "logs", label: "Logs", icon: Logs },
 ] as const;
 export type View = (typeof sections)[number]["key"] | "settings" | "sdk";
@@ -317,6 +320,8 @@ function DashboardApp() {
                   <FilesView {...scope} />
                 ) : view === "schedules" ? (
                   <SchedulesView {...scope} />
+                ) : view === "auth" ? (
+                  <AuthView {...scope} />
                 ) : view === "logs" ? (
                   <LogsView {...scope} />
                 ) : view === "settings" ? (

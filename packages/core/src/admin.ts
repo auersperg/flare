@@ -394,6 +394,8 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
       );
     if (
       ![
+        "auth-users",
+        "auth-settings",
         "health",
         "schema",
         "data",
@@ -435,6 +437,22 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
   const input = await jsonBody(request, op === "deploy" ? 4 * 1048576 : 65536);
   if (which === "prod" && input.confirm !== projectId)
     fail("INVALID_CONFIRMATION");
+  if (
+    [
+      "auth-create",
+      "auth-password",
+      "auth-disable",
+      "auth-revoke",
+      "auth-configure",
+    ].includes(op)
+  ) {
+    if (a.role !== "owner" || a.projectId) fail("FORBIDDEN");
+    return json(
+      await audit(env, a, projectId, which, op, () =>
+        runtime(env).admin(scope, op, input),
+      ),
+    );
+  }
   if (op === "deploy") {
     if (input.expected !== undefined && !/^[a-f0-9]{64}$/.test(input.expected))
       fail("INVALID_INPUT");

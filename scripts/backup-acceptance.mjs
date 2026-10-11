@@ -9,6 +9,7 @@ import {
   createClient,
   reference,
   uploadFile,
+  createPasswordAuth,
 } from "../packages/sdk/dist/client.js";
 const install = JSON.parse(
   await readFile(".private/flared-install.json", "utf8"),
@@ -149,7 +150,7 @@ try {
     install.owner,
     Date.now() + 3600000,
   ]);
-  const source = `export default {async fetch(req,env){if(req.method!=="POST"||req.headers.get("authorization")!=="Bearer "+env.KEY)return new Response("Unauthorized",{status:401});const x=await req.json();if(x.op==="cleanup"){for(const scope of ["${id}/prod","${id}/dev"]){const r=await env.RUNTIME.command("destroy",[scope]);if(!r.ok)throw Error(r.code);}return Response.json({cleaned:true});}if(!/^[0-9a-f-]{36}$/.test(x.backup)||!/^[0-9a-f-]{36}$/.test(x.file)||!["corrupt","repair"].includes(x.op))return new Response("Invalid",{status:400});await env.BUNDLES.put("backups/${id}/dev/"+x.backup+"/files/"+x.file,x.op==="repair"?"Cloud backup bytes":"corrupt");return Response.json({done:true});}}`;
+  const source = `export default {async fetch(req,env){if(req.method!=="POST"||req.headers.get("authorization")!=="Bearer "+env.KEY)return new Response("Unauthorized",{status:401});const x=await req.json();if(["auth-configure","auth-password","auth-disable","auth-revoke","auth-users"].includes(x.op)){const r=await env.RUNTIME.command("admin",["${id}/dev",x.op,x.backup||{}]);if(!r.ok)return Response.json({error:r.code},{status:400});return Response.json(r.value);}if(x.op==="cleanup"){for(const scope of ["${id}/prod","${id}/dev"]){const r=await env.RUNTIME.command("destroy",[scope]);if(!r.ok)throw Error(r.code);}return Response.json({cleaned:true});}if(!/^[0-9a-f-]{36}$/.test(x.backup)||!/^[0-9a-f-]{36}$/.test(x.file)||!["corrupt","repair"].includes(x.op))return new Response("Invalid",{status:400});await env.BUNDLES.put("backups/${id}/dev/"+x.backup+"/files/"+x.file,x.op==="repair"?"Cloud backup bytes":"corrupt");return Response.json({done:true});}}`;
   new Bun.Transpiler({ loader: "js" }).transformSync(source);
   const form = new FormData();
   form.set(
@@ -316,6 +317,76 @@ try {
     assert.equal((await rows("prod")).length, 112);
     await command("dev", "backup-delete", { id: backup });
     assert.equal((await command("dev", "backups")).page.length, 0);
+  });
+  await test("Cloud native scrypt, public registration, user context and administrator password reset", async () => {
+    const url = install.runtimeUrl + "/p/" + id + "/dev",
+      password = "Cloud acceptance long passphrase 73!";
+    const auth = createPasswordAuth({ url }),
+      client = createClient({ url, getToken: auth.getToken });
+    clients.push(client);
+    await operate("auth-configure", { enabled: true, registration: true });
+    const user = await auth.register("acceptance-user", password);
+    assert.equal((await auth.me()).id, user.id);
+    assert.equal(
+      await client.query(reference("lab/identity", "query"), {}),
+      user.id,
+    );
+    assert.equal(
+      await client.action(reference("lab/privateEcho", "action"), {}),
+      user.id,
+    );
+    const frames = [],
+      errors = [];
+    const stop = client.onUpdate(
+      reference("lab/identity", "query"),
+      {},
+      (v) => frames.push(v),
+      (e) => errors.push(e.code),
+    );
+    try {
+      const until = Date.now() + 15000;
+      while (!frames.length && Date.now() < until) await Bun.sleep(50);
+      assert.equal(frames[0], user.id);
+      const r = await request("dev", "auth-password", {
+        id: user.id,
+        password: password + "reset",
+      });
+      assert.equal(r.status, 403); // Project CLI credentials cannot manage end-user passwords.
+      const listed = await operate("auth-users", {});
+      assert(!JSON.stringify(listed).includes("scrypt$"));
+      await operate("auth-password", {
+        id: user.id,
+        password: password + "reset",
+      });
+      await assert.rejects(
+        client.query(reference("lab/identity", "query"), {}),
+      );
+      const revokedUntil = Date.now() + 15000;
+      while (!errors.length && Date.now() < revokedUntil) await Bun.sleep(50);
+      assert(errors.length > 0);
+      await assert.rejects(auth.login("acceptance-user", password));
+      await auth.login("acceptance-user", password + "reset");
+      client.refreshAuth();
+      assert.equal((await auth.me()).id, user.id);
+      const cross = await fetch(
+        install.runtimeUrl + "/p/" + id + "/prod/v1/auth/me",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: "Bearer " + auth.getToken(),
+          },
+          body: "{}",
+        },
+      );
+      assert.equal(cross.status, 403);
+      await operate("auth-disable", { id: user.id, disabled: true });
+      await assert.rejects(auth.me());
+    } finally {
+      stop();
+      client.dispose();
+      await operate("auth-configure", { enabled: false, registration: false });
+    }
   });
   await test("Five successful cloud builds, exact-hash promotion and rollback preserve production data", async () => {
     const entry = join(

@@ -55,3 +55,22 @@ bunx flared backup delete --env dev --id BACKUP_UUID --confirm PROJECT_UUID
 Writes require owner access and explicit confirmation (interactive `yes`, or the project UUID in CI). Creation prints its ID before sending the request; after an uncertain response retry explicitly with `--id` and that same ID. No automatic write retry. Restore copies data, IDs, creation timestamps, files and the exact backend build into the **other, empty environment of the same project**. It does not promote a release or overwrite an occupied production database.
 
 Pause cron and drain jobs/actions/uploads first. Limits: 10,000 documents / 4 MiB logical data, 100 files / 100 MiB. Secrets, environment settings, schedules and job history are not copied. Interrupted restores stay closed to application calls and deployments; retry the same backup ID. The source backup cannot be deleted while a restore references it. Private R2 backups occupy storage until explicitly deleted; no periodic backup timer or extra service is installed. See the maintenance guide for recovery limitations.
+
+## Built-in application login
+
+Owner enables authentication/public registration per environment in dashboard → Auth. No external provider is required for native passwords. Applications explicitly decide which functions are public; required remains the default. User role/ownership checks still belong in handlers.
+
+```ts
+import { createClient, createPasswordAuth } from "flared";
+const url = import.meta.env.PUBLIC_FLARED_URL;
+const auth = createPasswordAuth({ url });
+const client = createClient({ url, getToken: auth.getToken });
+const stopAuth = auth.onChange(() => client.refreshAuth());
+await auth.register("my-login", "a long unique passphrase");
+// Later: await auth.login(login, password), auth.me(), auth.changePassword(old, next).
+await auth.logout();
+stopAuth();
+client.dispose();
+```
+
+Sessions are memory-only and expire after at most 12 hours. Reload requires login again. Password reset/block/revoke in Auth disconnects affected live users. Owner/Access manages accounts; application users and project CLI credentials do not gain dashboard privileges. Public login/registration have bounded rate limits; public registration is not equivalent to public access to private rows. Passwords require 15–128 characters. There is no email verification/recovery or MFA in this minimal version; owner reset is available. Existing short-lived R2 download grants remain valid for their explicit TTL, not until session logout.

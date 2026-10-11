@@ -7,6 +7,7 @@ import {
   createClient,
   reference,
   uploadFile,
+  createPasswordAuth,
 } from "../packages/sdk/dist/client.js";
 const base = process.env.FLARED_KERNEL_URL;
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base ?? ""))
@@ -435,6 +436,108 @@ try {
       await control("destroy", target);
     }
   });
+  await test("Native password registration, context isolation and immediate live session revocation", async () => {
+    const target = crypto.randomUUID() + "/dev",
+      other = target.replace("/dev", "/prod");
+    const url = base + "/p/" + target,
+      password = "Native private acceptance passphrase 73!";
+    const alice = createPasswordAuth({ url }),
+      bob = createPasswordAuth({ url });
+    let ca, cb, unsubscribe;
+    try {
+      await control("configure", {
+        scope: target,
+        origins: [base],
+        oidc: null,
+      });
+      await control("configure", { scope: other, origins: [base], oidc: null });
+      await control(
+        "deploy",
+        target,
+        await build(
+          "tests/fixtures/native-app.ts",
+          join(directory, "password-auth"),
+        ),
+      );
+      await control("admin", target, "auth-configure", {
+        enabled: true,
+        registration: true,
+      });
+      const a = await alice.register("alice", password),
+        b = await bob.register("bob", password);
+      ca = createClient({ url, getToken: alice.getToken });
+      cb = createClient({ url, getToken: bob.getToken });
+      assert.equal(
+        await ca.query(reference("lab/identity", "query"), {}),
+        a.id,
+      );
+      assert.equal(
+        await cb.action(reference("lab/privateEcho", "action"), {}),
+        b.id,
+      );
+      const frames = [],
+        errors = [];
+      unsubscribe = ca.onUpdate(
+        reference("lab/identity", "query"),
+        {},
+        (v) => frames.push(v),
+        (e) => errors.push(e.code),
+      );
+      await wait(() => frames.length === 1);
+      assert.equal(frames[0], a.id);
+      const bad = await fetch(url + "/v1/auth/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://evil.example",
+        },
+        body: JSON.stringify({ login: "alice", password }),
+      });
+      assert.equal(bad.status, 403);
+      const cross = await fetch(base + "/p/" + other + "/v1/auth/me", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: "Bearer " + alice.getToken(),
+        },
+        body: "{}",
+      });
+      assert.equal(cross.status, 403); // Other environment has authentication disabled.
+      const list = await control("admin", target, "auth-users", {});
+      assert.equal(list.users.length, 2);
+      assert(!JSON.stringify(list).includes("scrypt$"));
+      await control("admin", target, "auth-password", {
+        id: a.id,
+        password: password + "reset",
+      });
+      await assert.rejects(ca.query(reference("lab/identity", "query"), {}));
+      await wait(() => errors.length > 0); // Socket close/reconnect cannot regain the revoked identity.
+      assert.equal(
+        await cb.query(reference("lab/identity", "query"), {}),
+        b.id,
+      );
+      await assert.rejects(alice.login("alice", password));
+      await alice.login("alice", password + "reset");
+      ca.refreshAuth();
+      assert.equal(
+        await ca.query(reference("lab/identity", "query"), {}),
+        a.id,
+      );
+      await alice.logout();
+      await assert.rejects(ca.query(reference("lab/identity", "query"), {}));
+      await control("admin", target, "auth-disable", {
+        id: b.id,
+        disabled: true,
+      });
+      await assert.rejects(cb.query(reference("lab/identity", "query"), {}));
+    } finally {
+      unsubscribe?.();
+      ca?.dispose();
+      cb?.dispose();
+      await control("destroy", other);
+      await control("destroy", target);
+    }
+  });
   await test("Real JWT expiry stops authenticated snapshots without expiring public sockets", async () => {
     const kernel = JSON.parse(
       await readFile("tests/kernel/wrangler.json", "utf8"),
@@ -509,6 +612,11 @@ try {
     });
     await uploadFile(grant, body);
     const before = await admin("data", { table: "tasks", limit: 100 });
+    const accountPassword = "Backup account private passphrase 73!";
+    const account = await admin("auth-create", {
+      login: "backup-user",
+      password: accountPassword,
+    });
     const saved = await admin("backup-create", { id });
     assert.equal(saved.files, 1);
     assert.equal((await admin("backup-create", { id })).hash, saved.hash);
@@ -558,6 +666,20 @@ try {
         (await control("admin", target, "health", {})).active,
         saved.hash,
       );
+      assert.equal(
+        (await control("admin", target, "auth-users", {})).users[0].id,
+        account.id,
+      );
+      await control("admin", target, "auth-configure", {
+        enabled: true,
+        registration: false,
+      });
+      const recoveredAuth = createPasswordAuth({ url: base + "/p/" + target });
+      assert.equal(
+        (await recoveredAuth.login("backup-user", accountPassword)).id,
+        account.id,
+      );
+      await recoveredAuth.logout();
       assert.deepEqual(
         (await control("admin", target, "data", { table: "tasks", limit: 100 }))
           .rows,

@@ -316,25 +316,33 @@ export function status(error: unknown) {
   return {
     code,
     status:
-      code === "UNAUTHORIZED" || code === "AUTH_EXPIRED"
-        ? 401
-        : code === "FORBIDDEN"
+      code === "RATE_LIMITED"
+        ? 429
+        : ["AUTH_DISABLED", "REGISTRATION_DISABLED"].includes(code)
           ? 403
-          : code === "NOT_FOUND" || code === "FUNCTION_NOT_FOUND"
-            ? 404
-            : ["TOO_LARGE", "BACKUP_TOO_LARGE"].includes(code)
-              ? 413
-              : ["CONFLICT", "BACKUP_BUSY", "RESTORE_NOT_EMPTY"].includes(code)
-                ? 409
-                : code.startsWith("INVALID") || code === "READ_ONLY"
-                  ? 400
-                  : [
-                        "NOT_READY",
-                        "UNSUPPORTED",
-                        "RESTORE_IN_PROGRESS",
-                      ].includes(code)
-                    ? 503
-                    : 500,
+          : code === "REGISTRATION_UNAVAILABLE"
+            ? 409
+            : code === "UNAUTHORIZED" || code === "AUTH_EXPIRED"
+              ? 401
+              : code === "FORBIDDEN"
+                ? 403
+                : code === "NOT_FOUND" || code === "FUNCTION_NOT_FOUND"
+                  ? 404
+                  : ["TOO_LARGE", "BACKUP_TOO_LARGE"].includes(code)
+                    ? 413
+                    : ["CONFLICT", "BACKUP_BUSY", "RESTORE_NOT_EMPTY"].includes(
+                          code,
+                        )
+                      ? 409
+                      : code.startsWith("INVALID") || code === "READ_ONLY"
+                        ? 400
+                        : [
+                              "NOT_READY",
+                              "UNSUPPORTED",
+                              "RESTORE_IN_PROGRESS",
+                            ].includes(code)
+                          ? 503
+                          : 500,
   };
 }
 
