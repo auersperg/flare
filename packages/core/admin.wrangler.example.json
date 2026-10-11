@@ -11,9 +11,9 @@
     "cpu_ms": 1000
   },
   "name": "flared-admin",
-  "main": "packages/core/dist/admin.js",
+  "main": "../../packages/core/dist/admin.js",
   "assets": {
-    "directory": "packages/core/dist/dashboard",
+    "directory": "../../packages/core/dist/dashboard",
     "binding": "ASSETS",
     "run_worker_first": ["/*", "!/_astro/*"]
   },
@@ -22,7 +22,7 @@
       "binding": "CATALOG",
       "database_name": "flared-catalog",
       "database_id": "YOUR_D1_DATABASE_ID",
-      "migrations_dir": "packages/core/migrations"
+      "migrations_dir": "../../packages/core/migrations"
     }
   ],
   "services": [

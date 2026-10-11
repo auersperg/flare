@@ -24,8 +24,8 @@ test("local cleanup removes only reproducible output and preserves operator/appl
     const preserved = [
       ".private/flared-install.json",
       ".private/kernel-token",
-      "admin.wrangler.json",
-      "runtime.wrangler.json",
+      ".private/cloudflare/admin.wrangler.json",
+      ".private/cloudflare/runtime.wrangler.json",
       ".flared/project.json",
       "tests/fixtures/tasks/app.ts",
       "node_modules/dependency/index.js",

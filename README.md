@@ -28,7 +28,7 @@ New projects start **empty**, with no demo tables, functions or records. Define 
 
 One Bun workspace and lockfile. Installed dependencies, generated output and credentials are ignored. No `apps`/`examples` workspace or duplicated demo toolchain. The task fixture under tests is used only by explicit acceptance scripts; production builds do not consume it.
 
-[Architecture](docs/architecture.md) · [Package distribution](docs/packaging.md) · [Maintenance](docs/maintenance.md) · Product constraints: `flared.product.json`.
+[Architecture](docs/architecture.md) · [Package distribution](docs/packaging.md) · [Maintenance](docs/maintenance.md).
 
 [Cloudflare capability map — 2026-10-11](docs/cloudflare-capability-map.md) · [Flared implementation and resource map](docs/flared-architecture-map.md) · [Native architecture review](docs/architecture-audit-0.3.md).
 
@@ -201,7 +201,7 @@ Seven primary sections: **Health, Data, Schema, Functions, Files, Schedules, Log
 
 ## Operations and boundaries
 
-Installation configuration stays local and is ignored by Git. Copy `admin.wrangler.example.json` and `runtime.wrangler.example.json` to the corresponding `*.wrangler.json` files and replace every placeholder with your own account, resource IDs, runtime URL and Access issuer/audience. These examples describe bindings, not an automatic installer. Existing installations preserve their resources; enabling Files adds the Runtime `FILES` R2 binding and `DASHBOARD_URL` for dashboard upload CORS. Never reset account routes, Access policies or secrets when adding these bindings.
+Installation configuration stays local and is ignored by Git. Copy the examples from `packages/core/` into `.private/cloudflare/` and replace every placeholder with your own account, resource IDs, runtime URL and Access issuer/audience. These examples describe bindings, not an automatic installer. Existing installations preserve their resources; enabling Files adds the Runtime `FILES` R2 binding and `DASHBOARD_URL` for dashboard upload CORS. Never reset account routes, Access policies or secrets when adding these bindings.
 
 A fresh installation requires Workers Paid/Dynamic Workers availability, D1, R2, Queues/DLQ, a signing secret, Cloudflare Access and owner membership. Admin and Runtime refer to each other: use a temporary Runtime bootstrap without its Admin service binding before the first Admin deployment. `scripts/setup-cloud.mjs` handles this for the existing macOS operator workflow, but reads local Wrangler OAuth and is **not** a portable, production-approved installer. Do not treat copying examples or deploying Admin alone as a complete first installation.
 
@@ -211,7 +211,7 @@ For an **already provisioned and protected installation**:
 bun run deploy:dashboard
 # Only when Runtime source changed:
 bun run build
-bunx --no-install wrangler deploy --config runtime.wrangler.json
+bunx --no-install wrangler deploy --config .private/cloudflare/runtime.wrangler.json
 ```
 
 Commit only the configuration examples, never live installation files. `tests/kernel/wrangler.json` has no account ID and is for local native testing. For remote kernel testing, create a separate ignored `tests/kernel/wrangler.cloud.json` for disposable resources and explicitly select it when deploying. `scripts/set-kernel-secret.mjs` requires `FLARED_KERNEL_CONFIG`; acceptance scripts require `FLARED_KERNEL_URL`. `.private` retains installation checkpoints and test/signing credentials, never packaged or committed.
@@ -247,3 +247,19 @@ Health → Development/Production releases shows the last five distinct successf
 `bunx flared deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flared/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
 
 Operator checklist: [production runbook](docs/production-runbook.md). Short acceptance does not certify a monthly bill or an unperformed load test.
+
+## Root layout
+
+The root keeps only `package.json`, `bun.lock`, `tsconfig.json`, `README.md`,
+`.gitignore` and `.prettierignore`. Formatting settings live in `package.json`.
+Wrangler examples belong to `packages/core`; your active installation files stay
+in ignored `.private/cloudflare`, separate from published sources.
+
+```sh
+mkdir -p .private/cloudflare
+cp packages/core/admin.wrangler.example.json .private/cloudflare/admin.wrangler.json
+cp packages/core/runtime.wrangler.example.json .private/cloudflare/runtime.wrangler.json
+```
+
+Replace every placeholder before deployment. Example and operator configurations
+use the same native relative paths; no config-generation wrapper is required.

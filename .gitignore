@@ -16,8 +16,6 @@ vendor/
 .DS_Store
 
 # Installation configuration belongs to the operator, not the source repository.
-/admin.wrangler.json
-/runtime.wrangler.json
 /tests/kernel/wrangler.cloud.json
 *.log
 coverage/

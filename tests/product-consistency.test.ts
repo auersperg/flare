@@ -9,37 +9,18 @@ import {
 
 const read = (path: string) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-const profile = JSON.parse(read("flared.product.json"));
 const cli = fileURLToPath(
   new URL("../packages/flared/src/cli/main.mjs", import.meta.url),
 );
 describe("Flared product consistency", () => {
-  it("has one cloud-only dashboard and cloud dev", () => {
-    expect(profile.name).toBe("Flared");
-    expect(profile.dashboard).toEqual({
-      hosting: "cloudflare",
-      local: false,
-      requiredForApplicationTraffic: false,
-    });
-    expect(profile.development).toEqual({
-      backend: "cloud-dev",
-      local: ["frontend", "sdk", "cli"],
-      backendEmulatorRequired: false,
-    });
-    expect(profile.hierarchy).toEqual([
-      "installation",
-      "customer",
-      "project",
-      "environment",
-    ]);
-    expect(profile.environments).toEqual(["dev", "prod"]);
-  });
-  it.each(["application", "platform"])(
+  it.each([
+    ["flared", "flared"],
+    ["core", "@flared/platform"],
+  ])(
     "names the %s package consistently and guards unpublished previews",
-    (name) => {
-      const folder = name === "platform" ? "core" : "flared";
+    (folder, name) => {
       const pkg = JSON.parse(read(`packages/${folder}/package.json`));
-      expect(pkg.name).toBe(profile.packages[name]);
+      expect(pkg.name).toBe(name);
       expect(pkg.version).toBe(JSON.parse(read("package.json")).version);
       expect(pkg.license).toBe("UNLICENSED");
       expect(pkg.private).toBe(true);
@@ -49,7 +30,7 @@ describe("Flared product consistency", () => {
     expect(existsSync(new URL("../packages/sdk", import.meta.url))).toBe(false);
     expect(existsSync(new URL("../packages/cli", import.meta.url))).toBe(false);
     const pkg = JSON.parse(read("packages/flared/package.json"));
-    expect(pkg.name).toBe(profile.distribution.applicationPackage);
+    expect(pkg.name).toBe("flared");
     expect(pkg.bin).toEqual({ flared: "./dist/cli/flared.js" });
     expect(pkg.files).toEqual(["dist", "README.md"]);
     expect(pkg.sideEffects).toBe(false);
@@ -277,6 +258,23 @@ describe("Dashboard delivery", () => {
 });
 
 describe("Production-only repository", () => {
+  it("keeps formatting in the manifest and no duplicate product/config files at root", () => {
+    expect(JSON.parse(read("package.json")).prettier).toEqual({
+      plugins: ["prettier-plugin-astro"],
+    });
+    for (const file of [
+      "flared.product.json",
+      ".prettierrc.json",
+      "admin.wrangler.json",
+      "runtime.wrangler.json",
+      "admin.wrangler.example.json",
+      "runtime.wrangler.example.json",
+    ])
+      expect(existsSync(new URL(`../${file}`, import.meta.url))).toBe(false);
+    const setup = read("scripts/setup-cloud.mjs");
+    expect(setup).toContain('".private/cloudflare/admin.wrangler.json"');
+    expect(setup).toContain('".private/cloudflare/runtime.wrangler.json"');
+  });
   it("keeps canonical repository metadata and publication guards", () => {
     for (const path of [
       "package.json",
@@ -295,8 +293,6 @@ describe("Production-only repository", () => {
   it("commits portable examples rather than operator configuration", () => {
     const ignore = read(".gitignore");
     for (const path of [
-      "/admin.wrangler.json",
-      "/runtime.wrangler.json",
       "/tests/kernel/wrangler.cloud.json",
       ".private/",
       ".dev.vars*",
@@ -304,9 +300,31 @@ describe("Production-only repository", () => {
     ])
       expect(ignore.split("\n")).toContain(path);
     for (const role of ["admin", "runtime"]) {
-      const config = JSON.parse(read(`${role}.wrangler.example.json`));
+      const config = JSON.parse(
+        read(`packages/core/${role}.wrangler.example.json`),
+      );
       expect(config.account_id).toBe("YOUR_CLOUDFLARE_ACCOUNT_ID");
       expect(config.vars.RUNTIME_URL).toBe("https://api.example.com");
+      const example = new URL(
+        `../packages/core/${role}.wrangler.example.json`,
+        import.meta.url,
+      );
+      const operator = new URL(
+        `../.private/cloudflare/${role}.wrangler.json`,
+        import.meta.url,
+      );
+      const entry = new URL(`../packages/core/dist/${role}.js`, import.meta.url)
+        .href;
+      expect(new URL(config.main, example).href).toBe(entry);
+      expect(new URL(config.main, operator).href).toBe(entry);
+      if (role === "admin") {
+        expect(new URL(config.assets.directory + "/", operator).href).toBe(
+          new URL("../packages/core/dist/dashboard/", import.meta.url).href,
+        );
+        expect(
+          new URL(config.d1_databases[0].migrations_dir + "/", operator).href,
+        ).toBe(new URL("../packages/core/migrations/", import.meta.url).href);
+      }
     }
     expect(
       JSON.parse(read("tests/kernel/wrangler.json")).account_id,

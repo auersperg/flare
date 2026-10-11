@@ -22,7 +22,7 @@
     "format": "bun x --bun prettier --write .",
     "format:check": "bun x --bun prettier --check .",
     "build:dashboard": "bun run --bun --cwd packages/core/dashboard build",
-    "deploy:dashboard": "bun run build && bun x --no-install wrangler deploy --config admin.wrangler.json",
+    "deploy:dashboard": "bun run build && bun x --no-install wrangler deploy --config .private/cloudflare/admin.wrangler.json",
     "test:build": "bun run build && bun scripts/verify-build.mjs",
     "verify": "bun run build && bun run check && bun run test && bun run format:check && bun scripts/verify-build.mjs && bun scripts/package-acceptance.mjs",
     "clean": "bun scripts/clean.mjs",
@@ -54,5 +54,10 @@
     "url": "https://github.com/auersperg/flared.git"
   },
   "description": "Self-hosted Cloudflare-native reactive backend with live data, functions, SDK and an online dashboard",
-  "packageManager": "bun@1.4.3"
+  "packageManager": "bun@1.4.3",
+  "prettier": {
+    "plugins": [
+      "prettier-plugin-astro"
+    ]
+  }
 }

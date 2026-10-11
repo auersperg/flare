@@ -11,7 +11,7 @@
     "cpu_ms": 1000
   },
   "name": "flared-runtime",
-  "main": "packages/core/dist/runtime.js",
+  "main": "../../packages/core/dist/runtime.js",
   "worker_loaders": [
     {
       "binding": "LOADER"
