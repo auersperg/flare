@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
+import { StatusBadge } from "./status-badge";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import {
   Table,
@@ -81,8 +82,9 @@ function BackupList(scope: Scope) {
       </p>
       {state.data?.status === "restoring" && (
         <p role="alert">
-          Restore in progress: {state.data.id}. Select its source environment
-          and retry Restore to finish.
+          <StatusBadge status="restoring">Restore in progress</StatusBadge>:{" "}
+          {state.data.id}. Select its source environment and retry Restore to
+          finish.
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -134,9 +136,11 @@ function BackupList(scope: Scope) {
             {r.data.page.map((backup) => (
               <TableRow key={backup.id}>
                 <TableCell>
-                  {backup.at
-                    ? new Date(backup.at).toLocaleString()
-                    : "Incomplete"}
+                  {backup.at ? (
+                    new Date(backup.at).toLocaleString()
+                  ) : (
+                    <StatusBadge status="Incomplete" />
+                  )}
                 </TableCell>
                 <TableCell>
                   <code className="text-xs select-all">{backup.id}</code>

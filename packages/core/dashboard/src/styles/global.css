@@ -146,12 +146,6 @@
   .section-title {
     @apply flex items-center gap-2 text-sm font-medium;
   }
-  .environment-dev {
-    @apply border border-emerald-700/60 bg-emerald-500/10 text-emerald-500;
-  }
-  .environment-prod {
-    @apply border border-amber-700/60 bg-amber-500/10 text-amber-500;
-  }
   .explorer-sidebar {
     @apply w-40 shrink-0 border-r bg-sidebar/40 md:w-60;
   }

@@ -1,7 +1,7 @@
 import ReleasesPanel from "./releases-panel";
 import { RefreshCw, Activity } from "lucide-react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
+import { StatusBadge } from "./status-badge";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { TableGuide } from "./table-guide";
 import { FunctionBadge } from "./function-badge";
@@ -34,13 +34,9 @@ export function HealthView({
             <CardContent className="grid gap-4 md:grid-cols-2">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Badge
-                    className={
-                      env === "dev" ? "environment-dev" : "environment-prod"
-                    }
-                  >
-                    {env === "dev" ? "Development" : "Production"}
-                  </Badge>
+                  <StatusBadge
+                    status={env === "dev" ? "Development" : "Production"}
+                  />
                   <strong>{project.name}</strong>
                 </div>
                 <p className="text-muted-foreground">
@@ -56,11 +52,9 @@ export function HealthView({
                   {s.data.url}
                 </code>
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <span
-                    className={`size-1.5 rounded-full ${h.data.status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`}
-                  />
-                  {h.data.status} · {h.data.connections} connections ·{" "}
-                  {h.data.subscriptions} subscriptions
+                  <StatusBadge status={h.data.status} />
+                  {h.data.connections} connections · {h.data.subscriptions}{" "}
+                  subscriptions
                 </div>
               </div>
             </CardContent>
@@ -107,7 +101,9 @@ export function HealthView({
                     : "size-6 text-amber-500"
                 }
               />
-              <h2 className="text-base font-medium">Runtime {h.data.status}</h2>
+              <h2 className="flex items-center gap-2 text-base font-medium">
+                Runtime <StatusBadge status={h.data.status} />
+              </h2>
               <p className="text-muted-foreground">
                 Historical analytics not configured.
               </p>
@@ -227,6 +223,10 @@ export function LogsView({ project, env }: Scope) {
               column === "kind" &&
               ["query", "mutation", "action"].includes(String(value)) ? (
                 <FunctionBadge kind={value as FunctionDefinition["kind"]} />
+              ) : column === "status" ? (
+                <StatusBadge status={value === "ok" ? "ok" : "error"}>
+                  {scalar(value)}
+                </StatusBadge>
               ) : column === "at" && typeof value === "number" ? (
                 new Date(value).toLocaleString()
               ) : (

@@ -3,7 +3,7 @@ import { fileMetadata, uploadFile } from "@flared/sdk";
 import { RefreshCw, Download, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Badge } from "./ui/badge";
+import { StatusBadge } from "./status-badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import {
   Table,
@@ -13,7 +13,7 @@ import {
   TableRow,
   TableCell,
 } from "./ui/table";
-import { api, message, scopePath, type Row } from "../lib/model";
+import { api, message, scopePath, scalar, type Row } from "../lib/model";
 import { useResource, Status, Empty, Grid } from "./common";
 import type { Scope } from "./dashboard";
 type StoredFile = {
@@ -170,15 +170,13 @@ export function FilesView({ project, env, session }: Scope) {
                       : `${(row.size / 1024).toFixed(1)} KiB`}
                 </TableCell>
                 <TableCell>
-                  <Badge
-                    variant={row.state === "ready" ? "outline" : "secondary"}
-                  >
+                  <StatusBadge status={row.state}>
                     {row.state === "pending"
                       ? "Awaiting upload"
                       : row.state === "uploading"
                         ? "Uploading / recovering"
                         : row.state}
-                  </Badge>
+                  </StatusBadge>
                 </TableCell>
                 <TableCell>
                   {new Date(row.createdAt).toLocaleString()}
@@ -356,6 +354,15 @@ export function SchedulesView({ project, env, session }: Scope) {
               <Grid
                 rows={r.data.recent}
                 columns={["id", "path", "state", "attempts", "error", "at"]}
+                renderCell={(column, value) =>
+                  column === "state" ? (
+                    <StatusBadge status={String(value)} />
+                  ) : column === "at" && typeof value === "number" ? (
+                    new Date(value).toLocaleString()
+                  ) : (
+                    scalar(value)
+                  )
+                }
               />
             ) : (
               <Empty title="No queue deliveries yet" />
@@ -379,7 +386,11 @@ export function SchedulesView({ project, env, session }: Scope) {
                     <TableCell>{row.name}</TableCell>
                     <TableCell className="font-mono">{row.path}</TableCell>
                     <TableCell className="font-mono">{row.cron}</TableCell>
-                    <TableCell>{row.enabled ? "Enabled" : "Paused"}</TableCell>
+                    <TableCell>
+                      <StatusBadge
+                        status={row.enabled ? "Enabled" : "Paused"}
+                      />
+                    </TableCell>
                     <TableCell>
                       {session.role !== "viewer" && row.enabled && (
                         <Button

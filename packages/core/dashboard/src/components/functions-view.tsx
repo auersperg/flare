@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { Search, Folder, Code, Play } from "lucide-react";
 import { Button } from "./ui/button";
 import { FunctionBadge } from "./function-badge";
+import { StatusBadge } from "./status-badge";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import {
@@ -175,9 +176,9 @@ function Runner({
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-mono text-sm font-semibold">{path}</h2>
           <FunctionBadge kind={fn.kind} />
-          <span className="text-xs text-muted-foreground">
+          <StatusBadge status={fn.auth}>
             {fn.auth === "required" ? "Authentication required" : fn.auth}
-          </span>
+          </StatusBadge>
         </div>
         <Button type="submit" form="function-run" disabled={!allowed || busy}>
           <Play />

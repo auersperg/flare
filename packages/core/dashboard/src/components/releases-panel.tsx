@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
+import { StatusBadge } from "./status-badge";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import {
   Table,
@@ -87,7 +87,7 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
               <TableCell>
                 <code className="text-xs">{release.hash.slice(0, 12)}</code>
                 {health.data?.active === release.hash && (
-                  <Badge variant="secondary">Active</Badge>
+                  <StatusBadge status="Active" />
                 )}
               </TableCell>
               <TableCell>
@@ -220,7 +220,9 @@ function ReleaseDetails({
                     <TableCell>
                       <FunctionBadge kind={fn.kind} />
                     </TableCell>
-                    <TableCell>{fn.auth}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={fn.auth} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

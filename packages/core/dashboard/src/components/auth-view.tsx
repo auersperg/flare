@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
+import { StatusBadge } from "./status-badge";
 import {
   Table,
   TableHeader,
@@ -79,14 +79,14 @@ export default function AuthView(scope: Scope) {
       />
       {config.data && (
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">
-            {config.data.enabled ? "Enabled" : "Disabled"}
-          </Badge>
-          <Badge variant="outline">
-            {config.data.registration
-              ? "Public registration"
-              : "Registration closed"}
-          </Badge>
+          <StatusBadge status={config.data.enabled ? "Enabled" : "Disabled"} />
+          <StatusBadge
+            status={
+              config.data.registration
+                ? "Public registration"
+                : "Registration closed"
+            }
+          />
           {owner && (
             <Button
               variant="outline"
@@ -142,9 +142,9 @@ export default function AuthView(scope: Scope) {
                     <code>{user.id}</code>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">
-                      {user.disabled ? "Blocked" : "Active"}
-                    </Badge>
+                    <StatusBadge
+                      status={user.disabled ? "Blocked" : "Active"}
+                    />
                   </TableCell>
                   <TableCell>
                     {new Date(user.createdAt).toLocaleString()}

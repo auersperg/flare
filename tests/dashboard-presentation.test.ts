@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
+import { StatusBadge } from "../packages/core/dashboard/src/components/status-badge";
 import {
   FunctionBadge,
   functionColors,
@@ -122,6 +123,49 @@ describe("Dashboard presentation", () => {
 });
 
 describe("Dashboard standardization", () => {
+  it.each([
+    ["Ready", "success"],
+    ["Active", "success"],
+    ["Enabled", "success"],
+    ["ok", "success"],
+    ["completed", "success"],
+    ["Development", "success"],
+    ["pending", "warning"],
+    ["Paused", "warning"],
+    ["activating", "warning"],
+    ["restoring", "warning"],
+    ["Incomplete", "warning"],
+    ["required", "warning"],
+    ["uploading", "info"],
+    ["running", "info"],
+    ["queued", "info"],
+    ["enqueued", "info"],
+    ["Production", "info"],
+    ["Public registration", "info"],
+    ["public", "info"],
+    ["error", "destructive"],
+    ["failed", "destructive"],
+    ["Blocked", "destructive"],
+    ["unavailable", "destructive"],
+    ["Disabled", "secondary"],
+    ["Registration closed", "secondary"],
+    ["not-deployed", "secondary"],
+    ["internal", "secondary"],
+    ["unknown-state", "secondary"],
+    ["toString", "secondary"],
+  ])("renders %s with the shared %s badge", (status, variant) => {
+    const html = renderToStaticMarkup(createElement(StatusBadge, { status }));
+    expect(html).toContain('data-slot="badge"');
+    expect(html).toContain(`data-variant="${variant}"`);
+    expect(html).toContain(status);
+  });
+  it("keeps explicit status labels and safely escapes server content", () => {
+    const html = renderToStaticMarkup(
+      createElement(StatusBadge, { status: "error" }, "<INVALID_INPUT>"),
+    );
+    expect(html).toContain("&lt;INVALID_INPUT&gt;");
+    expect(html).toContain('data-variant="destructive"');
+  });
   it.each(["query", "mutation", "action"] as const)(
     "uses the native shadcn badge for %s without overriding its size",
     (kind) => {
