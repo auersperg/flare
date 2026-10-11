@@ -186,6 +186,14 @@ describe("Astro/shadcn dashboard", () => {
         read(`packages/core/dashboard/src/components/${file}.tsx`),
       ).not.toMatch(/>\s*Refresh\s*</);
   });
+  it("uses the shared warmer Convex-reference dark surfaces", () => {
+    const css = read("packages/core/dashboard/src/styles/global.css");
+    const dark = css.slice(css.indexOf(".dark {"), css.indexOf("@layer base"));
+    expect(dark).toContain("--background: #1d1c1a;");
+    expect(dark).toContain("--card: #292825;");
+    expect(dark).toContain("--sidebar: #292825;");
+    expect(dark).toContain("--border: #44423f;");
+  });
   it("uses the supplied real preset and local fonts", () => {
     const config = JSON.parse(read("packages/core/dashboard/components.json"));
     expect(config.style).toBe("base-lyra");
