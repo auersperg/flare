@@ -16,10 +16,10 @@ const allowedUrl = (value) => {
   return u.href.replace(/\/$/, "");
 };
 async function request(platform, path, body) {
-  let token = process.env.FLARED_DEPLOY_TOKEN;
+  let token = process.env.FLARE_DEPLOY_TOKEN;
   if (!token) {
     const config = JSON.parse(
-      await readFile(".flared/project.json", "utf8").catch((e) => {
+      await readFile(".flare/project.json", "utf8").catch((e) => {
         if (e.code !== "ENOENT") throw e;
         return "null";
       }),
@@ -30,7 +30,7 @@ async function request(platform, path, body) {
     }
   }
   if (!token)
-    throw Error("Sign in with flared dev; CI can set FLARED_DEPLOY_TOKEN");
+    throw Error("Sign in with flare dev; CI can set FLARE_DEPLOY_TOKEN");
   const r = await fetch(allowedUrl(platform) + path, {
     method: body === undefined ? "GET" : "POST",
     headers: {
@@ -60,9 +60,9 @@ export async function link(options) {
     throw Error("Required: --platform <management URL> --project <ID>");
   const platform = allowedUrl(options.platform);
   const data = await request(platform, `/api/projects/${options.project}`);
-  await mkdir(".flared", { recursive: true });
+  await mkdir(".flare", { recursive: true });
   await writeFile(
-    ".flared/project.json",
+    ".flare/project.json",
     JSON.stringify(
       {
         platform,
@@ -79,11 +79,11 @@ export async function link(options) {
 }
 export async function deploy(options = {}) {
   if (!options.release) {
-    const config = JSON.parse(await readFile(".flared/project.json", "utf8"));
+    const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
     const { prepare, generateApi } = await import("./project.mjs");
     const { buildApplication } = await import("./build.mjs");
     const source = await prepare(),
-      directory = resolve(".flared/releases/" + randomUUID());
+      directory = resolve(".flare/releases/" + randomUUID());
     const env = options.env ?? "prod";
     if (!["dev", "prod"].includes(env))
       throw Error("Environment must be dev or prod");
@@ -120,7 +120,7 @@ export async function deploy(options = {}) {
       await rm(directory, { recursive: true, force: true });
     }
   }
-  const config = JSON.parse(await readFile(".flared/project.json", "utf8"));
+  const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
   const env = options.env ?? "dev";
   if (!["dev", "prod"].includes(env) || !options.release)
     throw Error("Required: --env dev|prod --release <built directory>");
@@ -160,21 +160,21 @@ export async function dev(options = {}) {
     const { scaffold } = await import("./project.mjs");
     await scaffold();
     try {
-      await access(".flared/project.json");
+      await access(".flare/project.json");
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
       const { connect } = await import("./login.mjs");
       await connect();
     }
   }
-  await access(".flared/project.json");
+  await access(".flare/project.json");
   if (simple) {
-    const config = JSON.parse(await readFile(".flared/project.json", "utf8"));
+    const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
     try {
       await request(config.platform, `/api/projects/${config.project}`);
     } catch (e) {
       if (
-        process.env.FLARED_DEPLOY_TOKEN ||
+        process.env.FLARE_DEPLOY_TOKEN ||
         (e.status !== 401 && !e.message.startsWith("Sign in"))
       )
         throw e;
@@ -194,7 +194,7 @@ export async function dev(options = {}) {
     }
     busy = true;
     try {
-      const outdir = resolve(".flared/releases/" + randomUUID());
+      const outdir = resolve(".flare/releases/" + randomUUID());
       try {
         const { prepare, generateApi, frontendEnvironment } =
           await import("./project.mjs");
@@ -227,12 +227,12 @@ export async function dev(options = {}) {
   console.log(
     "Watching application code; backend runs in Cloudflare dev. Start your frontend with its own dev server.",
   );
-  for await (const event of watch(simple ? resolve("flared") : process.cwd(), {
+  for await (const event of watch(simple ? resolve("flare") : process.cwd(), {
     recursive: true,
   })) {
     const file = event.filename?.toString() ?? "";
     if (
-      /(^|\/)(node_modules|\.flared|\.git|dist|_generated)(\/|$)/.test(file) ||
+      /(^|\/)(node_modules|\.flare|\.git|dist|_generated)(\/|$)/.test(file) ||
       !/\.(ts|tsx|js|mjs|sql|json)$/.test(file)
     )
       continue;
@@ -242,7 +242,7 @@ export async function dev(options = {}) {
 }
 
 export async function backup(options = {}) {
-  const config = JSON.parse(await readFile(".flared/project.json", "utf8"));
+  const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
   const operation = options.operation ?? "list",
     env = options.env ?? "prod";
   if (
@@ -310,15 +310,15 @@ async function frontendBuild(config, env, command) {
   // Only the child process receives this target URL. Never overwrite .env.local.
   await $`${{ raw: command }}`.env({
     ...process.env,
-    FLARED_URL: url,
-    PUBLIC_FLARED_URL: url,
-    VITE_FLARED_URL: url,
-    NEXT_PUBLIC_FLARED_URL: url,
-    EXPO_PUBLIC_FLARED_URL: url,
+    FLARE_URL: url,
+    PUBLIC_FLARE_URL: url,
+    VITE_FLARE_URL: url,
+    NEXT_PUBLIC_FLARE_URL: url,
+    EXPO_PUBLIC_FLARE_URL: url,
   });
 }
 async function releaseOperation(options, operation) {
-  const config = JSON.parse(await readFile(".flared/project.json", "utf8"));
+  const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
   const env = options.env ?? "prod";
   if (
     !["dev", "prod"].includes(env) ||
@@ -360,8 +360,8 @@ async function releaseOperation(options, operation) {
       throw Error("Release hash mismatch");
     const { generateReferences } = await import("./build.mjs");
     const { generateApi } = await import("./project.mjs");
-    await mkdir(".flared", { recursive: true });
-    const directory = await mkdtemp(resolve(".flared/release-contract-"));
+    await mkdir(".flare", { recursive: true });
+    const directory = await mkdtemp(resolve(".flare/release-contract-"));
     try {
       await writeFile(
         join(directory, "api.ts"),
@@ -386,7 +386,7 @@ async function releaseOperation(options, operation) {
 export const promote = (options = {}) => releaseOperation(options, "promote");
 export const rollback = (options = {}) => releaseOperation(options, "rollback");
 export async function releases(options = {}) {
-  const config = JSON.parse(await readFile(".flared/project.json", "utf8"));
+  const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
   const env = options.env ?? "dev";
   if (!["dev", "prod"].includes(env))
     throw Error("Environment must be dev or prod");

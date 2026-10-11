@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createHmac } from "node:crypto";
-import { buildApplication } from "../packages/flared/src/cli/build.mjs";
+import { buildApplication } from "../packages/flare/src/cli/build.mjs";
 import {
   createClient,
   reference,
   uploadFile,
   createPasswordAuth,
-} from "../packages/flared/dist/sdk/client.js";
-const base = process.env.FLARED_KERNEL_URL;
+} from "../packages/flare/dist/sdk/client.js";
+const base = process.env.FLARE_KERNEL_URL;
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base ?? ""))
   throw Error(
     "This proof requires the local private kernel, never a cloud endpoint",
@@ -304,8 +304,8 @@ try {
     const baseSource = (
       await readFile("tests/fixtures/native-app.ts", "utf8")
     ).replaceAll(
-      "../../packages/flared/src/sdk/",
-      resolve("packages/flared/src/sdk") + "/",
+      "../../packages/flare/src/sdk/",
+      resolve("packages/flare/src/sdk") + "/",
     );
     try {
       for (const env of [dev, prod])
@@ -388,8 +388,8 @@ try {
     const source = (
       await readFile("tests/fixtures/native-app.ts", "utf8")
     ).replaceAll(
-      "../../packages/flared/src/sdk/",
-      resolve("packages/flared/src/sdk") + "/",
+      "../../packages/flare/src/sdk/",
+      resolve("packages/flare/src/sdk") + "/",
     );
     const proof = createClient({ url: base + "/p/" + target });
     try {

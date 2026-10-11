@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 const root = process.cwd(),
-  external = await mkdtemp(join(tmpdir(), "flared-package-proof-"));
+  external = await mkdtemp(join(tmpdir(), "flare-package-proof-"));
 function run(args, cwd = root) {
   const result = Bun.spawnSync([process.execPath, ...args], {
     cwd,
@@ -26,16 +26,16 @@ function run(args, cwd = root) {
   return stdout;
 }
 try {
-  await mkdir("artifacts/packages/flared", { recursive: true });
-  const destination = resolve("artifacts/packages/flared");
+  await mkdir("artifacts/packages/flare", { recursive: true });
+  const destination = resolve("artifacts/packages/flare");
   const filename = run(
     ["pm", "pack", "--ignore-scripts", "--quiet", "--destination", destination],
-    resolve("packages/flared"),
+    resolve("packages/flare"),
   ).trim();
-  const archive = resolve("packages/flared", filename);
+  const archive = resolve("packages/flare", filename);
   const files = await new Bun.Archive(await Bun.file(archive).bytes()).files();
   const packed = JSON.parse(await files.get("package/package.json").text());
-  assert.equal(packed.name, "flared");
+  assert.equal(packed.name, "flare");
   assert.equal(packed.sideEffects, false);
   assert.ok(!files.has("package/index.js"), "Unexpected forwarding wrapper");
   for (const contract of Object.values(packed.exports)) {
@@ -47,11 +47,11 @@ try {
     }
   }
   assert.ok(
-    files.has("package/" + packed.bin.flared.slice(2)),
+    files.has("package/" + packed.bin.flare.slice(2)),
     "Missing compiled CLI",
   );
-  assert.equal(packed.dependencies["@flared/sdk"], undefined);
-  assert.equal(packed.dependencies["@flared/cli"], undefined);
+  assert.equal(packed.dependencies["@flare/sdk"], undefined);
+  assert.equal(packed.dependencies["@flare/cli"], undefined);
   for (const file of files.keys())
     assert.ok(
       !/\.private|\.dev\.vars|node_modules|dashboard|kernel-token/.test(file),
@@ -60,16 +60,16 @@ try {
   await writeFile(
     join(external, "package.json"),
     JSON.stringify({
-      name: "fresh-flared-proof",
+      name: "fresh-flare-proof",
       private: true,
       type: "module",
-      dependencies: { flared: `file:${archive}` },
+      dependencies: { flare: `file:${archive}` },
       devDependencies: { typescript: "6.0.2", "@types/node": "24.19.2" },
     }),
   );
   run(["install", "--ignore-scripts"], external);
   assert.equal(
-    (await lstat(join(external, "node_modules/flared"))).isSymbolicLink(),
+    (await lstat(join(external, "node_modules/flare"))).isSymbolicLink(),
     false,
   );
   assert.equal(
@@ -86,9 +86,9 @@ try {
     "wrangler",
     "workerd",
     "@cloudflare/vite-plugin",
-    "@flared/platform",
-    "@flared/sdk",
-    "@flared/cli",
+    "@flare/platform",
+    "@flare/sdk",
+    "@flare/cli",
     "@reactive-cloud/sdk",
     "drizzle-orm",
     "drizzle-kit",
@@ -118,8 +118,8 @@ try {
     }
   }
   await inspectDependencies(join(external, "node_modules"));
-  const help = run(["x", "--bun", "flared", "--help"], external);
-  assert.ok(help.includes("Flared 0.3") && help.includes("Cloudflare-only"));
+  const help = run(["x", "--bun", "flare", "--help"], external);
+  assert.ok(help.includes("Flare 0.3") && help.includes("Cloudflare-only"));
   // Portable JS remains usable without Bun or window, independently of CLI.
   const portable = spawnSync(
     "node",
@@ -128,10 +128,10 @@ try {
       "-e",
       `
     import assert from 'node:assert/strict';
-    import {createClient, FlaredError} from 'flared';
+    import {createClient, FlareError} from 'flare';
     const client = createClient({url:'https://application.example/dev'});
     client.dispose();
-    await assert.rejects(client.query({path:'test',kind:'query'},{}), FlaredError);
+    await assert.rejects(client.query({path:'test',kind:'query'},{}), FlareError);
   `,
     ],
     { cwd: external, encoding: "utf8" },
@@ -139,7 +139,7 @@ try {
   assert.equal(portable.status, 0, portable.stderr);
   await writeFile(
     join(external, "app.ts"),
-    `import {defineApp,defineSchema,defineTable,createFunctions,z} from "flared/server";
+    `import {defineApp,defineSchema,defineTable,createFunctions,z} from "flare/server";
 const schema=defineSchema({counter:defineTable(z.object({value:z.number()}))});const {query,mutation,action}=createFunctions<typeof schema>();
 const get={auth:"public" as const,input:z.object({}),output:z.number(),handler:async({db}:any)=>(await db.query("counter").first())?.value ?? 0};
 export default defineApp({schema,functions:{get:query(get),increment:mutation({auth:"public",input:z.object({}),output:z.number(),handler:async({db})=>{const r=await db.query("counter").first();const value=(r?.value ?? 0)+1;if(r)await db.patch("counter",r._id,{value});else await db.insert("counter",{value});return value;}}),echo:action({auth:"public",input:z.object({value:z.number()}),output:z.number(),handler:(_ctx,a)=>a.value})}});`,
@@ -148,7 +148,7 @@ export default defineApp({schema,functions:{get:query(get),increment:mutation({a
     [
       "x",
       "--bun",
-      "flared",
+      "flare",
       "build",
       "--entry",
       "app.ts",
@@ -172,8 +172,8 @@ export default defineApp({schema,functions:{get:query(get),increment:mutation({a
   assert.ok(!api.includes("app.ts"));
   assert.ok(!api.includes("sdk/server"));
   assert.ok(
-    api.includes("flared") &&
-      !api.includes("@flared/") &&
+    api.includes("flare") &&
+      !api.includes("@flare/") &&
       !api.includes("@reactive-cloud/"),
   );
   run(
@@ -207,7 +207,7 @@ export default defineApp({schema,functions:{get:query(get),increment:mutation({a
     [
       "x",
       "--bun",
-      "flared",
+      "flare",
       "build",
       "--entry",
       "app.ts",
@@ -249,17 +249,17 @@ import App from '../components/App';
   );
   await writeFile(
     join(external, "src/components/App.tsx"),
-    `import {createClient} from 'flared'; import {FlaredProvider,useQuery} from 'flared/react'; import {api} from '../../release/api';
+    `import {createClient} from 'flare'; import {FlareProvider,useQuery} from 'flare/react'; import {api} from '../../release/api';
 const client = createClient({url: 'https://application.example/dev'});
 function Tasks() { const value = useQuery(api.get, {}); return <button onClick={() => client.query(api.get, {})}>{value ?? 'Loading'}</button>; }
-export default function App() { return <FlaredProvider client={client}><Tasks /></FlaredProvider>; }`,
+export default function App() { return <FlareProvider client={client}><Tasks /></FlareProvider>; }`,
   );
   run(["x", "--bun", "astro", "build"], external);
   for (const file of await readdir(join(external, "dist/_astro")))
     if (file.endsWith(".js")) {
       const code = await readFile(join(external, "dist/_astro", file), "utf8");
       assert(
-        !/DEV_SIGNING_KEY|FLARED_DEPLOY_TOKEN|cloudflare:workers|drizzle-orm|modelcontextprotocol|Bun\.|dist\/cli/.test(
+        !/DEV_SIGNING_KEY|FLARE_DEPLOY_TOKEN|cloudflare:workers|drizzle-orm|modelcontextprotocol|Bun\.|dist\/cli/.test(
           code,
         ),
         "Backend or credential capability entered frontend",
@@ -268,13 +268,13 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
   // Empty apps are valid: production project creation must not seed test functions/data.
   await writeFile(
     join(external, "empty.ts"),
-    'import {defineApp} from "flared/server"; export default defineApp({schema:{}, functions:{}});\n',
+    'import {defineApp} from "flare/server"; export default defineApp({schema:{}, functions:{}});\n',
   );
   run(
     [
       "x",
       "--bun",
-      "flared",
+      "flare",
       "build",
       "--entry",
       "empty.ts",
@@ -296,7 +296,7 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
     {},
   );
   assert.deepEqual(
-    await readdir(join(external, ".flared/tmp")),
+    await readdir(join(external, ".flare/tmp")),
     [],
     "CLI build left temporary metadata",
   );
@@ -309,7 +309,7 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
     [
       "x",
       "--bun",
-      "flared",
+      "flare",
       "build",
       "--entry",
       "invalid.ts",
@@ -321,21 +321,21 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
   // Metadata evaluation failure must clean scratch state and must not change the completed immutable releases.
   assert.notEqual(failure.status, 0);
   assert.match(failure.stderr + failure.stdout, /Expected metadata failure/);
-  assert.deepEqual(await readdir(join(external, ".flared/tmp")), []);
+  assert.deepEqual(await readdir(join(external, ".flare/tmp")), []);
   // Exercise the installed no-flags dev command, including native schema compilation.
   // Every HTTP call is intercepted: this is a local packaging/flow proof only.
-  await mkdir(join(external, "flared"));
+  await mkdir(join(external, "flare"));
   await writeFile(
-    join(external, "flared/schema.ts"),
-    'import {defineSchema,defineTable,z} from "flared/server"; export default defineSchema({notes:defineTable(z.object({title:z.string()}))});\n',
+    join(external, "flare/schema.ts"),
+    'import {defineSchema,defineTable,z} from "flare/server"; export default defineSchema({notes:defineTable(z.object({title:z.string()}))});\n',
   );
   await writeFile(
-    join(external, "flared/notes.ts"),
-    'import {z} from "flared/server"; import {query} from "./_generated/server"; export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(100)});\n',
+    join(external, "flare/notes.ts"),
+    'import {z} from "flare/server"; import {query} from "./_generated/server"; export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(100)});\n',
   );
   const project = "00000000-0000-4000-8000-000000000001";
   await writeFile(
-    join(external, ".flared/project.json"),
+    join(external, ".flare/project.json"),
     JSON.stringify({
       platform: "https://package-proof.invalid/control",
       project,
@@ -345,7 +345,7 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
     join(external, "mock-control.mjs"),
     `
     import assert from 'node:assert/strict';
-    process.env.FLARED_DEPLOY_TOKEN='package-proof-only';
+    process.env.FLARE_DEPLOY_TOKEN='package-proof-only';
     const calls=[];
     globalThis.fetch=async (url,options)=>{
       assert.equal(new URL(url).origin,'https://package-proof.invalid');
@@ -373,14 +373,14 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
     [
       "--preload",
       "./mock-control.mjs",
-      "./node_modules/flared/dist/cli/flared.js",
+      "./node_modules/flare/dist/cli/flare.js",
       "dev",
     ],
     external,
   );
   assert.match(
-    await readFile(join(external, "flared/_generated/references.ts"), "utf8"),
-    /from "flared"/,
+    await readFile(join(external, "flare/_generated/references.ts"), "utf8"),
+    /from "flare"/,
   );
   run(
     [
@@ -397,15 +397,15 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
       "es2022",
       "--lib",
       "ES2022,DOM",
-      "flared/notes.ts",
+      "flare/notes.ts",
     ],
     external,
   );
   assert.match(
     await readFile(join(external, ".env.local"), "utf8"),
-    /PUBLIC_FLARED_URL=/,
+    /PUBLIC_FLARE_URL=/,
   );
-  assert.deepEqual(await readdir(join(external, ".flared/tmp")), []);
+  assert.deepEqual(await readdir(join(external, ".flare/tmp")), []);
   const report = {
     status: "PASS",
     runtime: "bun",
@@ -432,7 +432,7 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
     "Portable client imported and exercised under Node without Bun/window",
     "Ephemeral Astro/React frontend built from packed SDK and generated references",
     "Frontend bundle excludes backend code and platform credentials",
-    "Flared package/CLI/generated API naming",
+    "Flare package/CLI/generated API naming",
     "Thin dependency graph without core/dashboard/emulator",
     "CLI build leaves no temporary metadata after success or failure",
     "Packaged payload excludes credentials and dashboard",
@@ -443,7 +443,7 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
     JSON.stringify(report, null, 2),
   );
   console.log(
-    "PASS: single packaged flared SDK/CLI build (Bun install and runtime); external proof workspace removed",
+    "PASS: single packaged flare SDK/CLI build (Bun install and runtime); external proof workspace removed",
   );
 } finally {
   await rm(external, { recursive: true, force: true });

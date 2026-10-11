@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 test("local cleanup removes only reproducible output and preserves operator/application state", async () => {
-  const root = await mkdtemp(join(tmpdir(), "flared-clean-"));
+  const root = await mkdtemp(join(tmpdir(), "flare-clean-"));
   const put = async (path: string, value = "keep") => {
     await mkdir(join(root, path, ".."), { recursive: true });
     await writeFile(join(root, path), value);
@@ -22,11 +22,11 @@ test("local cleanup removes only reproducible output and preserves operator/appl
       await readFile(new URL("../scripts/clean.mjs", import.meta.url), "utf8"),
     );
     const preserved = [
-      ".private/flared-install.json",
+      ".private/flare-install.json",
       ".private/kernel-token",
       ".private/cloudflare/admin.wrangler.json",
       ".private/cloudflare/runtime.wrangler.json",
-      ".flared/project.json",
+      ".flare/project.json",
       "tests/fixtures/tasks/app.ts",
       "node_modules/dependency/index.js",
       ".git/config",
@@ -35,8 +35,8 @@ test("local cleanup removes only reproducible output and preserves operator/appl
     const generated = [
       "artifacts/releases/old.tgz",
       ".wrangler/cache",
-      "packages/flared/dist/sdk/index.js",
-      "packages/flared/dist/index.js",
+      "packages/flare/dist/sdk/index.js",
+      "packages/flare/dist/index.js",
       "packages/core/dist/dashboard/index 2.html",
       "packages/core/dashboard/.astro/types.d.ts",
       "test/node_modules/.vite/deps/old.js",

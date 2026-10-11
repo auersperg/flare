@@ -1,7 +1,7 @@
 import { collectCatalog } from "./retention.js";
 import { authorizeProjectDeletion, deleteProject } from "./project-deletion.js";
 import { publicLogin, loginInfo, approveLogin } from "./cli-login.js";
-declare const FLARED_DASHBOARD_CSP_HASHES: {
+declare const FLARE_DASHBOARD_CSP_HASHES: {
   scripts: string[];
   styles: string[];
 };
@@ -117,7 +117,7 @@ async function audit(
 ) {
   await collectCatalog(env.CATALOG).catch((error) =>
     console.warn({
-      source: "flared-catalog-retention",
+      source: "flare-catalog-retention",
       code: status(error).code,
     }),
   );
@@ -132,7 +132,7 @@ async function audit(
       .run()
       .catch((error) =>
         console.warn({
-          source: "flared-audit-finalize",
+          source: "flare-audit-finalize",
           code: status(error).code,
         }),
       );
@@ -145,7 +145,7 @@ async function audit(
       .run()
       .catch((error) =>
         console.warn({
-          source: "flared-audit-finalize",
+          source: "flare-audit-finalize",
           code: status(error).code,
         }),
       );
@@ -637,9 +637,9 @@ export default {
       headers.set(
         "content-security-policy",
         "default-src 'self'; script-src 'self' " +
-          FLARED_DASHBOARD_CSP_HASHES.scripts.join(" ") +
+          FLARE_DASHBOARD_CSP_HASHES.scripts.join(" ") +
           "; style-src 'self' " +
-          FLARED_DASHBOARD_CSP_HASHES.styles.join(" ") +
+          FLARE_DASHBOARD_CSP_HASHES.styles.join(" ") +
           "; connect-src 'self' " +
           env.RUNTIME_URL +
           " " +
@@ -658,7 +658,7 @@ export default {
     } catch (e) {
       const out = status(e);
       if (out.status >= 500)
-        console.error({ source: "flared-admin", code: out.code });
+        console.error({ source: "flare-admin", code: out.code });
       return json({ error: out.code }, out.status);
     }
   },

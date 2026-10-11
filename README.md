@@ -1,10 +1,18 @@
-# Flared
+# Flare
 
-[![CI](https://github.com/auersperg/flared/actions/workflows/ci.yml/badge.svg)](https://github.com/auersperg/flared/actions/workflows/ci.yml)
+[![CI](https://github.com/auersperg/flare/actions/workflows/ci.yml/badge.svg)](https://github.com/auersperg/flare/actions/workflows/ci.yml)
 
 Cloudflare-native reactive backend in your own account.
 
 **0.3 · breaking native-data preview.** One installation, multiple projects, isolated cloud `dev` / `prod`. The repository contains the platform, SDK, CLI and verification tools, not customer applications or demonstration frontends. It is not yet a complete Convex replacement or a public npm release.
+
+## Deployment
+
+- Landing: [flare.auer.wien](https://flare.auer.wien)
+- Protected dashboard: [dash.flare.auer.wien](https://dash.flare.auer.wien)
+- Runtime: `https://api.flare.auer.wien`
+
+The application package and CLI are both `flare`. Existing projects, user IDs and data survive the rename. Internal SQLite `_flared_*` tables, session-token format and dynamic-runtime identity headers remain stable storage/protocol identifiers so retained releases and sessions keep working; they are not public product names.
 
 ## Product
 
@@ -18,27 +26,27 @@ New projects start **empty**, with no demo tables, functions or records. Define 
 
 ## Repository
 
-| Directory         | Purpose                                                                    |
-| ----------------- | -------------------------------------------------------------------------- |
-| `packages/flared` | One application-facing package: SDK exports and CLI command                |
-| `packages/core`   | Platform runtime, online dashboard, D1 migrations, empty project bootstrap |
-| `tests`           | Regression tests and small test-only fixtures, never production seeds      |
-| `scripts`         | Reproducible builds, packaging checks and explicit cloud acceptance        |
-| `docs`            | Architecture, operations and remaining production gates                    |
+| Directory        | Purpose                                                                    |
+| ---------------- | -------------------------------------------------------------------------- |
+| `packages/flare` | One application-facing package: SDK exports and CLI command                |
+| `packages/core`  | Platform runtime, online dashboard, D1 migrations, empty project bootstrap |
+| `tests`          | Regression tests and small test-only fixtures, never production seeds      |
+| `scripts`        | Reproducible builds, packaging checks and explicit cloud acceptance        |
+| `docs`           | Architecture, operations and remaining production gates                    |
 
 One Bun workspace and lockfile. Installed dependencies, generated output and credentials are ignored. No `apps`/`examples` workspace or duplicated demo toolchain. The task fixture under tests is used only by explicit acceptance scripts; production builds do not consume it.
 
 [Architecture](docs/architecture.md) · [Package distribution](docs/packaging.md) · [Maintenance](docs/maintenance.md).
 
-[Cloudflare capability map — 2026-10-11](docs/cloudflare-capability-map.md) · [Flared implementation and resource map](docs/flared-architecture-map.md) · [Native architecture review](docs/architecture-audit-0.3.md).
+[Cloudflare capability map — 2026-10-11](docs/cloudflare-capability-map.md) · [Flare implementation and resource map](docs/flare-architecture-map.md) · [Native architecture review](docs/architecture-audit-0.3.md).
 
 ## Build and verify
 
 Bun **1.4.3+** for development, CLI and builds. Node **24.11+** is required only by the vendor Wrangler tooling. Clone the private repository with an authorised GitHub account:
 
 ```sh
-git clone https://github.com/auersperg/flared.git
-cd flared
+git clone https://github.com/auersperg/flare.git
+cd flare
 bun install --frozen-lockfile --ignore-scripts
 bun run verify
 # Additional native kernel verification, local test-only workerd:
@@ -53,54 +61,54 @@ GitHub CI repeats verification, local native kernel checks and the production-de
 
 Bun is the single local toolchain: `bun.lock`, native `bun test`, `Bun.build` for Worker/application bundles, `Bun.Transpiler` for portable SDK JavaScript, and `bun pm pack` for distribution checks. TypeScript still emits declarations; Astro keeps its supported Vite integration, executed under Bun. No parallel npm/Vitest/esbuild pipeline is maintained. SDK clients remain portable browser/server JavaScript; only the compiler/CLI require Bun. Worker bundles target Cloudflare, never Bun. Wrangler itself uses its supported Node runtime; a forced Bun Wrangler dev run hung during native acceptance, so this boundary is explicit rather than silently emulated.
 
-`build` emits the self-contained `flared` package, internal SDK output, the two shared Workers, the static online dashboard and the empty bootstrap release. `clean` removes ignored builds, reports, caches and Finder metadata, not source, installed dependencies, operator credentials or cloud data. Run `build` again before packaging/deployment.
+`build` emits the self-contained `flare` package, internal SDK output, the two shared Workers, the static online dashboard and the empty bootstrap release. `clean` removes ignored builds, reports, caches and Finder metadata, not source, installed dependencies, operator credentials or cloud data. Run `build` again before packaging/deployment.
 
 Dashboard: Astro 7.3.8, React 19.3.0, actual shadcn `bKGijeGe` preset (Base UI Lyra / Stone / Geist / Lucide). Secondary views are lazy-loaded; no SSR adapter, background polling or automatic live subscription. TypeScript 6.0.2 remains the supported Astro/Volar checker rather than forcing an unsupported compiler API.
 
 ## Application development
 
-Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`flared`**: client, server declarations and CLI in one installation. SDK/CLI live inside `packages/flared/src`, not separate source workspaces. The `flared` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flared/sdk` / `@flared/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
+Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`flare`**: client, server declarations and CLI in one installation. SDK/CLI live inside `packages/flare/src`, not separate source workspaces. The `flare` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flare/sdk` / `@flare/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
 
 Target registry installation (not available yet: private/unpublished):
 
 ```sh
-bun add flared
-bunx flared dev
+bun add flare
+bunx flare dev
 ```
 
-With the private package installed from a verified local archive, `bunx flared dev` already implements the same command interface:
+With the private package installed from a verified local archive, `bunx flare dev` already implements the same command interface:
 
 1. On the first run, enter your installation's Runtime URL. Confirm the matching code in the Cloudflare Access-protected dashboard; select or create a project there.
-2. The CLI stores a project-scoped, 30-day credential outside the application in `~/.config/flared`, mode 0600. No token is copied into source or frontend env. Settings can revoke it. A new sign-in is required after expiry/revocation.
-3. Write a default-exported `defineSchema` document contract in `flared/schema.ts` and named query/mutation/action exports in `flared/*.ts`. Nested folders create nested function paths; helpers can use underscore-prefixed files.
-4. `dev` automatically discovers functions, validates the document/index contract, compiles native bundles, publishes to cloud dev and writes `flared/_generated/api.ts`. Use `api.tasks.list` rather than a build-directory path. The public dev URL is written to `.env.local` using the framework prefix (Astro: `PUBLIC_FLARED_URL`, Expo: `EXPO_PUBLIC_FLARED_URL`, otherwise `VITE_FLARED_URL`), preserving other variables. The watch is restricted to backend source; frontend edits do not deploy the backend.
+2. The CLI stores a project-scoped, 30-day credential outside the application in `~/.config/flare`, mode 0600. No token is copied into source or frontend env. Settings can revoke it. A new sign-in is required after expiry/revocation.
+3. Write a default-exported `defineSchema` document contract in `flare/schema.ts` and named query/mutation/action exports in `flare/*.ts`. Nested folders create nested function paths; helpers can use underscore-prefixed files.
+4. `dev` automatically discovers functions, validates the document/index contract, compiles native bundles, publishes to cloud dev and writes `flare/_generated/api.ts`. Use `api.tasks.list` rather than a build-directory path. The public dev URL is written to `.env.local` using the framework prefix (Astro: `PUBLIC_FLARE_URL`, Expo: `EXPO_PUBLIC_FLARE_URL`, otherwise `VITE_FLARE_URL`), preserving other variables. The watch is restricted to backend source; frontend edits do not deploy the backend.
 5. Run the frontend with its framework's normal dev server. Configure allowed frontend origins and application-user authentication separately; CLI sign-in is deployment authorization, not a user login.
 
 ```text
 my-app/
 ├── src/                   # Astro / React / Expo frontend
-└── flared/
+└── flare/
     ├── schema.ts          # defineSchema({tasks:defineTable(z.object(...))})
     ├── tasks.ts           # export const list = query(...)
     └── _generated/        # typed server declarations and browser API; ignored
 ```
 
 ```ts
-// flared/tasks.ts
-import { z } from "flared/server";
+// flare/tasks.ts
+import { z } from "flare/server";
 import { query } from "./_generated/server";
 export const hello = query({
   input: z.object({}),
   output: z.string(),
-  handler: () => "Hello from Flared",
+  handler: () => "Hello from Flare",
 });
 ```
 
 ```sh
-bunx flared deploy
+bunx flare deploy
 ```
 
-This builds and deploys to **production**, with an explicit confirmation naming the project. CI uses a linked project plus `FLARED_DEPLOY_TOKEN` and `--confirm <UUID>`. Advanced build/link/custom-entry commands remain available for explicit build pipelines, but are not the normal application flow.
+This builds and deploys to **production**, with an explicit confirmation naming the project. CI uses a linked project plus `FLARE_DEPLOY_TOKEN` and `--confirm <UUID>`. Advanced build/link/custom-entry commands remain available for explicit build pipelines, but are not the normal application flow.
 
 A fresh platform installation includes administrative migration `0003_cli_login.sql`, `DASHBOARD_URL` and the updated Admin Worker/dashboard. The browser login is protected by Access, owner authorization and same-origin CSRF checks; login sessions expire after ten minutes. Credential delivery is encrypted to the CLI's ephemeral RSA key and claimed only once with its secret. No local dashboard or callback HTTP server is started.
 
@@ -113,8 +121,8 @@ Schema changes validate existing documents and update native SQLite expression i
 ## Native data API
 
 ```ts
-// flared/schema.ts
-import { defineSchema, defineTable, z } from "flared/server";
+// flare/schema.ts
+import { defineSchema, defineTable, z } from "flare/server";
 export default defineSchema({
   tasks: defineTable(
     z.object({
@@ -126,8 +134,8 @@ export default defineSchema({
 ```
 
 ```ts
-// flared/tasks.ts
-import { z } from "flared/server";
+// flare/tasks.ts
+import { z } from "flare/server";
 import { query, mutation } from "./_generated/server";
 export const list = query({
   auth: "public",
@@ -159,8 +167,8 @@ export const create = mutation({
 The only server function kinds are **query**, **mutation** and **action**. Every public query can be read once or subscribed to; there is no `live` declaration, duplicate `watch` function or compatibility alias.
 
 ```ts
-import { createClient } from "flared";
-import { api } from "./flared/_generated/api";
+import { createClient } from "flare";
+import { api } from "./flare/_generated/api";
 const client = createClient({ url: REACTIVE_URL, getToken });
 // Choose one mode; no initial fetch is required before onUpdate.
 const stop = client.onUpdate(api.tasks.list, {}, (tasks) => render(tasks));
@@ -170,7 +178,7 @@ await client.mutation(api.tasks.create, { title: "New task" });
 ```
 
 ```tsx
-import { FlaredProvider, useQuery } from "flared/react";
+import { FlareProvider, useQuery } from "flare/react";
 function Tasks() {
   const tasks = useQuery(api.tasks.list, {});
   if (tasks === undefined) return <p>Loading…</p>;
@@ -182,7 +190,7 @@ function Tasks() {
     </ul>
   );
 }
-// At the app root: <FlaredProvider client={client}><Tasks /></FlaredProvider>
+// At the app root: <FlareProvider client={client}><Tasks /></FlareProvider>
 ```
 
 `useQuery` returns the data, unsubscribes on unmount, supports `"skip"`, and throws function/auth errors to an error boundary. Reconnecting keeps the last snapshot. No client, WebSocket or polling is created by server rendering. The provider receives a client owned by your app. One-off `query` uses HTTP; `onUpdate` uses a shared hibernating WebSocket, whose initial snapshot is the first result. A ticket request authenticates that connection — it is not a second query. Identical active subscriptions share transport/work; inactive queries do not run in the background. Dashboard execution is a one-off call and never opens a subscription automatically.
@@ -214,13 +222,13 @@ bun run build
 bunx --no-install wrangler deploy --config .private/cloudflare/runtime.wrangler.json
 ```
 
-Commit only the configuration examples, never live installation files. `tests/kernel/wrangler.json` has no account ID and is for local native testing. For remote kernel testing, create a separate ignored `tests/kernel/wrangler.cloud.json` for disposable resources and explicitly select it when deploying. `scripts/set-kernel-secret.mjs` requires `FLARED_KERNEL_CONFIG`; acceptance scripts require `FLARED_KERNEL_URL`. `.private` retains installation checkpoints and test/signing credentials, never packaged or committed.
+Commit only the configuration examples, never live installation files. `tests/kernel/wrangler.json` has no account ID and is for local native testing. For remote kernel testing, create a separate ignored `tests/kernel/wrangler.cloud.json` for disposable resources and explicitly select it when deploying. `scripts/set-kernel-secret.mjs` requires `FLARE_KERNEL_CONFIG`; acceptance scripts require `FLARE_KERNEL_URL`. `.private` retains installation checkpoints and test/signing credentials, never packaged or committed.
 
 Explicit cloud acceptance commands can create test resources/projects and write test data. They are not part of `verify`, and must not target customer production data. Production builds/cleanup perform no cloud operations.
 
 Dynamic Workers/Facets/Lifecycle depend on beta/experimental Cloudflare APIs. Supported scope is trusted applications/team members, not public untrusted multi-tenancy. Native scoped Secrets Store reads and a restricted action `globalOutbound` gateway are implemented but need operator bindings/policy and real-cloud acceptance. Dashboard secret provisioning, full analytics, unrestricted export/disaster recovery, complete release draining, portable installer and client-specific delegated membership remain unfinished. Protected functions accept enabled built-in password sessions or configured OIDC identities; application handlers enforce record permissions. Queues are at-least-once; ambiguous mutations are not automatically retried.
 
-No guarantee that $5 covers total usage or that Flared is cheaper/faster than Convex for every workload. This repository and all packages are private and **UNLICENSED**. No open-source licence is granted; public visibility, licensing and npm publication require a separate decision.
+No guarantee that $5 covers total usage or that Flare is cheaper/faster than Convex for every workload. This repository and all packages are private and **UNLICENSED**. No open-source licence is granted; public visibility, licensing and npm publication require a separate decision.
 
 ## Release status
 
@@ -242,9 +250,9 @@ names are not a description of an operator's current installation.
 
 ## Release history and promotion
 
-Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx flared promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx flared rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
+Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx flare promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx flare rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
 
-`bunx flared deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flared/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
+`bunx flare deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flare/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
 
 Operator checklist: [production runbook](docs/production-runbook.md). Short acceptance does not certify a monthly bill or an unperformed load test.
 

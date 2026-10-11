@@ -1,6 +1,6 @@
 # Cloudflare: карта возможностей и потребления ресурсов
 
-**Срез: 11 октября 2026 года.** Для выбора архитектуры Flared, а не для включения всех сервисов аккаунта. Связанная [карта реализации Flared](flared-architecture-map.md).
+**Срез: 11 октября 2026 года.** Для выбора архитектуры Flare, а не для включения всех сервисов аккаунта. Связанная [карта реализации Flare](flare-architecture-map.md).
 
 ## Как читать карту
 
@@ -27,7 +27,7 @@
 
 У DO hibernation блокируют постоянные JS-таймеры, незавершённые обработчики/I/O, исходящие WebSockets и обычный серверный WebSocket через `accept()`. Сохранять нужное состояние в storage/attachments, а не рассчитывать на heap. Пауза до физической hibernation сама по себе не означает платный простой: idle-объект, уже подходящий для неё, не тарифицируется по duration. [Lifecycle](https://developers.cloudflare.com/durable-objects/concepts/durable-object-lifecycle/), [WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/).
 
-**Правило Flared:** доступность 24/7 нужна; активное выполнение 24/7 — нет. Не добавлять keep-warm, polling и служебные heartbeats ради самой доступности.
+**Правило Flare:** доступность 24/7 нужна; активное выполнение 24/7 — нет. Не добавлять keep-warm, polling и служебные heartbeats ради самой доступности.
 
 ## 2. Проверенная хронология важных изменений
 
@@ -59,11 +59,11 @@
 
 ## 3. Вычисления и frontend
 
-Стабильные идентификаторы CF-* используются в [карте Flared](flared-architecture-map.md).
+Стабильные идентификаторы CF-* используются в [карте Flare](flare-architecture-map.md).
 
 ### CF-WORKERS
 
-**Workers:** HTTP/event compute, JS/TS, Web APIs, поддерживаемые языковые/runtime-интеграции. Нет своей постоянно поднятой VM. Вызовы и CPU по Workers Standard; ожидание I/O не равно active CPU. Предпочтительно для двух shared Worker Flared. Bun — локальная сборка/CLI, **не облачный runtime**. [Workers](https://developers.cloudflare.com/workers/), [CPU](https://developers.cloudflare.com/workers/platform/limits/).
+**Workers:** HTTP/event compute, JS/TS, Web APIs, поддерживаемые языковые/runtime-интеграции. Нет своей постоянно поднятой VM. Вызовы и CPU по Workers Standard; ожидание I/O не равно active CPU. Предпочтительно для двух shared Worker Flare. Bun — локальная сборка/CLI, **не облачный runtime**. [Workers](https://developers.cloudflare.com/workers/), [CPU](https://developers.cloudflare.com/workers/platform/limits/).
 
 ### CF-DYNAMIC
 
@@ -71,13 +71,13 @@
 
 ### CF-FACETS
 
-**Durable Object Facets:** динамический DO как дочерняя изолированная единица с собственным storage. Родитель владеет физическими WebSockets/alarms. Постоянное имя facet сохраняет данные между версиями; `abort()` перезапускает, `delete()` уничтожает. Facets относятся к beta Dynamic Workers, не наследуют автоматически все гарантии/лимиты обычных DO. Подходят Flared лучше, чем Worker на каждый проект или общая app-таблица D1. [Facets](https://developers.cloudflare.com/dynamic-workers/usage/durable-object-facets/).
+**Durable Object Facets:** динамический DO как дочерняя изолированная единица с собственным storage. Родитель владеет физическими WebSockets/alarms. Постоянное имя facet сохраняет данные между версиями; `abort()` перезапускает, `delete()` уничтожает. Facets относятся к beta Dynamic Workers, не наследуют автоматически все гарантии/лимиты обычных DO. Подходят Flare лучше, чем Worker на каждый проект или общая app-таблица D1. [Facets](https://developers.cloudflare.com/dynamic-workers/usage/durable-object-facets/).
 
 ### CF-ASSETS
 
 **Workers Static Assets:** HTML/JS/CSS на edge; без запуска Worker asset-запросы бесплатны и не ограничены по количеству. `run_worker_first` вызывает script и меняет экономику. Для статического Astro dashboard не нужен SSR/container. [Assets billing](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
 
-| ID / вариант                  | Когда полезен                                                | Почему не заменяет основу Flared                                                                                 | Поведение ресурсов / источник                                                                                                                           |
+| ID / вариант                  | Когда полезен                                                | Почему не заменяет основу Flare                                                                                  | Поведение ресурсов / источник                                                                                                                           |
 | ----------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CF-PAGES: Pages               | Статические сайты, существующие Pages deployments            | Dashboard можно обслужить Assets в уже имеющемся Admin Worker. Pages не объявляем целиком deprecated             | Статика и Functions имеют разные meters. [Pages](https://developers.cloudflare.com/pages/)                                                              |
 | CF-WFP: Workers for Platforms | Массовый hosting клиентских Worker через dispatch namespaces | Другая provisioning-модель. Dynamic Loader лучше соответствует согласованной схеме собственного доверенного BaaS | Проверять отдельный тариф WFP; не считать частью базовых $5. [WFP](https://developers.cloudflare.com/cloudflare-for-platforms/workers-for-platforms/)   |
@@ -102,7 +102,7 @@
 
 ### CF-SQLITE
 
-**DO class lifecycle (обновление 28 сентября 2026):** declarative `exports` заменяет историю imperative `migrations`: live SQLite class, deleted/renamed/transferred states и native reconciliation. Для существующего Worker нельзя смешивать обе формы; удаление namespace необратимо. В Big Bang Flared применён новый `EnvironmentSupervisor`, старый namespace удалён; это не data-preserving rename. [Официальная модель exports](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/).
+**DO class lifecycle (обновление 28 сентября 2026):** declarative `exports` заменяет историю imperative `migrations`: live SQLite class, deleted/renamed/transferred states и native reconciliation. Для существующего Worker нельзя смешивать обе формы; удаление namespace необратимо. В Big Bang Flare применён новый `EnvironmentSupervisor`, старый namespace удалён; это не data-preserving rename. [Официальная модель exports](https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/).
 
 **SQLite-backed DO:** нативные `storage.sql.exec`, indexes, transactions; рядом с координатором и facet. Для новых классов Cloudflare рекомендует SQLite вместо legacy KV-backed DO. Drizzle не отдельная Cloudflare БД: это optional слой доступа/миграций, его необходимость определяется публичным API. [SQLite API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/), [выбор backend](https://developers.cloudflare.com/durable-objects/reference/legacy-key-value-storage-backend/).
 
@@ -114,7 +114,7 @@
 
 **R2:** binaries/builds/files/exports. Standard storage подходит частым обращениям; Infrequent Access имеет retrieval/minimum storage условия и может быть хуже для маленьких часто читаемых файлов. Не хранить app rows или permissions только в имени публичного blob. [R2](https://developers.cloudflare.com/r2/), [storage classes](https://developers.cloudflare.com/r2/buckets/storage-classes/).
 
-| ID / вариант       | Сильная сторона                                     | Решение для Flared                                                                        | Простой / риски / источник                                                                                                                                                                                                                                                     |
+| ID / вариант       | Сильная сторона                                     | Решение для Flare                                                                         | Простой / риски / источник                                                                                                                                                                                                                                                     |
 | ------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | CF-KV              | Edge-distributed key/value, read-heavy конфигурация | Не authority для revision/auth/live: eventual consistency; новый обязательный KV не нужен | Хранение + операции; stale reads. [KV](https://developers.cloudflare.com/kv/)                                                                                                                                                                                                  |
 | CF-HYPERDRIVE      | Pooling/caching соединений к PostgreSQL/MySQL       | Только если клиенту реально нужна внешняя SQL DB; не DB hosting                           | Idle upstream DB может платить отдельно. [Hyperdrive](https://developers.cloudflare.com/hyperdrive/)                                                                                                                                                                           |
@@ -144,7 +144,7 @@
 
 ### CF-QUEUES
 
-**Queues:** доставка jobs, retries, DLQ, batching; push consumer вызывается событием. Нет Flared-процесса, который непрерывно опрашивает очередь. Гарантия **at-least-once**, не exactly-once внешнего эффекта. Native delay до 24 часов; длительные app schedules требуют отдельного persisted scheduler. [Guarantees](https://developers.cloudflare.com/queues/reference/delivery-guarantees/), [batching/delay](https://developers.cloudflare.com/queues/configuration/batching-retries/).
+**Queues:** доставка jobs, retries, DLQ, batching; push consumer вызывается событием. Нет Flare-процесса, который непрерывно опрашивает очередь. Гарантия **at-least-once**, не exactly-once внешнего эффекта. Native delay до 24 часов; длительные app schedules требуют отдельного persisted scheduler. [Guarantees](https://developers.cloudflare.com/queues/reference/delivery-guarantees/), [batching/delay](https://developers.cloudflare.com/queues/configuration/batching-retries/).
 
 ### CF-CRON
 
@@ -152,7 +152,7 @@
 
 ### CF-WORKFLOWS
 
-**Workflows:** многошаговые процессы, durable sleeps/events/retries. Для цепочек подтверждения оплаты/длительных business flows лучше собственной orchestration. Для одношагового job Queues проще. После 10.08.2026 учитываются steps и stored state, помимо Workers CPU/requests. **Dynamic Workflows** теперь имеют отдельный API; возможность существует, в Flared не подключена. [Workflows](https://developers.cloudflare.com/workflows/), [Dynamic Workflows](https://developers.cloudflare.com/dynamic-workers/usage/dynamic-workflows/).
+**Workflows:** многошаговые процессы, durable sleeps/events/retries. Для цепочек подтверждения оплаты/длительных business flows лучше собственной orchestration. Для одношагового job Queues проще. После 10.08.2026 учитываются steps и stored state, помимо Workers CPU/requests. **Dynamic Workflows** теперь имеют отдельный API; возможность существует, в Flare не подключена. [Workflows](https://developers.cloudflare.com/workflows/), [Dynamic Workflows](https://developers.cloudflare.com/dynamic-workers/usage/dynamic-workflows/).
 
 ### CF-K2
 
@@ -164,7 +164,7 @@
 
 ### CF-ACCESS
 
-**Cloudflare Access:** edge login/policy для admin dashboard. Не заменяет авторизацию пользователей приложения и owner/editor/viewer внутри Flared. Access application должна защищать все доступные dashboard hostnames. У Static Assets router есть ограничение `ctx.access`; проверка подписанного assertion — оправданный fallback, не повод снимать защиту. [Access](https://developers.cloudflare.com/cloudflare-one/access-controls/), [Workers Access](https://developers.cloudflare.com/workers/configuration/access/), [router limitation](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/).
+**Cloudflare Access:** edge login/policy для admin dashboard. Не заменяет авторизацию пользователей приложения и owner/editor/viewer внутри Flare. Access application должна защищать все доступные dashboard hostnames. У Static Assets router есть ограничение `ctx.access`; проверка подписанного assertion — оправданный fallback, не повод снимать защиту. [Access](https://developers.cloudflare.com/cloudflare-one/access-controls/), [Workers Access](https://developers.cloudflare.com/workers/configuration/access/), [router limitation](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/).
 
 ### CF-SECRETS
 
@@ -236,7 +236,7 @@
 | Workflows                   | 500k steps/month; 1 GB stored state         | $0.80/100k steps; $0.20/GB-month; Workers compute отдельно | [Workflows pricing](https://developers.cloudflare.com/workflows/reference/pricing/)                      |
 | Static Assets без script    | Бесплатные неограниченные asset requests    | Script-first расходует Workers usage                       | [Assets](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)               |
 
-**Поправка прежних ожиданий:** старый список тарифов в переписке не является актуальным источником. Сейчас DO SQLite указывает 5 GB-month, а SQL writes — $1/M, не $0.001/M. Workers Logs и Workers Logpush — разные тарифы. Включённые pools считаются по правилам продукта/аккаунта, а не умножаются на количество проектов Flared.
+**Поправка прежних ожиданий:** старый список тарифов в переписке не является актуальным источником. Сейчас DO SQLite указывает 5 GB-month, а SQL writes — $1/M, не $0.001/M. Workers Logs и Workers Logpush — разные тарифы. Включённые pools считаются по правилам продукта/аккаунта, а не умножаются на количество проектов Flare.
 
 С **1 декабря 2026**, согласно уже объявленной модели, shared Observability Paid: 50 GB ingestion и 10 GB-month storage за cycle; сверх — $0.25/GB и $0.10/GB-month. Это **будущий** тариф. Размер log payload станет особенно важен; не логировать целые документы/файлы. Unsampled security datasets имеют отдельные условия. [Объявленная Observability pricing](https://developers.cloudflare.com/observability/pricing/).
 
@@ -259,9 +259,9 @@
 
 Ниже **138/138 карточек** из directory на дату среза. Короткое назначение составлено для навигации; подробности — по ссылке названия. Категории сокращены, дата — **последнее обновление overview**, не launch. «—» означает, что GA/beta/date запуска не подтверждены данным обзором. Это не оценка качества и не отсутствие продукта.
 
-Классы потребления: **E** — event/request usage, **S** — долговечное storage, **A** — отдельная подписка/план/сетевая или media/AI модель, **T** — tooling/control/docs. Сочетания возможны; класс не заменяет pricing. **Не включён** означает «не требуется базовому Flared по коду/config», а не «отсутствует в вашем аккаунте». Access/DNS/TLS обслуживают окружение вне bindings.
+Классы потребления: **E** — event/request usage, **S** — долговечное storage, **A** — отдельная подписка/план/сетевая или media/AI модель, **T** — tooling/control/docs. Сочетания возможны; класс не заменяет pricing. **Не включён** означает «не требуется базовому Flare по коду/config», а не «отсутствует в вашем аккаунте». Access/DNS/TLS обслуживают окружение вне bindings.
 
-| №   | Раздел / источник                                                                                                           | Для чего                                                         | Категория                                                        | Обновлён overview | Подтверждённый статус                | Meter-класс | В базовом Flared                        |
+| №   | Раздел / источник                                                                                                           | Для чего                                                         | Категория                                                        | Обновлён overview | Подтверждённый статус                | Meter-класс | В базовом Flare                         |
 | --- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------- | ------------------------------------ | ----------- | --------------------------------------- |
 | 1   | [1.1.1.1](https://developers.cloudflare.com/1.1.1.1/)                                                                       | Публичный DNS resolver, consumer privacy                         | Consumer, Network, Privacy                                       | Apr 30, 2026      | —                                    | A           | Не включён                              |
 | 2   | [Access](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/)                                        | Вход и политики доступа к приложениям                            | Zero Trust                                                       | Oct 1, 2026       | —                                    | A           | Защита admin                            |

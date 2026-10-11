@@ -10,7 +10,7 @@
   "limits": {
     "cpu_ms": 1000
   },
-  "name": "flared-admin",
+  "name": "flare-admin",
   "main": "../../packages/core/dist/admin.js",
   "assets": {
     "directory": "../../packages/core/dist/dashboard",
@@ -20,7 +20,7 @@
   "d1_databases": [
     {
       "binding": "CATALOG",
-      "database_name": "flared-catalog",
+      "database_name": "flare-catalog",
       "database_id": "YOUR_D1_DATABASE_ID",
       "migrations_dir": "../../packages/core/migrations"
     }
@@ -28,7 +28,7 @@
   "services": [
     {
       "binding": "RUNTIME",
-      "service": "flared-runtime",
+      "service": "flare-runtime",
       "entrypoint": "RuntimeControl"
     }
   ],

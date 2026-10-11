@@ -6,9 +6,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 
 const remote = process.argv.includes("--cloud");
-const base = process.env.FLARED_KERNEL_URL || "http://127.0.0.1:8799";
-if (remote && (!process.env.FLARED_KERNEL_URL || !base.startsWith("https://")))
-  throw new Error("Cloud test requires FLARED_KERNEL_URL=https://...");
+const base = process.env.FLARE_KERNEL_URL || "http://127.0.0.1:8799";
+if (remote && (!process.env.FLARE_KERNEL_URL || !base.startsWith("https://")))
+  throw new Error("Cloud test requires FLARE_KERNEL_URL=https://...");
 await mkdir(".private", { recursive: true });
 await mkdir("artifacts", { recursive: true });
 let token;
@@ -374,7 +374,7 @@ try {
         process.execPath,
         ["scripts/sdk-cloud-acceptance.mjs", "--local"],
         {
-          env: { ...process.env, FLARED_KERNEL_URL: base },
+          env: { ...process.env, FLARE_KERNEL_URL: base },
           stdio: ["ignore", "pipe", "pipe"],
         },
       );
@@ -395,7 +395,7 @@ try {
         process.execPath,
         ["scripts/native-runtime-acceptance.mjs"],
         {
-          env: { ...process.env, FLARED_KERNEL_URL: base },
+          env: { ...process.env, FLARE_KERNEL_URL: base },
           stdio: ["ignore", "pipe", "pipe"],
         },
       );

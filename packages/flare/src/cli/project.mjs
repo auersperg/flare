@@ -13,26 +13,26 @@ import { randomUUID } from "node:crypto";
 
 export async function scaffold() {
   await access("package.json");
-  await mkdir("flared", { recursive: true });
+  await mkdir("flare", { recursive: true });
   // Never overwrite application code.
   try {
     await writeFile(
-      "flared/schema.ts",
-      'import {defineSchema} from "flared/server";\nexport default defineSchema({});\n',
+      "flare/schema.ts",
+      'import {defineSchema} from "flare/server";\nexport default defineSchema({});\n',
       { flag: "wx" },
     );
   } catch (e) {
     if (e.code !== "EEXIST") throw e;
   }
   for (const [file, text] of [
-    [".gitignore", "\n.flared/\nflared/_generated/\n.env.local\n"],
-    [".prettierignore", "\n.flared/\nflared/_generated/\n"],
+    [".gitignore", "\n.flare/\nflare/_generated/\n.env.local\n"],
+    [".prettierignore", "\n.flare/\nflare/_generated/\n"],
   ]) {
     const previous = await readFile(file, "utf8").catch((e) => {
       if (e.code !== "ENOENT") throw e;
       return "";
     });
-    if (!previous.includes("flared/_generated/"))
+    if (!previous.includes("flare/_generated/"))
       await writeFile(file, previous + text);
   }
 }
@@ -59,19 +59,19 @@ async function modules(directory, prefix = "") {
 
 export async function prepare() {
   await scaffold();
-  await mkdir(".flared/build", { recursive: true });
-  await mkdir("flared/_generated", { recursive: true });
+  await mkdir(".flare/build", { recursive: true });
+  await mkdir("flare/_generated", { recursive: true });
   await writeFile(
-    "flared/_generated/server.ts",
-    'import type schema from "../schema";\nimport {createFunctions} from "flared/server";\nexport const {query,mutation,action}=createFunctions<typeof schema>();\n',
+    "flare/_generated/server.ts",
+    'import type schema from "../schema";\nimport {createFunctions} from "flare/server";\nexport const {query,mutation,action}=createFunctions<typeof schema>();\n',
   );
-  const files = await modules("flared");
-  const schema = resolve("flared/schema.ts"),
-    entry = resolve(".flared/build/app.ts");
+  const files = await modules("flare");
+  const schema = resolve("flare/schema.ts"),
+    entry = resolve(".flare/build/app.ts");
   const imports = files
     .map((file, i) => `import * as f${i} from ${JSON.stringify(file.path)};`)
     .join("\n");
-  const source = `import {defineApp} from "flared/server";
+  const source = `import {defineApp} from "flare/server";
 import schema from ${JSON.stringify(schema)};
 ${imports}
 const functions={};
@@ -86,11 +86,11 @@ for(const [path,exports] of Object.entries(functions)) {
 export default defineApp({schema,functions:tree});
 `;
   await writeFile(entry, source);
-  const metadata = resolve(`.flared/build/metadata-${randomUUID()}.mjs`);
+  const metadata = resolve(`.flare/build/metadata-${randomUUID()}.mjs`);
   try {
     await bundle({
       entrypoints: [entry],
-      outdir: resolve(".flared/build"),
+      outdir: resolve(".flare/build"),
       naming: { entry: metadata.split("/").at(-1) },
       packages: "external",
       target: "bun",
@@ -118,7 +118,7 @@ export default defineApp({schema,functions:tree});
         );
       }
     }
-    const actionEntry = resolve(".flared/build/actions.ts");
+    const actionEntry = resolve(".flare/build/actions.ts");
     await writeFile(
       actionEntry,
       `${imports.join("\n")}\nexport default {functions:{${declarations.join(",")}}};\n`,
@@ -130,7 +130,7 @@ export default defineApp({schema,functions:tree});
 }
 
 export async function generateApi(directory) {
-  await mkdir("flared/_generated", { recursive: true });
+  await mkdir("flare/_generated", { recursive: true });
   const flat = await readFile(join(directory, "api.ts"), "utf8");
   const manifest = JSON.parse(
     await readFile(join(directory, "manifest.json"), "utf8"),
@@ -150,9 +150,9 @@ export async function generateApi(directory) {
       : `{${Object.entries(value)
           .map(([key, child]) => `${JSON.stringify(key)}:${serialize(child)}`)
           .join(",")}}`;
-  await writeFile("flared/_generated/references.ts", flat);
+  await writeFile("flare/_generated/references.ts", flat);
   await writeFile(
-    "flared/_generated/api.ts",
+    "flare/_generated/api.ts",
     `import {api as references} from "./references";\nexport const api = ${serialize(tree)} as const;\n`,
   );
 }
@@ -161,10 +161,10 @@ export async function frontendEnvironment(url) {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   const dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
   const variable = dependencies.astro
-    ? "PUBLIC_FLARED_URL"
+    ? "PUBLIC_FLARE_URL"
     : dependencies.expo
-      ? "EXPO_PUBLIC_FLARED_URL"
-      : "VITE_FLARED_URL";
+      ? "EXPO_PUBLIC_FLARE_URL"
+      : "VITE_FLARE_URL";
   const parsed = new URL(url);
   if (
     parsed.protocol !== "https:" ||

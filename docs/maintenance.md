@@ -2,11 +2,11 @@
 
 ## Production-focused source tree
 
-Two top-level packages: `core` and `flared`. SDK and CLI live inside `flared/src/sdk` and `flared/src/cli`, with one package manifest and no forwarding wrappers. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
+Two top-level packages: `core` and `flare`. SDK and CLI live inside `flare/src/sdk` and `flare/src/cli`, with one package manifest and no forwarding wrappers. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
 
 Task/counter fixtures exist only under tests or in disposable acceptance workspaces. Normal platform builds must never compile them, seed their tables/functions or depend on their directories. Existing cloud projects keep their releases/data; an empty bootstrap applies only to newly created projects after deploying the updated Admin.
 
-Customer frontend/backend source belongs in separate application repositories. The single application-facing flared package installs there independently of Core/dashboard. There is no local dashboard mode or platform-owned frontend development server.
+Customer frontend/backend source belongs in separate application repositories. The single application-facing flare package installs there independently of Core/dashboard. There is no local dashboard mode or platform-owned frontend development server.
 
 ## Build and dependency boundaries
 
@@ -49,9 +49,9 @@ Cleaning local files makes no Cloudflare request and does not remove customer pr
 
 ## Repository workflow
 
-Canonical repository: `auersperg/flared`, private, default branch `main`, UNLICENSED. All packages remain private to prevent accidental npm publication. Git excludes credentials, live account configuration, generated files and installed dependencies.
+Canonical repository: `auersperg/flare`, private, default branch `main`, UNLICENSED. All packages remain private to prevent accidental npm publication. Git excludes credentials, live account configuration, generated files and installed dependencies.
 
-Keep changes small and reviewable. Run `bun run verify` and `bun run test:kernel` before merging. Browser CLI login requires Admin migration 0003 and DASHBOARD_URL; it does not bypass Access or mint frontend user tokens. Application schema/functions must be committed; `_generated` and `.flared` stay ignored.
+Keep changes small and reviewable. Run `bun run verify` and `bun run test:kernel` before merging. Browser CLI login requires Admin migration 0003 and DASHBOARD_URL; it does not bypass Access or mint frontend user tokens. Application schema/functions must be committed; `_generated` and `.flare` stay ignored.
 
 GitHub CI runs these checks and the production-dependency audit with read-only repository permissions and pinned actions; it has no Cloudflare credentials or deployment job. Cloud acceptance/deployment remains explicit operator work, not a push side effect.
 
@@ -63,7 +63,7 @@ Repository cleanup is not full production certification. Required gates depend o
 
 ## On-demand logical backup and empty-target recovery
 
-Settings → Backups and `flared backup` use the existing private builds R2 bucket. A capsule includes the exact validated release, native document schema/data (preserving IDs, creation timestamps and revision) and copied ready file bytes. The checksum-verified manifest is written last. Incomplete capsules are not restorable. Only salted password hashes, never plaintext passwords, are included in the private credential capsule; active sessions, deployment credentials and signed file URLs are excluded.
+Settings → Backups and `flare backup` use the existing private builds R2 bucket. A capsule includes the exact validated release, native document schema/data (preserving IDs, creation timestamps and revision) and copied ready file bytes. The checksum-verified manifest is written last. Incomplete capsules are not restorable. Only salted password hashes, never plaintext passwords, are included in the private credential capsule; active sessions, deployment credentials and signed file URLs are excluded.
 
 Pause enabled cron and drain pending/running/failed jobs, actions and unfinished uploads before creation. The supervisor serial gate is held while the bounded snapshot and file copies complete: application calls may wait during this operation. This is an explicit maintenance operation, not a zero-impact background backup. Limits are 10,000 documents / 4 MiB logical data, 100 files / 100 MiB and 8 MiB manifest. Over-limit exports fail instead of truncating. Secrets, origins/OIDC configuration, schedules and historical jobs are intentionally omitted.
 
@@ -91,7 +91,7 @@ D1 audit retains 90 days and expired credentials retain a 14-day grace. Cleanup 
 
 Health → Development/Production releases shows the latest five distinct successful builds of the selected environment; dates mean first publication, not every activation. Read-only contract inspection does not download source into the browser. Promote exports the selected immutable dev bundle and activates it in prod with an expected-current-hash check. Rollback uses the same compatible native activation path. Failed candidates cannot be selected. No dev documents, files or credentials are copied. This is code rollback, not database rollback.
 
-`flared deploy/promote --cmd "bun run build"` builds the frontend against the selected production URL before backend publication. Dev `.env.local` is preserved. The application can then invoke native Wrangler to publish assets. This sequencing is intentionally not called atomic: a frontend publishing failure leaves the completed backend release active and must be reported/inspected. Schema changes must remain compatible with older clients. No automatic rollback of data or external effects is attempted.
+`flare deploy/promote --cmd "bun run build"` builds the frontend against the selected production URL before backend publication. Dev `.env.local` is preserved. The application can then invoke native Wrangler to publish assets. This sequencing is intentionally not called atomic: a frontend publishing failure leaves the completed backend release active and must be reported/inspected. Schema changes must remain compatible with older clients. No automatic rollback of data or external effects is attempted.
 
 The release cloud proof adds six successful variants, exact-hash promotion preserving 112 production documents, compatible rollback, stale-target conflict and failed-candidate exclusion. Temporary resources are removed after acceptance. The current production Astro playground also passes five browser checks and the local dev app passes nine cloud-backed checks. These results do not replace a new monthly cost estimate or full release crash/draining proof.
 
@@ -107,7 +107,7 @@ Production rollout checklist:
 
 - Run `bun run verify`, `bun run test:kernel` and `bun audit --production --audit-level=high`; deploy the tested Admin/Runtime builds explicitly.
 - For each application configure only its frontend origins, built-in auth or OIDC issuer/audience, and required capabilities. Test unauthenticated, expired-token and cross-environment refusal before real user data.
-- Use `flared dev` for cloud dev; use a tested immutable hash with `flared promote --env prod --hash HASH --cmd "bun run build"`, followed by native frontend publishing. Inspect partial-release errors; do not rewind the database automatically.
+- Use `flare dev` for cloud dev; use a tested immutable hash with `flare promote --env prod --hash HASH --cmd "bun run build"`, followed by native frontend publishing. Inspect partial-release errors; do not rewind the database automatically.
 - Pause cron/drain jobs and create a logical backup before risky maintenance. Current restore requires an empty other environment and is not in-place recovery or off-account disaster recovery.
 - Inspect failed jobs in Schedules and native Cloudflare DLQ. Automatic platform DLQ replay is not implemented; do not discard dead-letter messages. External effects must be idempotent.
 - Monitor native Cloudflare usage/billing. Idle hibernation is verified; storage, traffic and running jobs are still billable. The $5 subscription is not a maximum invoice.

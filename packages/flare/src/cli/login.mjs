@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 
 export const credentialDirectory = () =>
-  join(process.env.FLARED_CONFIG_HOME ?? join(homedir(), ".config", "flared"));
+  join(process.env.FLARE_CONFIG_HOME ?? join(homedir(), ".config", "flare"));
 export async function storedToken(platform, project) {
   const key = createHash("sha256")
     .update(platform + "/" + project)
@@ -32,11 +32,11 @@ export async function storedToken(platform, project) {
 export async function connect() {
   if (!process.stdin.isTTY)
     throw Error(
-      "First run needs an interactive terminal: run flared dev to sign in. CI can use FLARED_DEPLOY_TOKEN with a linked project.",
+      "First run needs an interactive terminal: run flare dev to sign in. CI can use FLARE_DEPLOY_TOKEN with a linked project.",
     );
   let dashboard, platform;
   const existing = JSON.parse(
-    await readFile(".flared/project.json", "utf8").catch((e) => {
+    await readFile(".flare/project.json", "utf8").catch((e) => {
       if (e.code !== "ENOENT") throw e;
       return "null";
     }),
@@ -138,9 +138,9 @@ export async function connect() {
       { mode: 0o600 },
     );
     // The token lives outside the application. link writes public configuration only.
-    process.env.FLARED_DEPLOY_TOKEN = token;
+    process.env.FLARE_DEPLOY_TOKEN = token;
     const { link } = await import("./cloud.mjs");
     return link({ platform, project: result.project });
   }
-  throw Error("Login expired. Run flared dev again.");
+  throw Error("Login expired. Run flare dev again.");
 }

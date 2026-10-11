@@ -8,15 +8,15 @@ import {
   applySchema,
   schemaContract,
   type NativeStorage,
-} from "../packages/flared/src/sdk/schema.js";
+} from "../packages/flare/src/sdk/schema.js";
 import {
   exportData,
   restoreData,
   emptyData,
-} from "../packages/flared/src/sdk/backup.js";
+} from "../packages/flare/src/sdk/backup.js";
 import { BackupStore, backupPrefix } from "../packages/core/src/backups.js";
 import { digest } from "../packages/core/src/security.js";
-import { stableJson } from "../packages/flared/src/sdk/protocol.js";
+import { stableJson } from "../packages/flare/src/sdk/protocol.js";
 const schema = defineSchema({
   tasks: defineTable(z.object({ title: z.string().min(1) })),
   notes: defineTable(z.object({ task: z.string() })),

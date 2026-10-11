@@ -5,15 +5,15 @@ import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildApplication } from "../packages/flared/src/cli/build.mjs";
+import { buildApplication } from "../packages/flare/src/cli/build.mjs";
 import {
   createClient,
   reference,
   uploadFile,
   createPasswordAuth,
-} from "../packages/flared/dist/sdk/client.js";
+} from "../packages/flare/dist/sdk/client.js";
 const install = JSON.parse(
-  await readFile(".private/flared-install.json", "utf8"),
+  await readFile(".private/flare-install.json", "utf8"),
 );
 const auth = await readFile(
   process.env.HOME + "/Library/Preferences/.wrangler/config/default.toml",
@@ -25,8 +25,8 @@ const id = randomUUID(),
   customer = randomUUID(),
   token = randomUUID() + randomUUID(),
   operatorKey = randomBytes(32).toString("hex");
-const operator = "flared-backup-proof-" + id.slice(0, 8),
-  dir = await mkdtemp(join(tmpdir(), "flared-backup-proof-"));
+const operator = "flare-backup-proof-" + id.slice(0, 8),
+  dir = await mkdtemp(join(tmpdir(), "flare-backup-proof-"));
 const report = {
   id,
   revision: spawnSync("git", ["rev-parse", "HEAD"], {
@@ -83,8 +83,8 @@ async function bundle(
   if (entry === "tests/fixtures/native-app.ts") {
     const source = (await readFile(entry, "utf8"))
       .replaceAll(
-        "../../packages/flared/src/sdk/",
-        join(process.cwd(), "packages/flared/dist/sdk") + "/",
+        "../../packages/flare/src/sdk/",
+        join(process.cwd(), "packages/flare/dist/sdk") + "/",
       )
       .replace(
         'from "zod"',
@@ -152,7 +152,7 @@ async function rows(env) {
 try {
   await db("INSERT INTO customers VALUES (?,?,?)", [
     customer,
-    "Flared backup acceptance",
+    "Flare backup acceptance",
     Date.now(),
   ]);
   created = true;
@@ -185,10 +185,10 @@ try {
         {
           type: "service",
           name: "RUNTIME",
-          service: "flared-runtime",
+          service: "flare-runtime",
           entrypoint: "RuntimeControl",
         },
-        { type: "r2_bucket", name: "BUNDLES", bucket_name: "flared-builds" },
+        { type: "r2_bucket", name: "BUNDLES", bucket_name: "flare-builds" },
         { type: "secret_text", name: "KEY", text: operatorKey },
       ],
     }),
@@ -472,8 +472,8 @@ try {
     );
     const source = (await readFile("tests/fixtures/native-app.ts", "utf8"))
       .replaceAll(
-        "../../packages/flared/src/sdk/",
-        join(process.cwd(), "packages/flared/dist/sdk") + "/",
+        "../../packages/flare/src/sdk/",
+        join(process.cwd(), "packages/flare/dist/sdk") + "/",
       )
       .replace(
         'from "zod"',

@@ -1,8 +1,8 @@
 import { describe, expect, it, jest } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createClient, reference } from "../packages/flared/src/sdk/client.js";
-import { FlaredProvider, useQuery } from "../packages/flared/src/sdk/react.js";
+import { createClient, reference } from "../packages/flare/src/sdk/client.js";
+import { FlareProvider, useQuery } from "../packages/flare/src/sdk/react.js";
 
 describe("React query contract", () => {
   it.each([{}, "skip"] as const)(
@@ -20,7 +20,7 @@ describe("React query contract", () => {
       }
       expect(
         renderToStaticMarkup(
-          createElement(FlaredProvider, {
+          createElement(FlareProvider, {
             client,
             children: createElement(View),
           }),
@@ -37,7 +37,7 @@ describe("React query contract", () => {
       return null;
     }
     expect(() => renderToStaticMarkup(createElement(View))).toThrow(
-      "FlaredProvider",
+      "FlareProvider",
     );
   });
   it("rejects nonqueries even when skipped", () => {
@@ -48,7 +48,7 @@ describe("React query contract", () => {
     }
     expect(() =>
       renderToStaticMarkup(
-        createElement(FlaredProvider, {
+        createElement(FlareProvider, {
           client,
           children: createElement(View),
         }),

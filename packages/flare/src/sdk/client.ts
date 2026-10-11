@@ -2,23 +2,23 @@ import {
   assertPath,
   boundedJson,
   LIMITS,
-  FlaredError,
+  FlareError,
   stableJson,
   type FunctionRef,
 } from "./protocol.js";
-export { reference, FlaredError } from "./protocol.js";
+export { reference, FlareError } from "./protocol.js";
 export type { FunctionRef, Json } from "./protocol.js";
 
 /** Unknown formats are stored as binary and always downloaded as attachments. */
 export function fileMetadata(file: Blob & { name: string }) {
   if (file.size > LIMITS.fileBytes)
-    throw new FlaredError("TOO_LARGE", "Maximum file size: 10 MiB");
+    throw new FlareError("TOO_LARGE", "Maximum file size: 10 MiB");
   if (
     !file.name ||
     file.name.length > 120 ||
     /[\x00-\x1f\x7f/\\]/.test(file.name)
   )
-    throw new FlaredError(
+    throw new FlareError(
       "INVALID_INPUT",
       "File name must be 1–120 characters, without path separators",
     );
@@ -49,7 +49,7 @@ export async function uploadFile(
   } = {},
 ): Promise<{ id: string }> {
   if (file.size > LIMITS.fileBytes)
-    throw new FlaredError("TOO_LARGE", "Maximum file size: 10 MiB");
+    throw new FlareError("TOO_LARGE", "Maximum file size: 10 MiB");
   const url = new URL(grant.url);
   if (
     url.username ||
@@ -60,7 +60,7 @@ export async function uploadFile(
         ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
       ))
   )
-    throw new FlaredError("INVALID_URL", "Expected secure upload URL");
+    throw new FlareError("INVALID_URL", "Expected secure upload URL");
   let response: Response;
   try {
     response = await (options.fetch ?? globalThis.fetch)(url.href, {
@@ -72,7 +72,7 @@ export async function uploadFile(
         options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 120000),
     });
   } catch {
-    throw new FlaredError(
+    throw new FlareError(
       "UPLOAD_UNKNOWN",
       "Connection interrupted or upload timed out; refresh the file list before trying again",
       true,
@@ -87,7 +87,7 @@ export async function uploadFile(
       typeof result.error === "string"
         ? result.error
         : `HTTP_${response.status}`;
-    throw new FlaredError(
+    throw new FlareError(
       code,
       `Upload failed: ${code}`,
       response.status >= 500,
@@ -99,7 +99,7 @@ export async function uploadFile(
     !("id" in result) ||
     typeof result.id !== "string"
   )
-    throw new FlaredError(
+    throw new FlareError(
       "INVALID_RESPONSE",
       "Upload outcome is unknown; refresh the file list before uploading again",
       true,
@@ -123,7 +123,7 @@ export interface ClientOptions {
 }
 export interface Observer<O> {
   next(value: O): void;
-  error?(error: FlaredError): void;
+  error?(error: FlareError): void;
 }
 type Subscription = {
   id: string;
@@ -145,16 +145,16 @@ export function createClient(options: ClientOptions) {
     base.search ||
     base.hash
   )
-    throw new FlaredError("INVALID_URL", "Expected backend HTTP URL");
+    throw new FlareError("INVALID_URL", "Expected backend HTTP URL");
   if (
     base.protocol === "http:" &&
     !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)
   )
-    throw new FlaredError("INVALID_URL", "Remote backends require HTTPS");
+    throw new FlareError("INVALID_URL", "Remote backends require HTTPS");
   base.pathname = base.pathname.replace(/\/$/, "");
   const transport = options.fetch ?? globalThis.fetch;
   if (!transport)
-    throw new FlaredError(
+    throw new FlareError(
       "TRANSPORT_UNAVAILABLE",
       "Provide a fetch implementation",
     );
@@ -184,7 +184,7 @@ export function createClient(options: ClientOptions) {
     }
   };
   function ensureOpen() {
-    if (disposed) throw new FlaredError("DISPOSED", "Client is disposed");
+    if (disposed) throw new FlareError("DISPOSED", "Client is disposed");
   }
   async function request(
     path: string,
@@ -197,7 +197,7 @@ export function createClient(options: ClientOptions) {
     try {
       token = (await options.getToken?.()) ?? null;
     } catch {
-      throw new FlaredError("AUTH_UNAVAILABLE", "Cannot obtain access token");
+      throw new FlareError("AUTH_UNAVAILABLE", "Cannot obtain access token");
     }
     ensureOpen();
     const controller = new AbortController();
@@ -218,7 +218,7 @@ export function createClient(options: ClientOptions) {
       });
       // Limit decoding before parsing, including servers that omit Content-Length.
       if (!response.body)
-        throw new FlaredError(
+        throw new FlareError(
           "INVALID_RESPONSE",
           "Missing response body",
           write,
@@ -232,7 +232,7 @@ export function createClient(options: ClientOptions) {
           if (done) break;
           bytes += value.byteLength;
           if (bytes > LIMITS.outputBytes)
-            throw new FlaredError(
+            throw new FlareError(
               "INVALID_RESPONSE",
               "Response exceeds limit",
               write,
@@ -255,7 +255,7 @@ export function createClient(options: ClientOptions) {
         );
       } catch (error) {
         if (response.ok) throw error;
-        throw new FlaredError(
+        throw new FlareError(
           `HTTP_${response.status}`,
           "Backend request failed",
           write && response.status >= 500,
@@ -270,14 +270,14 @@ export function createClient(options: ClientOptions) {
           /^[A-Z][A-Z0-9_]{0,63}$/.test(data.error)
             ? data.error
             : `HTTP_${response.status}`;
-        throw new FlaredError(
+        throw new FlareError(
           code,
           "Backend request failed",
           write && response.status >= 500,
         );
       }
       if (!data || typeof data !== "object" || !("result" in data))
-        throw new FlaredError(
+        throw new FlareError(
           "INVALID_RESPONSE",
           "Invalid protocol envelope",
           write,
@@ -285,14 +285,14 @@ export function createClient(options: ClientOptions) {
       boundedJson(data.result, LIMITS.outputBytes);
       return data.result;
     } catch (error) {
-      if (error instanceof FlaredError) throw error;
+      if (error instanceof FlareError) throw error;
       if (error instanceof SyntaxError)
-        throw new FlaredError(
+        throw new FlareError(
           "INVALID_RESPONSE",
           "Invalid JSON response",
           write,
         );
-      throw new FlaredError(
+      throw new FlareError(
         "TRANSPORT_ERROR",
         write
           ? "Write outcome is unknown; do not replay automatically"
@@ -329,7 +329,7 @@ export function createClient(options: ClientOptions) {
         typeof ticket.ticket !== "string" ||
         ticket.ticket.length > 1024
       )
-        throw new FlaredError("INVALID_RESPONSE", "Invalid live ticket");
+        throw new FlareError("INVALID_RESPONSE", "Invalid live ticket");
       const url = new URL(endpoint("/v1/live"));
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       url.searchParams.set("ticket", ticket.ticket);
@@ -372,7 +372,7 @@ export function createClient(options: ClientOptions) {
             notify(
               sub,
               "error",
-              new FlaredError(
+              new FlareError(
                 typeof frame.code === "string" ? frame.code : "LIVE_ERROR",
                 "Live subscription failed",
               ),
@@ -413,7 +413,7 @@ export function createClient(options: ClientOptions) {
             notify(
               sub,
               "error",
-              new FlaredError(
+              new FlareError(
                 event.code === 1008 ? "AUTH_EXPIRED" : "LIVE_DISCONNECTED",
                 "Live reconnecting; next snapshot will be current",
               ),
@@ -438,7 +438,7 @@ export function createClient(options: ClientOptions) {
       if (disposed || current !== generation) return;
       for (const sub of subscriptions.values()) {
         if (
-          error instanceof FlaredError &&
+          error instanceof FlareError &&
           ["HTTP_401", "HTTP_403"].includes(error.code)
         ) {
           sub.hasValue = false;
@@ -448,9 +448,9 @@ export function createClient(options: ClientOptions) {
         notify(
           sub,
           "error",
-          error instanceof FlaredError
+          error instanceof FlareError
             ? error
-            : new FlaredError("LIVE_UNAVAILABLE", "Live connection failed"),
+            : new FlareError("LIVE_UNAVAILABLE", "Live connection failed"),
         );
       }
       reconnect();
@@ -464,7 +464,7 @@ export function createClient(options: ClientOptions) {
     return async <I, O>(ref: FunctionRef<I, O>, args: I): Promise<O> => {
       assertPath(ref.path);
       if (ref.kind !== kind)
-        throw new FlaredError("INVALID_KIND", `Expected a ${kind} function`);
+        throw new FlareError("INVALID_KIND", `Expected a ${kind} function`);
       return request(
         "/v1/call",
         { path: ref.path, kind: ref.kind, args },
@@ -481,13 +481,13 @@ export function createClient(options: ClientOptions) {
       ref: FunctionRef<I, O>,
       args: I,
       next: (value: O) => void,
-      error?: (error: FlaredError) => void,
+      error?: (error: FlareError) => void,
     ): () => void {
       const observer = { next, error };
       ensureOpen();
       assertPath(ref.path);
       if (ref.kind !== "query")
-        throw new FlaredError("INVALID_KIND", "Only queries are subscribable");
+        throw new FlareError("INVALID_KIND", "Only queries are subscribable");
       boundedJson(
         {
           type: "subscribe",
@@ -501,7 +501,7 @@ export function createClient(options: ClientOptions) {
       let sub = subscriptions.get(key);
       if (!sub) {
         if (subscriptions.size >= LIMITS.subscriptions)
-          throw new FlaredError(
+          throw new FlareError(
             "TOO_MANY_SUBSCRIPTIONS",
             "Subscription limit exceeded",
           );
@@ -561,7 +561,7 @@ export function createClient(options: ClientOptions) {
         notify(
           sub,
           "error",
-          new FlaredError(
+          new FlareError(
             "AUTH_CHANGED",
             "Authorization changed; cached value invalidated",
           ),
@@ -582,7 +582,7 @@ export function createClient(options: ClientOptions) {
     },
   };
 }
-export type FlaredClient = ReturnType<typeof createClient>;
+export type FlareClient = ReturnType<typeof createClient>;
 
 export type PasswordUser = {
   id: string;
@@ -664,7 +664,7 @@ export function createPasswordAuth(options: {
     });
     const data: any = await response.json();
     if (!response.ok)
-      throw new FlaredError(
+      throw new FlareError(
         data.error ?? "AUTH_FAILED",
         "Authentication request failed",
       );
@@ -706,7 +706,7 @@ export function createPasswordAuth(options: {
       } catch (error) {
         if (current !== version) return null;
         if (
-          error instanceof FlaredError &&
+          error instanceof FlareError &&
           ["UNAUTHORIZED", "AUTH_EXPIRED", "AUTH_DISABLED"].includes(error.code)
         ) {
           clear();
@@ -745,7 +745,7 @@ export function createPasswordAuth(options: {
     );
     if (current !== version) {
       await request("logout", {}, result.token).catch(() => {});
-      throw new FlaredError(
+      throw new FlareError(
         "AUTH_CHANGED",
         "Authentication changed during sign-in",
       );
@@ -779,7 +779,7 @@ export function createPasswordAuth(options: {
       } catch (error) {
         if (
           current === version &&
-          error instanceof FlaredError &&
+          error instanceof FlareError &&
           ["UNAUTHORIZED", "AUTH_EXPIRED", "AUTH_DISABLED"].includes(error.code)
         )
           clear();

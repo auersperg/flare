@@ -31,7 +31,7 @@ export class InvocationSummaries {
       );
     } catch (error) {
       console.warn({
-        source: "flared-observability",
+        source: "flare-observability",
         path: entry.path,
         kind: entry.kind,
         code: status(error).code,

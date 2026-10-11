@@ -93,7 +93,7 @@ export class AppFacet extends DurableObject<Record<string, never>> {
 export class Action extends WorkerEntrypoint {
   async run(payload: { id: string }) {
     console.log({
-      source: "flared-kernel-action",
+      source: "flare-kernel-action",
       jobId: payload.id,
       release: RELEASE,
     });

@@ -7,28 +7,25 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { FlaredClient } from "./client.js";
-import { FlaredError, stableJson, type FunctionRef } from "./protocol.js";
+import type { FlareClient } from "./client.js";
+import { FlareError, stableJson, type FunctionRef } from "./protocol.js";
 
-const ClientContext = createContext<FlaredClient | null>(null);
+const ClientContext = createContext<FlareClient | null>(null);
 
 /** The application owns the client; the provider never creates or disposes it. */
-export function FlaredProvider({
+export function FlareProvider({
   client,
   children,
 }: {
-  client: FlaredClient;
+  client: FlareClient;
   children: ReactNode;
 }) {
   return createElement(ClientContext.Provider, { value: client }, children);
 }
-export function useFlared(): FlaredClient {
+export function useFlare(): FlareClient {
   const client = useContext(ClientContext);
   if (!client)
-    throw new FlaredError(
-      "MISSING_PROVIDER",
-      "Wrap your app in FlaredProvider",
-    );
+    throw new FlareError("MISSING_PROVIDER", "Wrap your app in FlareProvider");
   return client;
 }
 
@@ -37,9 +34,9 @@ export function useQuery<I, O>(
   ref: FunctionRef<I, O>,
   args: I | "skip",
 ): O | undefined {
-  const client = useFlared();
+  const client = useFlare();
   if (ref.kind !== "query")
-    throw new FlaredError("INVALID_KIND", "useQuery requires a query");
+    throw new FlareError("INVALID_KIND", "useQuery requires a query");
   const key = args === "skip" ? undefined : stableJson(args);
   const stableArgs = useMemo(
     () => (key === undefined ? undefined : (JSON.parse(key) as I)),
@@ -52,7 +49,7 @@ export function useQuery<I, O>(
   const [state, setState] = useState<{
     identity: typeof identity;
     value?: O;
-    error?: FlaredError;
+    error?: FlareError;
   }>({ identity });
   useEffect(() => {
     setState({ identity });

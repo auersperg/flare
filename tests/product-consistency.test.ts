@@ -2,20 +2,17 @@ import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "bun:test";
-import {
-  createClient,
-  FlaredError,
-} from "../packages/flared/src/sdk/client.js";
+import { createClient, FlareError } from "../packages/flare/src/sdk/client.js";
 
 const read = (path: string) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const cli = fileURLToPath(
-  new URL("../packages/flared/src/cli/main.mjs", import.meta.url),
+  new URL("../packages/flare/src/cli/main.mjs", import.meta.url),
 );
-describe("Flared product consistency", () => {
+describe("Flare product consistency", () => {
   it.each([
-    ["flared", "flared"],
-    ["core", "@flared/platform"],
+    ["flare", "flare"],
+    ["core", "@flare/platform"],
   ])(
     "names the %s package consistently and guards unpublished previews",
     (folder, name) => {
@@ -29,15 +26,15 @@ describe("Flared product consistency", () => {
   it("has exactly two top-level packages and one application dependency", () => {
     expect(existsSync(new URL("../packages/sdk", import.meta.url))).toBe(false);
     expect(existsSync(new URL("../packages/cli", import.meta.url))).toBe(false);
-    const pkg = JSON.parse(read("packages/flared/package.json"));
-    expect(pkg.name).toBe("flared");
-    expect(pkg.bin).toEqual({ flared: "./dist/cli/flared.js" });
+    const pkg = JSON.parse(read("packages/flare/package.json"));
+    expect(pkg.name).toBe("flare");
+    expect(pkg.bin).toEqual({ flare: "./dist/cli/flare.js" });
     expect(pkg.files).toEqual(["dist", "README.md"]);
     expect(pkg.sideEffects).toBe(false);
     expect(pkg.peerDependenciesMeta.react.optional).toBe(true);
     for (const name of Object.keys(pkg.dependencies))
       expect(name).not.toMatch(
-        /agents|wrangler|workerd|vite|platform|dashboard|@flared/i,
+        /agents|wrangler|workerd|vite|platform|dashboard|@flare/i,
       );
     for (const [key, entry] of [
       [".", "client"],
@@ -51,19 +48,19 @@ describe("Flared product consistency", () => {
         import: `./dist/sdk/${entry}.js`,
       });
     }
-    expect(read("packages/flared/src/sdk/client.ts")).not.toMatch(
+    expect(read("packages/flare/src/sdk/client.ts")).not.toMatch(
       /from ["'][^"']*\/(?:cli|server|cloudflare)(?:\/|\.)/,
     );
     const build = read("scripts/build-packages.mjs");
     expect(build).not.toContain("await cp(");
-    expect(build).toContain("packages/flared/src/cli/main.mjs");
+    expect(build).toContain("packages/flare/src/cli/main.mjs");
   });
-  it("generates application imports exclusively through the public flared package", () => {
-    const build = read("packages/flared/src/cli/build.mjs");
-    expect(build).toContain('import {reference} from "flared";');
-    expect(build).toContain('from "flared/cloudflare"; export class');
-    expect(read("packages/flared/src/cli/project.mjs")).toContain(
-      'const source = `import {defineApp} from "flared/server";',
+  it("generates application imports exclusively through the public flare package", () => {
+    const build = read("packages/flare/src/cli/build.mjs");
+    expect(build).toContain('import {reference} from "flare";');
+    expect(build).toContain('from "flare/cloudflare"; export class');
+    expect(read("packages/flare/src/cli/project.mjs")).toContain(
+      'const source = `import {defineApp} from "flare/server";',
     );
   });
   it("help advertises only the cloud dashboard without loading the compiler", () => {
@@ -71,10 +68,10 @@ describe("Flared product consistency", () => {
       encoding: "utf8",
     });
     expect(output.status).toBe(0);
-    expect(output.stdout).toContain("Flared 0.3");
+    expect(output.stdout).toContain("Flare 0.3");
     expect(output.stdout).toContain("Cloudflare-only");
-    expect(output.stdout).toContain("flared build");
-    expect(read("packages/flared/src/cli/main.mjs")).not.toMatch(
+    expect(output.stdout).toContain("flare build");
+    expect(read("packages/flare/src/cli/main.mjs")).not.toMatch(
       /^import .*buildApplication/m,
     );
   });
@@ -99,13 +96,13 @@ describe("Flared product consistency", () => {
       );
     },
   );
-  it("exports the Flared error identity", async () => {
-    expect(new FlaredError("TEST", "test").name).toBe("FlaredError");
+  it("exports the Flare error identity", async () => {
+    expect(new FlareError("TEST", "test").name).toBe("FlareError");
     const client = createClient({ url: "https://example.test" });
     client.dispose();
     await expect(
       client.query({ path: "test", kind: "query" }, {}),
-    ).rejects.toBeInstanceOf(FlaredError);
+    ).rejects.toBeInstanceOf(FlareError);
   });
   it("the authoritative docs do not offer a second/local dashboard", () => {
     const docs = read("README.md");
@@ -113,7 +110,7 @@ describe("Flared product consistency", () => {
     expect(docs).not.toMatch(
       /locally launched copy|optional local UI|reactive build|REACTIVE_KERNEL_URL/,
     );
-    expect(JSON.parse(read("package.json")).name).toBe("flared-workspace");
+    expect(JSON.parse(read("package.json")).name).toBe("flare-workspace");
   });
 });
 
@@ -263,7 +260,7 @@ describe("Production-only repository", () => {
       plugins: ["prettier-plugin-astro"],
     });
     for (const file of [
-      "flared.product.json",
+      "flare.product.json",
       ".prettierrc.json",
       "admin.wrangler.json",
       "runtime.wrangler.json",
@@ -279,13 +276,11 @@ describe("Production-only repository", () => {
     for (const path of [
       "package.json",
       "packages/core/package.json",
-      "packages/flared/package.json",
+      "packages/flare/package.json",
       "packages/core/dashboard/package.json",
     ]) {
       const pkg = JSON.parse(read(path));
-      expect(pkg.repository.url).toBe(
-        "https://github.com/auersperg/flared.git",
-      );
+      expect(pkg.repository.url).toBe("https://github.com/auersperg/flare.git");
       expect(pkg.private).toBe(true);
       expect(pkg.license).toBe("UNLICENSED");
     }
@@ -343,7 +338,7 @@ describe("Production-only repository", () => {
   it("has no demo workspaces or build-time demo dependencies", () => {
     const pkg = JSON.parse(read("package.json"));
     expect(pkg.workspaces).toEqual([
-      "packages/flared",
+      "packages/flare",
       "packages/core",
       "packages/core/dashboard",
     ]);
@@ -366,7 +361,7 @@ describe("Production-only repository", () => {
   it("cleaning preserves operator credentials and installed dependencies", () => {
     const clean = read("scripts/clean.mjs");
     expect(clean).toContain('"packages/core/dist"');
-    expect(clean).toContain('"packages/flared/dist"');
+    expect(clean).toContain('"packages/flare/dist"');
     expect(clean).not.toMatch(/rm\([^\n]*\.private|rm\([^\n]*node_modules/);
     expect(clean).not.toMatch(/fetch\(|child_process/);
   });

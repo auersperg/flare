@@ -1,12 +1,12 @@
 {
-  "name": "flared",
+  "name": "flare",
   "version": "0.3.1",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
-  "description": "Flared client, server declarations and development CLI",
+  "description": "Flare client, server declarations and development CLI",
   "bin": {
-    "flared": "./dist/cli/flared.js"
+    "flare": "./dist/cli/flare.js"
   },
   "files": [
     "dist",
@@ -44,8 +44,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/auersperg/flared.git",
-    "directory": "packages/flared"
+    "url": "https://github.com/auersperg/flare.git",
+    "directory": "packages/flare"
   },
   "sideEffects": false,
   "peerDependencies": {

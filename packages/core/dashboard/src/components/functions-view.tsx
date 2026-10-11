@@ -22,7 +22,7 @@ import {
   type FunctionDefinition,
 } from "../lib/model";
 import { contractFields } from "../lib/presentation";
-import { createClient, reference, type FlaredClient } from "flared";
+import { createClient, reference, type FlareClient } from "flare";
 import type { Scope } from "./dashboard";
 export default function FunctionsView(scope: Scope) {
   const r = useResource<Manifest>(
@@ -125,7 +125,7 @@ function Runner({
     [executed, setExecuted] = useState(false),
     [elapsed, setElapsed] = useState<number>();
   const alive = useRef(true),
-    client = useRef<FlaredClient>(undefined);
+    client = useRef<FlareClient>(undefined);
   useEffect(() => {
     alive.current = true;
     return () => {

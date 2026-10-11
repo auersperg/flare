@@ -1,4 +1,4 @@
-import { boundedJson, FlaredError } from "../../flared/src/sdk/protocol.js";
+import { boundedJson, FlareError } from "../../flare/src/sdk/protocol.js";
 
 export type AppPolicy = { outbound: string[]; secrets: Record<string, string> };
 export type PolicyEnv = { APP_CAPABILITIES?: string };
@@ -12,7 +12,7 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
     const raw = JSON.parse(env.APP_CAPABILITIES ?? "{}");
     boundedJson(raw, 16384);
     if (!raw || Array.isArray(raw) || typeof raw !== "object")
-      throw new FlaredError("INVALID_CONFIG", "Invalid app capabilities");
+      throw new FlareError("INVALID_CONFIG", "Invalid app capabilities");
     cached = Object.create(null);
     for (const [key, value] of Object.entries(raw) as [string, any][]) {
       if (
@@ -20,7 +20,7 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
         !value ||
         Object.keys(value).some((k) => !["outbound", "secrets"].includes(k))
       )
-        throw new FlaredError("INVALID_CONFIG", "Invalid capability scope");
+        throw new FlareError("INVALID_CONFIG", "Invalid capability scope");
       const outbound = value.outbound ?? [],
         secrets = value.secrets ?? {};
       if (
@@ -31,7 +31,7 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
         typeof secrets !== "object" ||
         Object.keys(secrets).length > 16
       )
-        throw new FlaredError("INVALID_CONFIG", "Capability limits exceeded");
+        throw new FlareError("INVALID_CONFIG", "Capability limits exceeded");
       for (const host of outbound)
         if (
           typeof host !== "string" ||
@@ -41,7 +41,7 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
           host.endsWith(".local") ||
           host.endsWith(".internal")
         )
-          throw new FlaredError(
+          throw new FlareError(
             "INVALID_CONFIG",
             "Only exact public HTTPS hostnames are allowed",
           );
@@ -51,7 +51,7 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
           typeof binding !== "string" ||
           !/^APP_SECRET_[A-Z0-9_]{1,64}$/.test(binding)
         )
-          throw new FlaredError(
+          throw new FlareError(
             "INVALID_CONFIG",
             "Only app secret bindings are allowed",
           );
@@ -72,14 +72,14 @@ export async function appSecret(
 ): Promise<string> {
   const mapping = appPolicy(env, scope).secrets;
   if (!Object.hasOwn(mapping, name))
-    throw new FlaredError(
+    throw new FlareError(
       "SECRET_NOT_FOUND",
       "Secret is not granted to this environment",
     );
   const binding = (env as Record<string, unknown>)[mapping[name]] as
     SecretsStoreSecret | undefined;
   if (!binding || typeof binding.get !== "function")
-    throw new FlaredError(
+    throw new FlareError(
       "SECRET_UNAVAILABLE",
       "Secrets Store binding is missing",
     );
@@ -95,7 +95,7 @@ function limited(body: ReadableStream<Uint8Array> | null) {
         transform(chunk, controller) {
           bytes += chunk.byteLength;
           if (bytes > maxBytes)
-            throw new FlaredError("TOO_LARGE", "Outbound body exceeds 1 MiB");
+            throw new FlareError("TOO_LARGE", "Outbound body exceeds 1 MiB");
           controller.enqueue(chunk);
         },
       }),
@@ -116,10 +116,10 @@ export async function outbound(
     url.password ||
     !policy.outbound.includes(url.hostname)
   )
-    throw new FlaredError("OUTBOUND_DENIED", "Destination is not allowed");
+    throw new FlareError("OUTBOUND_DENIED", "Destination is not allowed");
   const length = Number(request.headers.get("content-length") ?? 0);
   if (!Number.isFinite(length) || length < 0 || length > maxBytes)
-    throw new FlaredError("TOO_LARGE", "Outbound request exceeds 1 MiB");
+    throw new FlareError("TOO_LARGE", "Outbound request exceeds 1 MiB");
   const headers = new Headers(request.headers);
   for (const name of [...headers.keys()])
     if (
@@ -138,14 +138,14 @@ export async function outbound(
   });
   if (response.status >= 300 && response.status < 400) {
     await response.body?.cancel();
-    throw new FlaredError(
+    throw new FlareError(
       "OUTBOUND_DENIED",
       "Redirects require an explicit allowed request",
     );
   }
   if (Number(response.headers.get("content-length") ?? 0) > maxBytes) {
     await response.body?.cancel();
-    throw new FlaredError("TOO_LARGE", "Outbound response exceeds 1 MiB");
+    throw new FlareError("TOO_LARGE", "Outbound response exceeds 1 MiB");
   }
   return new Response(limited(response.body), {
     status: response.status,

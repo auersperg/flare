@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "flared-kernel-test",
+  "name": "flare-kernel-test",
   "main": "../../artifacts/kernel.js",
   "compatibility_date": "2026-10-10",
   "compatibility_flags": ["nodejs_compat"],
@@ -34,28 +34,28 @@
   "r2_buckets": [
     {
       "binding": "BUNDLES",
-      "bucket_name": "flared-kernel-test"
+      "bucket_name": "flare-kernel-test"
     },
     {
       "binding": "FILES",
-      "bucket_name": "flared-kernel-files"
+      "bucket_name": "flare-kernel-files"
     }
   ],
   "queues": {
     "producers": [
       {
         "binding": "JOBS",
-        "queue": "flared-kernel-test-jobs"
+        "queue": "flare-kernel-test-jobs"
       }
     ],
     "consumers": [
       {
-        "queue": "flared-kernel-test-jobs",
+        "queue": "flare-kernel-test-jobs",
         "max_batch_size": 10,
         "max_concurrency": 4,
         "max_batch_timeout": 1,
         "max_retries": 3,
-        "dead_letter_queue": "flared-kernel-test-dlq"
+        "dead_letter_queue": "flare-kernel-test-dlq"
       }
     ]
   },

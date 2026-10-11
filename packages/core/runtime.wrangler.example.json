@@ -10,7 +10,7 @@
   "limits": {
     "cpu_ms": 1000
   },
-  "name": "flared-runtime",
+  "name": "flare-runtime",
   "main": "../../packages/core/dist/runtime.js",
   "worker_loaders": [
     {
@@ -28,28 +28,28 @@
   "r2_buckets": [
     {
       "binding": "BUNDLES",
-      "bucket_name": "flared-builds"
+      "bucket_name": "flare-builds"
     },
     {
       "binding": "FILES",
-      "bucket_name": "flared-files"
+      "bucket_name": "flare-files"
     }
   ],
   "queues": {
     "producers": [
       {
         "binding": "JOBS",
-        "queue": "flared-jobs"
+        "queue": "flare-jobs"
       }
     ],
     "consumers": [
       {
-        "queue": "flared-jobs",
+        "queue": "flare-jobs",
         "max_batch_size": 10,
         "max_concurrency": 4,
         "max_batch_timeout": 1,
         "max_retries": 3,
-        "dead_letter_queue": "flared-jobs-dlq"
+        "dead_letter_queue": "flare-jobs-dlq"
       }
     ]
   },
@@ -71,7 +71,7 @@
   "services": [
     {
       "binding": "ADMIN_API",
-      "service": "flared-admin",
+      "service": "flare-admin",
       "entrypoint": "AdminControl"
     }
   ],

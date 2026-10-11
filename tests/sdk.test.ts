@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { z } from "zod";
-import { defineTable } from "../packages/flared/src/sdk/schema.js";
-import {
-  createClient,
-  type Socket,
-} from "../packages/flared/src/sdk/client.js";
+import { defineTable } from "../packages/flare/src/sdk/schema.js";
+import { createClient, type Socket } from "../packages/flare/src/sdk/client.js";
 import {
   action,
   defineApp,
@@ -13,14 +10,14 @@ import {
   mutation,
   query,
   validate,
-} from "../packages/flared/src/sdk/server.js";
+} from "../packages/flare/src/sdk/server.js";
 import {
   assertPath,
   errorCode,
   boundedJson,
   reference,
   stableJson,
-} from "../packages/flared/src/sdk/protocol.js";
+} from "../packages/flare/src/sdk/protocol.js";
 
 afterEach(() => jest.useRealTimers());
 const json = (result: unknown, status = 200) =>
@@ -578,11 +575,19 @@ describe("expired live cache", () => {
 
 describe("separately bundled error contracts", () => {
   it("preserves only explicit bounded SDK codes without exposing messages", () => {
-    class SeparateFlaredError extends Error {
-      name = "FlaredError";
+    class SeparateFlareError extends Error {
+      name = "FlareError";
       code = "FORBIDDEN";
     }
-    expect(errorCode(new SeparateFlaredError("private details"))).toBe(
+    expect(
+      errorCode(
+        Object.assign(new Error("private details"), {
+          name: "FlaredError",
+          code: "FORBIDDEN",
+        }),
+      ),
+    ).toBe("FORBIDDEN");
+    expect(errorCode(new SeparateFlareError("private details"))).toBe(
       "FORBIDDEN",
     );
     expect(
@@ -590,7 +595,7 @@ describe("separately bundled error contracts", () => {
         Object.assign(new Error("private details"), { code: "FORBIDDEN" }),
       ),
     ).toBe("OPERATION_FAILED");
-    expect(errorCode({ name: "FlaredError", code: "FORBIDDEN" })).toBe(
+    expect(errorCode({ name: "FlareError", code: "FORBIDDEN" })).toBe(
       "OPERATION_FAILED",
     );
     for (const code of [
@@ -599,8 +604,8 @@ describe("separately bundled error contracts", () => {
       "",
       "SECRET\nVALUE",
     ])
-      expect(
-        errorCode(Object.assign(new SeparateFlaredError(), { code })),
-      ).toBe("OPERATION_FAILED");
+      expect(errorCode(Object.assign(new SeparateFlareError(), { code }))).toBe(
+        "OPERATION_FAILED",
+      );
   });
 });

@@ -43,7 +43,7 @@ async function cf(path, body, method = body === undefined ? "GET" : "POST") {
   return x.result;
 }
 await mkdir(".private/cloudflare", { recursive: true, mode: 0o700 });
-const accountFile = ".private/flared-install.json";
+const accountFile = ".private/flare-install.json";
 let previous;
 try {
   previous = JSON.parse(await readFile(accountFile, "utf8"));
@@ -52,14 +52,16 @@ try {
 } catch (e) {
   if (e.code !== "ENOENT") throw e;
 }
-const dbName = "flared-catalog",
-  bucket = "flared-builds",
-  queue = "flared-jobs",
-  dlq = "flared-jobs-dlq";
-let database = (await cf("d1/database")).find((x) => x.name === dbName);
+const dbName = "flare-catalog",
+  bucket = "flare-builds",
+  queue = "flare-jobs",
+  dlq = "flare-jobs-dlq";
+let database = (await cf("d1/database")).find((x) =>
+  previous?.database ? x.uuid === previous.database : x.name === dbName,
+);
 if (!database) database = await cf("d1/database", { name: dbName });
 const buckets = await cf("r2/buckets");
-for (const name of [bucket, "flared-files"])
+for (const name of [bucket, "flare-files"])
   if (!buckets.buckets.some((x) => x.name === name))
     await cf("r2/buckets", { name });
 const queues = await cf("queues");
@@ -67,9 +69,9 @@ for (const name of [queue, dlq])
   if (!queues.some((x) => x.queue_name === name))
     await cf("queues", { queue_name: name });
 const runtimeUrl =
-    previous?.runtimeUrl ?? `https://flared-runtime.${subdomain}.workers.dev`,
+    previous?.runtimeUrl ?? `https://flare-runtime.${subdomain}.workers.dev`,
   adminUrl =
-    previous?.adminUrl ?? `https://flared-admin.${subdomain}.workers.dev`;
+    previous?.adminUrl ?? `https://flare-admin.${subdomain}.workers.dev`;
 // Re-running setup must not remove an installation's custom domains or change
 // the issuer of outstanding 15-minute developer identities.
 const savedConfig = async (file, name) => {
@@ -81,11 +83,11 @@ const savedConfig = async (file, name) => {
 };
 const savedRuntime = await savedConfig(
   ".private/cloudflare/runtime.wrangler.json",
-  "flared-runtime",
+  "flare-runtime",
 );
 const savedAdmin = await savedConfig(
   ".private/cloudflare/admin.wrangler.json",
-  "flared-admin",
+  "flare-admin",
 );
 let app;
 if (previous?.accessApp) {
@@ -111,17 +113,17 @@ if (previous?.accessApp) {
   }
 } else
   app = (await cf("access/apps")).find(
-    (x) => x.name === "Flared dashboard" && x.domain === new URL(adminUrl).host,
+    (x) => x.name === "Flare dashboard" && x.domain === new URL(adminUrl).host,
   );
 if (!app && args["defer-access"] !== "yes")
   app = await cf("access/apps", {
-    name: "Flared dashboard",
+    name: "Flare dashboard",
     type: "self_hosted",
     domain: new URL(adminUrl).host,
     session_duration: "8h",
     policies: [
       {
-        name: "Flared owner",
+        name: "Flare owner",
         decision: "allow",
         include: [{ email: { email: owner } }],
       },
@@ -141,7 +143,7 @@ const common = {
 };
 const runtime = {
   ...common,
-  name: "flared-runtime",
+  name: "flare-runtime",
   ...(savedRuntime.routes
     ? { routes: savedRuntime.routes, workers_dev: savedRuntime.workers_dev }
     : {}),
@@ -155,7 +157,7 @@ const runtime = {
   },
   r2_buckets: [
     { binding: "BUNDLES", bucket_name: bucket },
-    { binding: "FILES", bucket_name: "flared-files" },
+    { binding: "FILES", bucket_name: "flare-files" },
   ],
   queues: {
     producers: [{ binding: "JOBS", queue }],
@@ -188,14 +190,14 @@ const runtime = {
   services: [
     {
       binding: "ADMIN_API",
-      service: "flared-admin",
+      service: "flare-admin",
       entrypoint: "AdminControl",
     },
   ],
 };
 const admin = {
   ...common,
-  name: "flared-admin",
+  name: "flare-admin",
   ...(savedAdmin.routes
     ? { routes: savedAdmin.routes, workers_dev: savedAdmin.workers_dev }
     : {}),
@@ -208,7 +210,7 @@ const admin = {
   d1_databases: [
     {
       binding: "CATALOG",
-      database_name: dbName,
+      database_name: database.name,
       database_id: database.uuid,
       migrations_dir: "../../packages/core/migrations",
     },
@@ -216,7 +218,7 @@ const admin = {
   services: [
     {
       binding: "RUNTIME",
-      service: "flared-runtime",
+      service: "flare-runtime",
       entrypoint: "RuntimeControl",
     },
   ],
@@ -272,11 +274,11 @@ if (!previous) {
 }
 let secret;
 try {
-  secret = await readFile(".private/flared-dev-key", "utf8");
+  secret = await readFile(".private/flare-dev-key", "utf8");
 } catch (e) {
   if (e.code !== "ENOENT") throw e;
   secret = randomBytes(48).toString("hex");
-  await writeFile(".private/flared-dev-key", secret, { mode: 0o600 });
+  await writeFile(".private/flare-dev-key", secret, { mode: 0o600 });
 }
 await run(
   [

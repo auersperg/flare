@@ -90,7 +90,7 @@ import { fail } from "../../packages/core/src/security.js";
 import type {
   FacetRpc,
   Invocation,
-} from "../../packages/flared/src/sdk/cloudflare.js";
+} from "../../packages/flare/src/sdk/cloudflare.js";
 
 interface Env {
   LOADER: WorkerLoader;
@@ -118,7 +118,7 @@ export class KernelTail extends WorkerEntrypoint<Env, { scope: string }> {
   tail(events: TraceItem[]) {
     for (const event of events) {
       console.log({
-        source: "flared-kernel-tail",
+        source: "flare-kernel-tail",
         scope: this.ctx.props.scope,
         outcome: event.outcome,
         exceptions: event.exceptions.map((e) => ({
@@ -602,7 +602,7 @@ export default {
         );
       return response;
     } catch (error) {
-      console.error({ source: "flared-kernel", scope, error: String(error) });
+      console.error({ source: "flare-kernel", scope, error: String(error) });
       return Response.json(
         { error: "KERNEL_OPERATION_FAILED" },
         { status: 500 },
@@ -620,7 +620,7 @@ export default {
         );
         message.ack();
       } catch (error) {
-        console.error({ source: "flared-kernel-queue", error: String(error) });
+        console.error({ source: "flare-kernel-queue", error: String(error) });
         message.retry();
       }
     }

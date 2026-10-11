@@ -5,15 +5,15 @@ import { readFile, writeFile, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { buildApplication } from "../packages/flared/src/cli/build.mjs";
+import { buildApplication } from "../packages/flare/src/cli/build.mjs";
 import {
   createClient,
   reference,
   uploadFile,
-} from "../packages/flared/dist/sdk/client.js";
+} from "../packages/flare/dist/sdk/client.js";
 import { cleanupCloudScopes } from "./lib/cloud-cleanup.mjs";
 const install = JSON.parse(
-  await readFile(".private/flared-install.json", "utf8"),
+  await readFile(".private/flare-install.json", "utf8"),
 );
 const oauth = (
   await readFile(
@@ -28,7 +28,7 @@ const id = randomUUID(),
   key = randomBytes(32).toString("hex");
 const name = "Deletion acceptance",
   alias = "delete-proof-" + id.slice(0, 8),
-  worker = "flared-delete-proof-" + id.slice(0, 8);
+  worker = "flare-delete-proof-" + id.slice(0, 8);
 const dir = await mkdtemp(join(tmpdir(), worker));
 const report = {
   scope: id,
@@ -135,8 +135,8 @@ try {
     fixture,
     (await readFile("tests/fixtures/native-app.ts", "utf8"))
       .replaceAll(
-        "../../packages/flared/src/sdk/",
-        join(process.cwd(), "packages/flared/dist/sdk") + "/",
+        "../../packages/flare/src/sdk/",
+        join(process.cwd(), "packages/flare/dist/sdk") + "/",
       )
       .replace(
         'from "zod"',
@@ -193,12 +193,12 @@ try {
         {
           type: "service",
           name: "RUNTIME",
-          service: "flared-runtime",
+          service: "flare-runtime",
           entrypoint: "RuntimeControl",
         },
         { type: "d1", name: "CATALOG", id: install.database },
-        { type: "r2_bucket", name: "BUNDLES", bucket_name: "flared-builds" },
-        { type: "r2_bucket", name: "FILES", bucket_name: "flared-files" },
+        { type: "r2_bucket", name: "BUNDLES", bucket_name: "flare-builds" },
+        { type: "r2_bucket", name: "FILES", bucket_name: "flare-files" },
         { type: "secret_text", name: "KEY", text: key },
       ],
     }),

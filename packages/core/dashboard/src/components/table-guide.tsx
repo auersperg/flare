@@ -158,7 +158,7 @@ function SchemaForm({
         )
       )}
       <ol className="list-inside list-decimal space-y-2 text-xs text-muted-foreground">
-        <li>Update flared/schema.ts with the document validator.</li>
+        <li>Update flare/schema.ts with the document validator.</li>
         <li>
           Cloudflare validates existing documents and updates declared SQLite
           indexes atomically.
@@ -167,7 +167,7 @@ function SchemaForm({
           Build a new release so the schema and SDK stay versioned together.
         </li>
       </ol>
-      <pre className="code-block">{`bunx flared ${env === "prod" ? "deploy" : "dev"}`}</pre>
+      <pre className="code-block">{`bunx flare ${env === "prod" ? "deploy" : "dev"}`}</pre>
       <p className="text-xs text-muted-foreground">
         Schema changes are versioned with code. Destructive table removal and
         arbitrary SQL execution are intentionally unavailable here.{" "}

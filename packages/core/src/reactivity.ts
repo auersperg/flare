@@ -1,4 +1,4 @@
-import { stableJson, type Json } from "../../flared/src/sdk/protocol.js";
+import { stableJson, type Json } from "../../flare/src/sdk/protocol.js";
 import { digest } from "./security.js";
 
 /** Table-level invalidation, not a distributed read-set engine. Revision maps commit with app data. */

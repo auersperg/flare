@@ -13,9 +13,9 @@ export function schemaDraft(
     if (tables.some((t) => t.name.toLowerCase() === name))
       throw Error("This table already exists.");
     return {
-      definition: `import {defineSchema,defineTable,z} from "flared/server";\n\nexport default defineSchema({\n  ${name}: defineTable(z.object({title:z.string()})),\n});`,
+      definition: `import {defineSchema,defineTable,z} from "flare/server";\n\nexport default defineSchema({\n  ${name}: defineTable(z.object({title:z.string()})),\n});`,
       notes:
-        "No SQL migration needed. Edit flared/schema.ts and run bunx flared dev.",
+        "No SQL migration needed. Edit flare/schema.ts and run bunx flare dev.",
     };
   }
   const selected = tables.find((t) => t.name === table);
@@ -23,7 +23,7 @@ export function schemaDraft(
   if (selected.columns.some((c) => c.name.toLowerCase() === name))
     throw Error("This field already exists.");
   return {
-    definition: `// Add to ${selected.name}'s document validator in flared/schema.ts:\n${name}: z.string().optional(),\n\n// Existing documents remain valid. Use defaults or review existing data for required fields.`,
+    definition: `// Add to ${selected.name}'s document validator in flare/schema.ts:\n${name}: z.string().optional(),\n\n// Existing documents remain valid. Use defaults or review existing data for required fields.`,
     notes:
       "No ALTER TABLE or SQL journal. Deploy the validated document schema with the application.",
   };

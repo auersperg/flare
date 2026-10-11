@@ -3,13 +3,13 @@ if (
   typeof Bun === "undefined" ||
   !Bun.semver.satisfies(Bun.version, ">=1.4.3")
 ) {
-  console.error("Flared CLI requires Bun 1.4.3 or newer.");
+  console.error("Flare CLI requires Bun 1.4.3 or newer.");
   process.exit(1);
 }
 const [command, ...args] = process.argv.slice(2);
 if (!command || ["--help", "help"].includes(command))
   console.log(
-    'Flared 0.3 private minimum\n\nflared dev                  Browser login, setup and cloud dev watch\nflared deploy               Confirmed production build and deploy\n\nAdvanced commands:\nflared releases --env dev|prod\nflared promote --hash <dev release hash> [--cmd "bun run build"]\nflared rollback --hash <retained release hash> --env dev|prod\nflared build --entry <app.ts> --outdir <new directory>\nflared link --platform <management URL> --project <ID>\nflared deploy --env dev|prod --release <directory> [--confirm <project ID>]\nflared dev --entry <app.ts>\nflared backup create|list|restore|delete|status --env dev|prod\n  restore --from dev|prod --id <backup ID> (empty target only)\n\nDashboard is Cloudflare-only. Local tooling does not run a dashboard or backend. CLI authentication uses FLARED_DEPLOY_TOKEN from the online dashboard. Run flared dev with no flags for browser login, project selection and automatic schema/API generation. Run flared deploy with no flags for a confirmed production release. Platform installation is separate.',
+    'Flare 0.3 private minimum\n\nflare dev                  Browser login, setup and cloud dev watch\nflare deploy               Confirmed production build and deploy\n\nAdvanced commands:\nflare releases --env dev|prod\nflare promote --hash <dev release hash> [--cmd "bun run build"]\nflare rollback --hash <retained release hash> --env dev|prod\nflare build --entry <app.ts> --outdir <new directory>\nflare link --platform <management URL> --project <ID>\nflare deploy --env dev|prod --release <directory> [--confirm <project ID>]\nflare dev --entry <app.ts>\nflare backup create|list|restore|delete|status --env dev|prod\n  restore --from dev|prod --id <backup ID> (empty target only)\n\nDashboard is Cloudflare-only. Local tooling does not run a dashboard or backend. CLI authentication uses FLARE_DEPLOY_TOKEN from the online dashboard. Run flare dev with no flags for browser login, project selection and automatic schema/API generation. Run flare deploy with no flags for a confirmed production release. Platform installation is separate.',
   );
 else if (
   [

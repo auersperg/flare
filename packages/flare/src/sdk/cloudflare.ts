@@ -8,7 +8,7 @@ import {
   type QueryContext,
 } from "./server.js";
 import {
-  FlaredError,
+  FlareError,
   errorCode,
   type Auth,
   type FunctionKind,
@@ -105,7 +105,7 @@ function authorize(
   internal = false,
 ) {
   if (mode === "internal" && !internal)
-    throw new FlaredError("UNAUTHORIZED", "Internal function");
+    throw new FlareError("UNAUTHORIZED", "Internal function");
   if (
     auth &&
     (!auth.subject ||
@@ -113,9 +113,9 @@ function authorize(
       !Number.isFinite(auth.expiresAt) ||
       auth.expiresAt <= Date.now())
   )
-    throw new FlaredError("AUTH_EXPIRED", "Authorization expired");
+    throw new FlareError("AUTH_EXPIRED", "Authorization expired");
   if (mode === "required" && !auth)
-    throw new FlaredError("UNAUTHORIZED", "Authentication required");
+    throw new FlareError("UNAUTHORIZED", "Authentication required");
 }
 
 /** Construct the class at build time. Parent supplies a verified identity and release ID,
@@ -202,7 +202,7 @@ export function createFacet(app: {
             ),
         };
         if (!Object.hasOwn(work, operation))
-          throw new FlaredError(
+          throw new FlareError(
             "INVALID_OPERATION",
             "Unknown administrative capability",
           );
@@ -220,10 +220,7 @@ export function createFacet(app: {
       return this.serial(async () => {
         const fn = functions[call.path];
         if (!fn || fn.kind !== call.kind || call.kind === "action")
-          throw new FlaredError(
-            "FUNCTION_NOT_FOUND",
-            "Data function not found",
-          );
+          throw new FlareError("FUNCTION_NOT_FOUND", "Data function not found");
         authorize(fn.auth, call.auth, call.internal);
         const args = await validate(fn.input, call.args);
         if (call.kind === "query") {
@@ -260,12 +257,12 @@ export function createFacet(app: {
             cancel: (id: string) => {
               const pending = (async () => {
                 if (!active)
-                  throw new FlaredError(
+                  throw new FlareError(
                     "CAPABILITY_EXPIRED",
                     "Mutation invocation ended",
                   );
                 if (scheduled.length >= 100)
-                  throw new FlaredError(
+                  throw new FlareError(
                     "LIMIT_EXCEEDED",
                     "Maximum 100 job operations per mutation",
                   );
@@ -278,27 +275,27 @@ export function createFacet(app: {
             schedule: (path, jobArgs, options = {}) => {
               const pending = (async () => {
                 if (!active)
-                  throw new FlaredError(
+                  throw new FlareError(
                     "CAPABILITY_EXPIRED",
                     "Mutation invocation ended",
                   );
                 if (scheduled.length >= 100)
-                  throw new FlaredError(
+                  throw new FlareError(
                     "LIMIT_EXCEEDED",
                     "Maximum 100 jobs per mutation",
                   );
                 const target = functions[path];
                 if (!target || target.kind !== "action")
-                  throw new FlaredError(
+                  throw new FlareError(
                     "FUNCTION_NOT_FOUND",
                     "Scheduled action not found",
                   );
                 const delay = options.delaySeconds ?? 0;
                 if (!Number.isFinite(delay) || delay < 0 || delay > 31536000)
-                  throw new FlaredError("INVALID_INPUT", "Invalid job delay");
+                  throw new FlareError("INVALID_INPUT", "Invalid job delay");
                 const input = await validate(target.input, jobArgs);
                 if (!active)
-                  throw new FlaredError(
+                  throw new FlareError(
                     "CAPABILITY_EXPIRED",
                     "Mutation invocation ended",
                   );
@@ -371,7 +368,7 @@ export function createFacet(app: {
     pendingJobs(limit = 100): Promise<OutboxJob[]> {
       return this.serial(async () => {
         if (!Number.isInteger(limit) || limit < 1 || limit > 100)
-          throw new FlaredError("INVALID_INPUT", "Invalid outbox page size");
+          throw new FlareError("INVALID_INPUT", "Invalid outbox page size");
         return this.ctx.storage.sql
           .exec("SELECT * FROM _flared_outbox ORDER BY dueAt,id LIMIT ?", limit)
           .toArray()
@@ -388,7 +385,7 @@ export function createFacet(app: {
     }
     private cancelPending(id: string) {
       if (typeof id !== "string" || !/^[a-z0-9_-]{1,128}$/.test(id))
-        throw new FlaredError("INVALID_INPUT", "Invalid job ID");
+        throw new FlareError("INVALID_INPUT", "Invalid job ID");
       return (
         this.ctx.storage.sql
           .exec("DELETE FROM _flared_outbox WHERE id=? RETURNING id", id)
@@ -427,7 +424,7 @@ export function createFacet(app: {
       return this.serial(async () => {
         const target = functions[path];
         if (!target || target.kind !== "action")
-          throw new FlaredError(
+          throw new FlareError(
             "FUNCTION_NOT_FOUND",
             "Scheduled action not found",
           );
@@ -438,7 +435,7 @@ export function createFacet(app: {
       return this.serial(async () => {
         const target = functions[job.path];
         if (!target || target.kind !== "action")
-          throw new FlaredError(
+          throw new FlareError(
             "FUNCTION_NOT_FOUND",
             "Scheduled action not found",
           );
@@ -464,7 +461,7 @@ export function createFacet(app: {
             (id) => typeof id !== "string" || !/^[a-z0-9_-]{1,128}$/.test(id),
           )
         )
-          throw new FlaredError("INVALID_INPUT", "Invalid outbox IDs");
+          throw new FlareError("INVALID_INPUT", "Invalid outbox IDs");
         if (ids.length)
           this.ctx.storage.transactionSync(() => {
             this.ctx.storage.sql.exec(
@@ -509,7 +506,7 @@ export function createFacet(app: {
     }
     private columns(name: string) {
       const definition = contract[name];
-      if (!definition) throw new FlaredError("INVALID_TABLE", "Unknown table");
+      if (!definition) throw new FlareError("INVALID_TABLE", "Unknown table");
       return [
         { name: "_id", type: "TEXT", pk: 1, notnull: 1, dflt_value: null },
         {
@@ -557,7 +554,7 @@ export function createFacet(app: {
         const changed = new Set<string>();
         await this.ctx.storage.transaction(async () => {
           if (input.expectedRevision !== this.revision())
-            throw new FlaredError(
+            throw new FlareError(
               "CONFLICT",
               "Data changed; reload before editing",
             );
@@ -586,7 +583,7 @@ export function createFacet(app: {
               const row = await capability.db.get(input.table, input.key);
               await capability.db.delete(input.table, input.key);
               rows = [row];
-            } else throw new FlaredError("INVALID_INPUT", "Invalid edit");
+            } else throw new FlareError("INVALID_INPUT", "Invalid edit");
             await capability.finish();
             boundedJson(rows, LIMITS.outputBytes);
           } finally {
@@ -640,7 +637,7 @@ export function createAction(app: {
     async execute(call: Invocation): Promise<Json> {
       const fn = functions[call.path];
       if (!fn || fn.kind !== "action" || call.kind !== "action")
-        throw new FlaredError("FUNCTION_NOT_FOUND", "Action not found");
+        throw new FlareError("FUNCTION_NOT_FOUND", "Action not found");
       authorize(fn.auth, call.auth, call.internal);
       const args = await validate(fn.input, call.args);
       const capability = this.env.CAPABILITY;
@@ -654,12 +651,12 @@ export function createAction(app: {
         },
         runQuery: (ref, input) => {
           if (ref.kind !== "query")
-            throw new FlaredError("INVALID_KIND", "Expected query");
+            throw new FlareError("INVALID_KIND", "Expected query");
           return rpcData(capability.runQuery(ref.path, input, call.auth));
         },
         runMutation: (ref, input) => {
           if (ref.kind !== "mutation")
-            throw new FlaredError("INVALID_KIND", "Expected mutation");
+            throw new FlareError("INVALID_KIND", "Expected mutation");
           return rpcData(capability.runMutation(ref.path, input, call.auth));
         },
         secrets: { get: (name) => capability.secret(name) },

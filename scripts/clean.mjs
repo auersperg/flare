@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 for (const path of [
   "artifacts",
   ".wrangler",
-  "packages/flared/dist",
+  "packages/flare/dist",
   "packages/core/dist",
   "packages/core/dashboard/.astro",
   "packages/core/dashboard/.wrangler",
@@ -17,8 +17,8 @@ for (const path of [
   "node_modules/.vite-temp",
   "packages/core/dashboard/node_modules/.vite-temp",
   "test/node_modules/.vite",
-  "packages/core/bootstrap/.flared",
-  "tests/fixtures/tasks/.flared",
+  "packages/core/bootstrap/.flare",
+  "tests/fixtures/tasks/.flare",
   "tests/kernel/.wrangler",
 ]) {
   await rm(resolve(root, path), { recursive: true, force: true });
@@ -36,7 +36,7 @@ async function removeFinderMetadata(directory) {
 }
 await removeFinderMetadata(root);
 // Remove obsolete empty directories, never an application or CLI connection.
-for (const path of ["test/node_modules", "test", ".flared"]) {
+for (const path of ["test/node_modules", "test", ".flare"]) {
   await rmdir(resolve(root, path)).catch((error) => {
     if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code)) throw error;
   });

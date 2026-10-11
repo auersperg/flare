@@ -1,4 +1,4 @@
-# Flared: карта реализации, решений и экономного выполнения
+# Flare: карта реализации, решений и экономного выполнения
 
 **Проверено по исходникам: 11 октября 2026 года.** Сопоставлено с [картой Cloudflare](cloudflare-capability-map.md). Это описание breaking native-data preview 0.3 и отдельно отмеченных незавершённых возможностей, **не декларация завершённой production-приёмки**.
 
@@ -6,7 +6,7 @@
 
 Две общие точки исполнения — Admin и Runtime — обслуживают независимые проекты и cloud `dev`/`prod`. Online dashboard статический; D1 содержит control plane. Каждая среда имеет адресуемый supervisor DO и постоянный динамический facet `app` с отдельной SQLite. Код/файлы лежат в R2. Live работает через hibernating WebSocket. Jobs доставляются нативной Queues после транзакционного outbox; alarms/Scheduler запускают отложенные и cron-события. **Ни одного выделенного постоянно работающего сервера на проект здесь не требуется.**
 
-Базовый выбор хорошо соответствует нескольким независимым магазинам/CRM/приложениям. Обычный статический лендинг не обязан подключать Flared: Astro Static Assets достаточно, backend нужен только для данных/форм/кабинета.
+Базовый выбор хорошо соответствует нескольким независимым магазинам/CRM/приложениям. Обычный статический лендинг не обязан подключать Flare: Astro Static Assets достаточно, backend нужен только для данных/форм/кабинета.
 
 ## 2. Топология текущего кода
 
@@ -41,7 +41,7 @@ flowchart TD
 
 **Есть** — найдено в исходниках/config; **частично** — есть ядро, но есть незакрытые границы; **план** — пока не подключено. Обоснование — архитектурный вывод, а не измеренное превосходство в latency/цене.
 
-| Решение Flared                         | Карта Cloudflare                                                                                               | Состояние / место реализации                                                                                 | Почему подходит; что не добавляем                                                                                   |
+| Решение Flare                          | Карта Cloudflare                                                                                               | Состояние / место реализации                                                                                 | Почему подходит; что не добавляем                                                                                   |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | Общий HTTP API Runtime                 | [CF-WORKERS](cloudflare-capability-map.md#cf-workers)                                                          | Есть: `packages/core/src/runtime.ts`                                                                         | Event compute; не контейнер и не Worker на проект                                                                   |
 | Online-only dashboard                  | [CF-ASSETS](cloudflare-capability-map.md#cf-assets)                                                            | Есть: Astro/shadcn в `packages/core/dashboard`; Admin `ASSETS`                                               | Статический frontend; без SSR и отдельного постоянно активного UI сервера                                           |
@@ -75,7 +75,7 @@ flowchart TD
 
 ### Что Cloudflare НЕ предоставляет автоматически
 
-Документные validators приложения, auth-aware query cache, commit→live инвалидирование, SQLite↔Queue outbox, релизный журнал schema/code и scoped R2 grants — это **не готовые встроенные функции Cloudflare**. Нужен небольшой Flared слой.
+Документные validators приложения, auth-aware query cache, commit→live инвалидирование, SQLite↔Queue outbox, релизный журнал schema/code и scoped R2 grants — это **не готовые встроенные функции Cloudflare**. Нужен небольшой Flare слой.
 
 Удаление его ради «нулевой обвязки» потеряет correctness/изоляцию. Не нужен противоположный край: перенос полного Convex Rust backend, собственного broker, object storage, distributed read-set engine или общей ORM-платформы. [Предыдущий аудит с сопоставлением Convex](architecture-audit-0.3.md).
 
@@ -194,7 +194,7 @@ Hibernation может добавить cold constructor/readiness latency. Не
 10 × 31 × 1,440 × 1 × 0.128 = 57,139.2 GB-s (~14.3% included)
 ```
 
-**Не измерение текущего Flared.** GB-s считаются по тарифной allocation, не фактическому heap. Concurrent events одного объекта не надо бездумно умножать по wall-clock; accounting facet/native RPC проверять на реальном usage. Overage округляется по правилам Cloudflare. [DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
+**Не измерение текущего Flare.** GB-s считаются по тарифной allocation, не фактическому heap. Concurrent events одного объекта не надо бездумно умножать по wall-clock; accounting facet/native RPC проверять на реальном usage. Overage округляется по правилам Cloudflare. [DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/).
 
 Следствие: нельзя держать обычный WebSocket `accept()` или бесконечный timer и надеяться, что «JS почти ничего не делает» решит цену. С другой стороны, **не закрываем healthy hibernating WebSocket каждую минуту**: это создаёт reconnect/auth/SQL работу и ухудшает live latency.
 
@@ -283,10 +283,10 @@ Hibernation может добавить cold constructor/readiness latency. Не
 | [`routing.ts`](../packages/core/src/routing.ts)                            | UUID/alias routes и bounded positive cache                                                          |
 | [`release.ts`](../packages/core/src/release.ts)                            | Проверка release bundles/manifest/schema                                                            |
 | [`security.ts`](../packages/core/src/security.ts)                          | JWT/JWKS, scope/origin/input boundaries                                                             |
-| [`SDK cloudflare.ts`](../packages/flared/src/sdk/cloudflare.ts)            | Facet SQLite, transaction/revision/outbox, admin DB adapter                                         |
-| [`SDK server.ts`](../packages/flared/src/sdk/server.ts)                    | Функции, context и validators                                                                       |
-| [`SDK client.ts`](../packages/flared/src/sdk/client.ts)                    | Portable JS client, live transport/reconnect/cleanup                                                |
-| [`CLI`](../packages/flared/src/cli)                                        | Build/login/project/watch/deploy, не облачный daemon                                                |
+| [`SDK cloudflare.ts`](../packages/flare/src/sdk/cloudflare.ts)             | Facet SQLite, transaction/revision/outbox, admin DB adapter                                         |
+| [`SDK server.ts`](../packages/flare/src/sdk/server.ts)                     | Функции, context и validators                                                                       |
+| [`SDK client.ts`](../packages/flare/src/sdk/client.ts)                     | Portable JS client, live transport/reconnect/cleanup                                                |
+| [`CLI`](../packages/flare/src/cli)                                         | Build/login/project/watch/deploy, не облачный daemon                                                |
 | [`Dashboard`](../packages/core/dashboard/src/components)                   | Семь разделов, lazy views, on-demand refresh                                                        |
 | [`Runtime config example`](../packages/core/runtime.wrangler.example.json) | Loader/DO/R2/Queues/limits/observability bindings                                                   |
 | [`Admin config example`](../packages/core/admin.wrangler.example.json)     | Static Assets/D1/RPC/Access config; worker-first для protected routes; hashed UI assets asset-first |

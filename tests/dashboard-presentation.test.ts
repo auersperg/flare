@@ -218,7 +218,7 @@ describe("Dashboard standardization", () => {
     }
     expect(read("common.tsx")).toContain("<EmptyRoot>");
     expect(read("sdk-view.tsx")).not.toContain(
-      'from "../../../../flared/src/sdk/client"',
+      'from "../../../../flare/src/sdk/client"',
     );
     expect(read("sdk-view.tsx").replace(/\s+/g, " ")).toContain(
       "this page opens no background subscription",
@@ -336,6 +336,6 @@ describe("Document schema guidance", () => {
     );
     expect(source.replace(/\s+/g, " ")).toContain("not a database change");
     expect(source).not.toMatch(/\bapi\(/);
-    expect(source).toContain("bunx flared");
+    expect(source).toContain("bunx flare");
   });
 });

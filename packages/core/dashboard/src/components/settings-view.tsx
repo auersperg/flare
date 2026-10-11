@@ -308,7 +308,7 @@ function SettingsForm({
                         { confirm },
                       );
                       setCredential(
-                        `export FLARED_DEPLOY_TOKEN=${x.token}\nflared link --platform ${x.platform} --project ${project.id}\nflared deploy --env dev --release ./release`,
+                        `export FLARE_DEPLOY_TOKEN=${x.token}\nflare link --platform ${x.platform} --project ${project.id}\nflare deploy --env dev --release ./release`,
                       );
                     },
                   )

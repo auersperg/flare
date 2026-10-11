@@ -17,7 +17,7 @@ import {
   assertPath,
   boundedJson,
   LIMITS,
-  FlaredError,
+  FlareError,
   type Auth,
   type FunctionKind,
   type FunctionRef,
@@ -154,7 +154,7 @@ export function flatten(
   const ancestors = new Set<object>();
   function walk(node: FunctionTree, prefix: string, depth: number) {
     if (depth > 20 || ancestors.has(node))
-      throw new FlaredError("INVALID_CONTRACT", "Invalid function tree");
+      throw new FlareError("INVALID_CONTRACT", "Invalid function tree");
     ancestors.add(node);
     for (const [name, value] of Object.entries(node)) {
       const path = prefix ? `${prefix}/${name}` : name;
@@ -167,17 +167,14 @@ export function flatten(
       ) {
         const definition = value as Definition<any, any, any, any>;
         if (!["query", "mutation", "action"].includes(definition.kind))
-          throw new FlaredError("INVALID_CONTRACT", "Invalid function kind");
+          throw new FlareError("INVALID_CONTRACT", "Invalid function kind");
         if (out[path])
-          throw new FlaredError("INVALID_CONTRACT", "Duplicate function path");
+          throw new FlareError("INVALID_CONTRACT", "Duplicate function path");
         out[path] = definition;
       } else if (value && typeof value === "object")
         walk(value as FunctionTree, path, depth + 1);
       else
-        throw new FlaredError(
-          "INVALID_CONTRACT",
-          "Invalid function definition",
-        );
+        throw new FlareError("INVALID_CONTRACT", "Invalid function definition");
     }
     ancestors.delete(node);
   }
@@ -194,7 +191,7 @@ export function manifest(app: { functions: FunctionTree }): Manifest {
       target: "draft-2020-12",
     });
     if (!input || !output)
-      throw new FlaredError(
+      throw new FlareError(
         "INVALID_CONTRACT",
         `${path} requires JSON Schema converters`,
       );
@@ -211,7 +208,7 @@ export async function validate<V extends StandardSchemaV1>(
   boundedJson(value, output ? LIMITS.outputBytes : LIMITS.inputBytes);
   const result = await validator["~standard"].validate(value);
   if (result.issues)
-    throw new FlaredError(
+    throw new FlareError(
       output ? "INVALID_OUTPUT" : "INVALID_INPUT",
       output ? "Function returned invalid data" : "Arguments failed validation",
     );

@@ -1,5 +1,5 @@
 {
-  "name": "@flared/dashboard",
+  "name": "@flare/dashboard",
   "version": "0.3.1",
   "private": true,
   "type": "module",
@@ -25,12 +25,12 @@
     "cn": "0.4.0",
     "class-variance-authority": "0.7.1",
     "lucide-react": "1.55.0",
-    "flared": "0.3.1"
+    "flare": "0.3.1"
   },
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/auersperg/flared.git",
+    "url": "https://github.com/auersperg/flare.git",
     "directory": "packages/core/dashboard"
   }
 }

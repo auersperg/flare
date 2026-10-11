@@ -1,11 +1,11 @@
 import {
-  FlaredError,
+  FlareError,
   LIMITS,
   boundedJson,
   type Auth,
-} from "../../flared/src/sdk/protocol.js";
+} from "../../flare/src/sdk/protocol.js";
 export function fail(code: string): never {
-  throw new FlaredError(code, code);
+  throw new FlareError(code, code);
 }
 export const uuid = (value: unknown): string =>
   typeof value === "string" &&
@@ -219,7 +219,7 @@ export async function verifyJwt(token: string, config: Oidc): Promise<Auth> {
       config.audience,
     );
   } catch (e) {
-    if (e instanceof FlaredError) throw e;
+    if (e instanceof FlareError) throw e;
     fail("UNAUTHORIZED");
   }
 }
@@ -312,7 +312,7 @@ export function origins(value: unknown): string[] {
   });
 }
 export function status(error: unknown) {
-  const code = error instanceof FlaredError ? error.code : "OPERATION_FAILED";
+  const code = error instanceof FlareError ? error.code : "OPERATION_FAILED";
   return {
     code,
     status:

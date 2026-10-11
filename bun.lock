@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "flared",
+      "name": "flare",
       "devDependencies": {
         "@cloudflare/workers-types": "5.20261010.1",
         "@types/bun": "1.4.2",
@@ -19,14 +19,14 @@
       },
     },
     "packages/core": {
-      "name": "@flared/platform",
+      "name": "@flare/platform",
       "version": "0.3.1",
       "dependencies": {
         "agents": "0.28.0",
       },
     },
     "packages/core/dashboard": {
-      "name": "@flared/dashboard",
+      "name": "@flare/dashboard",
       "version": "0.3.1",
       "dependencies": {
         "@astrojs/react": "7.0.1",
@@ -36,7 +36,7 @@
         "astro": "7.3.8",
         "class-variance-authority": "0.7.1",
         "cn": "0.4.0",
-        "flared": "0.3.1",
+        "flare": "0.3.1",
         "lucide-react": "1.55.0",
         "react": "19.3.0",
         "react-dom": "19.3.0",
@@ -49,11 +49,11 @@
         "typescript": "6.0.2",
       },
     },
-    "packages/flared": {
-      "name": "flared",
+    "packages/flare": {
+      "name": "flare",
       "version": "0.3.1",
       "bin": {
-        "flared": "./dist/cli/flared.js",
+        "flare": "./dist/cli/flare.js",
       },
       "dependencies": {
         "@standard-schema/spec": "1.1.0",
@@ -305,9 +305,9 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
-    "@flared/dashboard": ["@flared/dashboard@workspace:packages/core/dashboard"],
+    "@flare/dashboard": ["@flare/dashboard@workspace:packages/core/dashboard"],
 
-    "@flared/platform": ["@flared/platform@workspace:packages/core"],
+    "@flare/platform": ["@flare/platform@workspace:packages/core"],
 
     "@floating-ui/core": ["@floating-ui/core@1.8.0", "", { "dependencies": { "@floating-ui/utils": "^0.2.12" } }, "sha512-0CIZ5itps/8x7BG8dEIhs53BvCUH2PCoogtakwRTut+Arm58sJooJ0AuZhLw2HJYIR5cMLNPBSS728sPho2khQ=="],
 
@@ -823,7 +823,7 @@
 
     "find-up": ["find-up@3.0.0", "", { "dependencies": { "locate-path": "^3.0.0" } }, "sha512-1yD6RmLI1XBfxugvORwlck6f75tYL+iR0jqwsOrOxMZyGYqUuDhJ0l4AXdO1iX/FTs9cBAMEk1gWSEx1kSbylg=="],
 
-    "flared": ["flared@workspace:packages/flared"],
+    "flare": ["flare@workspace:packages/flare"],
 
     "flattie": ["flattie@1.1.1", "", {}, "sha512-9UbaD6XdAL97+k/n+N7JwX46K/M6Zc6KcFYskrYL8wbBV/Uyk0CTAMY0VT+qiK5PM7AIc9aTWYtq65U7T+aCNQ=="],
 

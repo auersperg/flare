@@ -8,14 +8,14 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 const install = JSON.parse(
-  await readFile(".private/flared-install.json", "utf8"),
+  await readFile(".private/flare-install.json", "utf8"),
 );
 const session = await readFile(
   process.env.HOME + "/Library/Preferences/.wrangler/config/default.toml",
   "utf8",
 );
 const oauth = session.match(/oauth_token\s*=\s*"([^"]+)"/)[1];
-const devKey = (await readFile(".private/flared-dev-key", "utf8")).trim();
+const devKey = (await readFile(".private/flare-dev-key", "utf8")).trim();
 const base = install.runtimeUrl,
   platform = base + "/control",
   id = randomUUID(),
@@ -30,7 +30,7 @@ for (const signal of ["SIGINT", "SIGTERM"])
     cancelled = true;
     cancellation.abort();
   });
-const directory = await mkdtemp(join(tmpdir(), "flared-cloud-proof-"));
+const directory = await mkdtemp(join(tmpdir(), "flare-cloud-proof-"));
 const report = {
   scope: id,
   revision: spawnSync("git", ["rev-parse", "HEAD"], {
@@ -78,7 +78,7 @@ const command = async (path, body, key = token) => {
 function run(args, cwd = directory, env = {}) {
   const x = spawnSync(process.execPath, args, {
     cwd,
-    env: { ...process.env, FLARED_DEPLOY_TOKEN: token, ...env },
+    env: { ...process.env, FLARE_DEPLOY_TOKEN: token, ...env },
     encoding: "utf8",
     timeout: 120000,
   });
@@ -143,7 +143,7 @@ async function wait(check, timeout = 15000) {
 try {
   await db("INSERT INTO customers VALUES (?,?,?)", [
     customer,
-    "Flared acceptance",
+    "Flare acceptance",
     now,
   ]);
   for (const project of [id, other]) {
@@ -169,7 +169,7 @@ try {
     await writeFile(
       join(directory, "package.json"),
       JSON.stringify({
-        name: "flared-cloud-proof",
+        name: "flare-cloud-proof",
         private: true,
         type: "module",
       }),
@@ -190,14 +190,14 @@ try {
       assert.equal(x.status, 0, x.stderr);
       return resolve(`packages/${name}`, x.stdout.trim());
     };
-    const archive = pack("flared");
+    const archive = pack("flare");
     await writeFile(
       join(directory, "package.json"),
       JSON.stringify({
-        name: "flared-cloud-proof",
+        name: "flare-cloud-proof",
         private: true,
         type: "module",
-        dependencies: { flared: `file:${archive}` },
+        dependencies: { flare: `file:${archive}` },
       }),
     );
     const x = spawnSync(process.execPath, ["install", "--ignore-scripts"], {
@@ -208,7 +208,7 @@ try {
     assert.equal(x.status, 0, x.stderr);
     const { lstat } = await import("node:fs/promises");
     assert(
-      !(await lstat(join(directory, "node_modules/flared"))).isSymbolicLink(),
+      !(await lstat(join(directory, "node_modules/flare"))).isSymbolicLink(),
     );
   });
   const source =
@@ -223,7 +223,7 @@ app.functions.tasks.schedule=mutation({input:z.object({}),output:z.string(),hand
 export default app;
 `;
   await writeFile(join(directory, "app.ts"), source);
-  const bin = join(directory, "node_modules/flared/dist/cli/flared.js");
+  const bin = join(directory, "node_modules/flare/dist/cli/flare.js");
   await test("Packaged CLI links and deploys native dev/prod without reinstalling core", async () => {
     run([bin, "build", "--entry", "app.ts", "--outdir", "release"]);
     run([bin, "link", "--platform", platform, "--project", id]);
@@ -245,7 +245,7 @@ export default app;
       id,
     ]);
     sdk = await import(
-      pathToFileURL(join(directory, "node_modules/flared/index.js")).href
+      pathToFileURL(join(directory, "node_modules/flare/index.js")).href
     );
     client = sdk.createClient({ url: devUrl, getToken: () => devIdentity() });
     clients.push(client);
@@ -595,7 +595,7 @@ export default app;
     assert.equal(count, 1002);
     report.records = count;
   });
-  if (process.env.FLARED_VERIFY_HIBERNATION === "yes")
+  if (process.env.FLARE_VERIFY_HIBERNATION === "yes")
     await test("Physical hibernation resumes a persisted SDK subscription after new supervisor boot", async () => {
       const before = await command(`projects/${id}/dev/health`);
       await sleep(65000);
@@ -618,7 +618,7 @@ export default app;
       );
       report.hibernation = { before: before.bootId, after: after.bootId };
     });
-  const loadMinutes = Number(process.env.FLARED_LOAD_MINUTES ?? 0);
+  const loadMinutes = Number(process.env.FLARE_LOAD_MINUTES ?? 0);
   if (loadMinutes > 0) {
     await test(`100 SDK live clients with reconnect and ${loadMinutes}-minute bounded soak`, async () => {
       const watched = [];

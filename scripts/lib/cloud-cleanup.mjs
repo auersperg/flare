@@ -6,7 +6,7 @@ export async function cleanupCloudScopes({ account, oauth, scopes }) {
     scopes.some((s) => !/^[0-9a-f-]{36}\/(dev|prod)$/.test(s))
   )
     throw Error("Invalid disposable scopes");
-  const name = "flared-cleanup-proof-" + randomUUID().slice(0, 8);
+  const name = "flare-cleanup-proof-" + randomUUID().slice(0, 8);
   const key = randomBytes(32).toString("hex");
   async function cf(path, body, method = body ? "POST" : "GET") {
     const response = await fetch(`${account}/${path}`, {
@@ -32,7 +32,7 @@ export async function cleanupCloudScopes({ account, oauth, scopes }) {
         {
           type: "service",
           name: "RUNTIME",
-          service: "flared-runtime",
+          service: "flare-runtime",
           entrypoint: "RuntimeControl",
         },
         { type: "secret_text", name: "KEY", text: key },

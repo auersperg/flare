@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-const config = process.env.FLARED_KERNEL_CONFIG;
+const config = process.env.FLARE_KERNEL_CONFIG;
 if (!config)
   throw new Error(
-    "Set FLARED_KERNEL_CONFIG to an explicit cloud test configuration",
+    "Set FLARE_KERNEL_CONFIG to an explicit cloud test configuration",
   );
 const token = (await readFile(".private/kernel-token", "utf8")).trim();
 const child = spawn(

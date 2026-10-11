@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { bundle } from "../packages/flared/src/cli/bundle.mjs";
+import { bundle } from "../packages/flare/src/cli/bundle.mjs";
 import { mkdir, rm, cp, writeFile } from "node:fs/promises";
-import { buildApplication } from "../packages/flared/src/cli/build.mjs";
+import { buildApplication } from "../packages/flare/src/cli/build.mjs";
 const out = "packages/core/dist";
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
@@ -45,7 +45,7 @@ for (const role of ["runtime", "admin"]) {
     target: "browser",
     external: ["cloudflare:workers", "node:*"],
     metafile: true,
-    define: { FLARED_DASHBOARD_CSP_HASHES: JSON.stringify(cspHashes) },
+    define: { FLARE_DASHBOARD_CSP_HASHES: JSON.stringify(cspHashes) },
   });
   if (
     Object.keys(result.metafile.inputs).some((x) =>

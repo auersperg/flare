@@ -1,10 +1,10 @@
-import { FlaredError, boundedJson, stableJson } from "./protocol.js";
+import { FlareError, boundedJson, stableJson } from "./protocol.js";
 import {
   documentValue,
   fieldSql,
   quote,
   type Schema,
-  type Table,
+  type TableDefinition,
   type Value,
   type Input,
   type Doc,
@@ -30,7 +30,7 @@ export interface Page<D> {
   continueCursor: string | null;
   isDone: boolean;
 }
-export interface Query<T extends Table> {
+export interface Query<T extends TableDefinition> {
   withIndex(
     index: keyof T["indexes"] & string,
     range?: (q: Range<Value<T>>) => Range<Value<T>>,
@@ -80,11 +80,11 @@ const checkedId = (id: string) => {
     typeof id !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)
   )
-    throw new FlaredError("INVALID_INPUT", "Invalid document ID");
+    throw new FlareError("INVALID_INPUT", "Invalid document ID");
 };
 const size = (limit: number) => {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100)
-    throw new FlaredError("INVALID_INPUT", "Page size must be 1..100");
+    throw new FlareError("INVALID_INPUT", "Page size must be 1..100");
 };
 
 /** Storage never escapes this closure. Each invocation has a revocable capability. */
@@ -100,23 +100,23 @@ export function database<S extends Schema>(
   let operations = 0;
   const check = () => {
     if (!active)
-      throw new FlaredError("CAPABILITY_EXPIRED", "Database invocation ended");
+      throw new FlareError("CAPABILITY_EXPIRED", "Database invocation ended");
   };
   const writing = () => {
     check();
-    if (!writable) throw new FlaredError("READ_ONLY", "Queries cannot write");
+    if (!writable) throw new FlareError("READ_ONLY", "Queries cannot write");
   };
   function table(name: string) {
     check();
     if (!Object.hasOwn(schema, name))
-      throw new FlaredError("INVALID_TABLE", "Unknown table");
+      throw new FlareError("INVALID_TABLE", "Unknown table");
     touched.add(name);
     return schema[name];
   }
   const task = <T>(fn: () => Promise<T>, count = true): Promise<T> => {
     if (count && ++operations > 1000) {
       const rejected = Promise.reject(
-        new FlaredError(
+        new FlareError(
           "LIMIT_EXCEEDED",
           "Maximum 1000 database operations per invocation",
         ),
@@ -182,7 +182,7 @@ export function database<S extends Schema>(
                 ),
               );
             } catch {
-              throw new FlaredError("INVALID_CURSOR", "Invalid cursor");
+              throw new FlareError("INVALID_CURSOR", "Invalid cursor");
             }
             if (
               token.signature !== signature ||
@@ -190,7 +190,7 @@ export function database<S extends Schema>(
               token.values.length !== fields.length ||
               !token.values.every(scalar)
             )
-              throw new FlaredError(
+              throw new FlareError(
                 "INVALID_CURSOR",
                 "Cursor belongs to a different query",
               );
@@ -259,10 +259,7 @@ export function database<S extends Schema>(
         withIndex(next: string, range?: (q: Range<any>) => Range<any>) {
           check();
           if (index || !Object.hasOwn(definition.indexes, next))
-            throw new FlaredError(
-              "INVALID_INDEX",
-              "Unknown or duplicate index",
-            );
+            throw new FlareError("INVALID_INDEX", "Unknown or duplicate index");
           const selected: Filter[] = [],
             fields = definition.indexes[next];
           let pos = 0,
@@ -272,7 +269,7 @@ export function database<S extends Schema>(
             (operator: Filter["operator"]) =>
             (field: string, value: Scalar) => {
               if (!open)
-                throw new FlaredError(
+                throw new FlareError(
                   "CAPABILITY_EXPIRED",
                   "Index range declaration ended",
                 );
@@ -282,7 +279,7 @@ export function database<S extends Schema>(
                 !fields.includes(field) ||
                 field !== fields[pos]
               )
-                throw new FlaredError(
+                throw new FlareError(
                   "INVALID_INPUT",
                   "Index range must follow its field order",
                 );
@@ -293,7 +290,7 @@ export function database<S extends Schema>(
                     ? "lower"
                     : "upper";
               if ((bound === "equal" && bounds.size) || bounds.has(bound))
-                throw new FlaredError(
+                throw new FlareError(
                   "INVALID_INPUT",
                   "Duplicate or mixed index bounds",
                 );
@@ -303,7 +300,7 @@ export function database<S extends Schema>(
                 bounds.clear();
               } else bounds.add(bound);
               if (selected.length > fields.length + 2)
-                throw new FlaredError(
+                throw new FlareError(
                   "INVALID_INPUT",
                   "Index range exceeds limits",
                 );
@@ -318,7 +315,7 @@ export function database<S extends Schema>(
           });
           try {
             if (range && range(q) !== q)
-              throw new FlaredError("INVALID_INPUT", "Invalid index range");
+              throw new FlareError("INVALID_INPUT", "Invalid index range");
           } finally {
             open = false;
           }
@@ -327,7 +324,7 @@ export function database<S extends Schema>(
         order(next: "asc" | "desc") {
           check();
           if (!["asc", "desc"].includes(next))
-            throw new FlaredError("INVALID_INPUT", "Invalid order");
+            throw new FlareError("INVALID_INPUT", "Invalid order");
           return make(index, filters, next);
         },
         paginate: page,
@@ -335,7 +332,7 @@ export function database<S extends Schema>(
           return task(async () => {
             const result = await page({ limit });
             if (!result.isDone && result.page.length < limit)
-              throw new FlaredError(
+              throw new FlareError(
                 "TOO_LARGE",
                 "Use paginate for large documents",
               );
@@ -378,11 +375,11 @@ export function database<S extends Schema>(
         checkedId(id);
         boundedJson(patch, 65536);
         if (!patch || Array.isArray(patch) || typeof patch !== "object")
-          throw new FlaredError("INVALID_INPUT", "Invalid patch");
+          throw new FlareError("INVALID_INPUT", "Invalid patch");
         const row = sql
           .exec(`SELECT _data FROM ${quote(name)} WHERE _id=?`, id)
           .toArray()[0];
-        if (!row) throw new FlaredError("NOT_FOUND", "Document not found");
+        if (!row) throw new FlareError("NOT_FOUND", "Document not found");
         const value = await documentValue(definition, {
           ...JSON.parse(String(row._data)),
           ...patch,
@@ -411,7 +408,7 @@ export function database<S extends Schema>(
           )
           .toArray();
         if (!rows.length)
-          throw new FlaredError("NOT_FOUND", "Document not found");
+          throw new FlareError("NOT_FOUND", "Document not found");
         changed.add(name);
       });
     },
@@ -425,7 +422,7 @@ export function database<S extends Schema>(
             .exec(`DELETE FROM ${quote(name)} WHERE _id=? RETURNING _id`, id)
             .toArray().length
         )
-          throw new FlaredError("NOT_FOUND", "Document not found");
+          throw new FlareError("NOT_FOUND", "Document not found");
         changed.add(name);
       });
     },

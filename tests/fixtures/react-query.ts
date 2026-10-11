@@ -1,11 +1,11 @@
 import React, { Component, createElement as h, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { FlaredProvider, useQuery } from "../../packages/flared/src/sdk/react";
-import { FlaredError, reference } from "../../packages/flared/src/sdk/protocol";
+import { FlareProvider, useQuery } from "../../packages/flare/src/sdk/react";
+import { FlareError, reference } from "../../packages/flare/src/sdk/protocol";
 const listeners = new Map<
   string,
-  { next: (v: number) => void; error: (e: FlaredError) => void }
+  { next: (v: number) => void; error: (e: FlareError) => void }
 >();
 let registrations = 0,
   disposals = 0,
@@ -63,7 +63,7 @@ const render = () =>
       h(
         StrictMode,
         null,
-        h(FlaredProvider, { client, children: h(Boundary, null, h(Value)) }),
+        h(FlareProvider, { client, children: h(Boundary, null, h(Value)) }),
       ),
     ),
   );
@@ -79,7 +79,7 @@ try {
   listeners
     .values()
     .next()
-    .value!.error(new FlaredError("LIVE_DISCONNECTED", "Reconnect"));
+    .value!.error(new FlareError("LIVE_DISCONNECTED", "Reconnect"));
   await new Promise((r) => setTimeout(r, 10));
   assert(text() === "8", "Reconnect lost current data");
   proof.push("Reconnect keeps snapshot");
@@ -99,7 +99,7 @@ try {
   listeners
     .values()
     .next()
-    .value!.error(new FlaredError("AUTH_CHANGED", "Identity changed"));
+    .value!.error(new FlareError("AUTH_CHANGED", "Identity changed"));
   await wait(() => !!document.getElementById("error"));
   assert(
     !document.getElementById("value"),

@@ -1,9 +1,9 @@
 import { mkdir, rm } from "node:fs/promises";
-const out = "packages/flared/dist";
+const out = "packages/flare/dist";
 await rm(out, { recursive: true, force: true });
 await mkdir(`${out}/sdk`, { recursive: true });
 const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" });
-const sourceRoot = "packages/flared/src/sdk";
+const sourceRoot = "packages/flare/src/sdk";
 for await (const file of new Bun.Glob("**/*.ts").scan({ cwd: sourceRoot })) {
   if (file.endsWith(".d.ts")) continue;
   const source = await Bun.file(`${sourceRoot}/${file}`).text();
@@ -17,16 +17,16 @@ const result = Bun.spawnSync(
     process.execPath,
     "node_modules/typescript/bin/tsc",
     "-p",
-    "packages/flared/tsconfig.build.json",
+    "packages/flare/tsconfig.build.json",
   ],
   { stdout: "inherit", stderr: "inherit" },
 );
 if (result.exitCode !== 0) process.exit(result.exitCode);
-const pkg = await Bun.file("packages/flared/package.json").json();
+const pkg = await Bun.file("packages/flare/package.json").json();
 const cli = await Bun.build({
-  entrypoints: ["packages/flared/src/cli/main.mjs"],
+  entrypoints: ["packages/flare/src/cli/main.mjs"],
   outdir: `${out}/cli`,
-  naming: { entry: "flared.js" },
+  naming: { entry: "flare.js" },
   target: "bun",
   format: "esm",
   splitting: true,
@@ -42,5 +42,5 @@ if (
 )
   throw Error("Platform code entered application CLI");
 console.log(
-  "Single flared package built directly: portable SDK/types and lazy Bun CLI",
+  "Single flare package built directly: portable SDK/types and lazy Bun CLI",
 );

@@ -66,9 +66,9 @@ describe("Permanent project URLs", () => {
           operation,
         });
       }
-    expect(applicationUrl("https://api.auer.wien/", a, "dev", "demo")).toBe(
-      "https://api.auer.wien/demo/dev",
-    );
+    expect(
+      applicationUrl("https://api.flare.auer.wien/", a, "dev", "demo"),
+    ).toBe("https://api.flare.auer.wien/demo/dev");
     expect(applicationUrl("https://old.example", a, "prod")).toBe(
       `https://old.example/p/${a}/prod`,
     );

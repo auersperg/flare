@@ -1,4 +1,4 @@
-# Flared — единая архитектура Cloudflare-native платформы
+# Flare — единая архитектура Cloudflare-native платформы
 
 Обновлено: 11 октября 2026 года. **Статус: 0.3 native-data preview; базовый облачный flow проверен, полная production-приёмка не завершена.**
 
@@ -6,7 +6,7 @@
 
 ## 1. Продукт и разделение проектов
 
-**Flared устанавливается в собственный Cloudflare аккаунт оператора. Dashboard существует только онлайн в Cloudflare. Локально — frontend приложения, SDK и тонкий CLI.**
+**Flare устанавливается в собственный Cloudflare аккаунт оператора. Dashboard существует только онлайн в Cloudflare. Локально — frontend приложения, SDK и тонкий CLI.**
 
 Иерархия: установка → пространство заказчика → проект → окружение `dev` / `prod`. Заказчик здесь — владелец магазина, лендинга или другого проекта; SDK-клиент — код приложения, подключённый к конкретной среде. Одно пространство может содержать несколько проектов.
 
@@ -62,30 +62,30 @@
 
 ## 5. Пакеты и тонкий локальный flow
 
-| Пакет                       | Граница                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------- |
-| `flared`                    | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
-| `@flared/platform` (`core`) | Облачный runtime и онлайн-dashboard; не dependency приложения                             |
+| Пакет                      | Граница                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| `flare`                    | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
+| `@flare/platform` (`core`) | Облачный runtime и онлайн-dashboard; не dependency приложения                             |
 
-Исполняемый файл — `flared`. Это локальные tarballs, не опубликованные пакеты. Scope не означает подтверждённого владения npm namespace. License пока UNLICENSED; open source требует явно выбранной лицензии и независимой установки в другом аккаунте.
+Исполняемый файл — `flare`. Это локальные tarballs, не опубликованные пакеты. Scope не означает подтверждённого владения npm namespace. License пока UNLICENSED; open source требует явно выбранной лицензии и независимой установки в другом аккаунте.
 
 **Основной реализованный flow:**
 
 ```sh
 # Сейчас — проверенный приватный tarball, не опубликованный npm пакет
-bun add /path/to/flared-0.3.1.tgz
-bunx flared dev
+bun add /path/to/flare-0.3.1.tgz
+bunx flare dev
 # Browser approval → выбор/создание проекта → cloud dev + typed API
 # Frontend запускается своим обычным dev server
-bunx flared deploy
+bunx flare deploy
 # Сборка и prod-публикация с явным подтверждением проекта
 ```
 
-Единый пользовательский пакет `flared` содержит portable SDK и lazy Bun CLI. В исходниках Core/SDK/CLI остаются внутренними границами, не отдельными обязательными установками пользователя. Схему задают в `flared/schema.ts`, функции — в `flared/*.ts`. CLI генерирует `_generated/server.ts`, `_generated/api.ts`, facet/action bundles, schema/manifest/checksums и OpenAPI 3.1. Браузер не импортирует backend-код.
+Единый пользовательский пакет `flare` содержит portable SDK и lazy Bun CLI. В исходниках Core/SDK/CLI остаются внутренними границами, не отдельными обязательными установками пользователя. Схему задают в `flare/schema.ts`, функции — в `flare/*.ts`. CLI генерирует `_generated/server.ts`, `_generated/api.ts`, facet/action bundles, schema/manifest/checksums и OpenAPI 3.1. Браузер не импортирует backend-код.
 
-Advanced pipeline: `flared build --entry app.ts --outdir release`, `flared link --platform <runtime-url>/control --project <UUID>`, `flared dev --entry app.ts`, `flared deploy --env dev --release release`. General `platform init` остаётся незавершённым operator workflow; `db generate` не нужен и удалён. Локального dashboard нет. Local workerd в acceptance scripts — внутренний тест ядра, не зависимость установленного CLI и не основной developer flow. Сборка или тесты ничего не публикуют в облако.
+Advanced pipeline: `flare build --entry app.ts --outdir release`, `flare link --platform <runtime-url>/control --project <UUID>`, `flare dev --entry app.ts`, `flare deploy --env dev --release release`. General `platform init` остаётся незавершённым operator workflow; `db generate` не нужен и удалён. Локального dashboard нет. Local workerd в acceptance scripts — внутренний тест ядра, не зависимость установленного CLI и не основной developer flow. Сборка или тесты ничего не публикуют в облако.
 
-Авторизация dashboard использует нативный `ctx.access`, проверяет AUD конкретного Access приложения и получает platform-verified identity. JWT/OIDC приложений — отдельная граница. Новая установка имеет два Worker `flared-admin`/`flared-runtime`; не используются ресурсы старого kernel. Панель не делает background polling; static assets сейчас проходят Admin Worker для access/headers, поэтому такие посещения учитываются в Worker requests.
+Авторизация dashboard использует нативный `ctx.access`, проверяет AUD конкретного Access приложения и получает platform-verified identity. JWT/OIDC приложений — отдельная граница. Новая установка имеет два Worker `flare-admin`/`flare-runtime`; не используются ресурсы старого kernel. Панель не делает background polling; static assets сейчас проходят Admin Worker для access/headers, поэтому такие посещения учитываются в Worker requests.
 
 ## 6. Совместимость и оставшаяся приёмка
 
@@ -99,7 +99,7 @@ Legacy SDK/CLI и обе демонстрации убраны из рабоче
 
 ## 7. Files и Schedules — реализованный минимум (11 октября 2026)
 
-- **Файлы:** приватный R2 binding `FILES`, отдельный bucket `flared-files`; Runtime также получает `DASHBOARD_URL` для точного origin онлайн-панели при файловых upload grants (не для API функций). Bytes не хранятся в SQLite. Supervisor хранит метаданные и временные bearer grants, привязанные к неизменяемому project/environment. Прямые публичные R2 URL не выдаются.
+- **Файлы:** приватный R2 binding `FILES`, отдельный bucket `flare-files`; Runtime также получает `DASHBOARD_URL` для точного origin онлайн-панели при файловых upload grants (не для API функций). Bytes не хранятся в SQLite. Supervisor хранит метаданные и временные bearer grants, привязанные к неизменяемому project/environment. Прямые публичные R2 URL не выдаются.
 - `ctx.files.generateUploadUrl({name,type,size})`, `getDownloadUrl(id)`, `list({cursor,limit})` → `{page,isDone,continueCursor}`, `delete(id)`. Upload grant одноразовый; download grant допускает повторное чтение до истечения пяти минут. Получение grant авторизует приложение через свою action; скачивание по grant не требует повторного JWT. Ссылка является секретной capability — не логировать и не передавать посторонним.
 - Серверные actions могут `upload(byteStream,type,{name,size})` и `download(id)`: native RPC streams → Runtime → R2. Размер известен заранее, максимум 10 MiB, `FixedLengthStream` проверяет точное число байтов без полного буфера. MVP MIME allowlist: plain text, PNG/JPEG/WebP, PDF, binary. Browser `fileMetadata()` сохраняет эти MIME; остальные форматы отправляет как binary с исходным именем. `uploadFile()` передаёт Blob без полного буфера, не отправляет cookies и не повторяет одноразовый grant. Таймаут/обрыв явно обозначаются как неоднозначный результат. Это не антивирус и не доказательство соответствия содержимого MIME. Download — attachment, nosniff, no-store. `Content-Length` проверяется, если передан; без него точный размер всё равно проверяет нативный stream. После успешного R2 commit неоднозначная ошибка подтверждения метаданных не удаляет объект: durable cleanup восстанавливает ready; повторный complete идемпотентен.
 - Предел среды: 1 000 файлов, 2 000 активных grants; список показывает последние 100. Pending/deleting загрузки имеют долговечный cleanup job. После interrupted upload готовый объект правильного размера восстанавливается, незавершённые удаляются. R2 и SQLite не являются одной транзакцией; recovery закрывает обычные окна сбоя, расширенная crash-приёмка остаётся обязательной.
@@ -113,11 +113,11 @@ Legacy SDK/CLI и обе демонстрации убраны из рабоче
 
 ### Application distribution
 
-`flared` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled directly from its own SDK/CLI source modules. There are no internal SDK/CLI registry dependencies. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
+`flare` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled directly from its own SDK/CLI source modules. There are no internal SDK/CLI registry dependencies. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
 
 ## 8. Native document API 0.3 — breaking rewrite
 
-`defineSchema({tasks:defineTable(z.object({...})).index("by_done",["done"])})` — один декларативный контракт для typed SDK, CLI, базы и dashboard. Typed declarations генерируются в `flared/_generated/server.ts` **до** сборки. Приложение использует `db.get/query/insert/patch/replace/delete`, а не SQL/ORM builders.
+`defineSchema({tasks:defineTable(z.object({...})).index("by_done",["done"])})` — один декларативный контракт для typed SDK, CLI, базы и dashboard. Typed declarations генерируются в `flare/_generated/server.ts` **до** сборки. Приложение использует `db.get/query/insert/patch/replace/delete`, а не SQL/ORM builders.
 
 Каждая logical table — отдельная native SQLite table с `_id` UUID, `_creationTime` и `_data` JSON. Это сознательный выбор для Convex-like document DX: вложенные значения и optional/defaulted поля без DDL на каждое поле. Поля индексов превращаются в native SQLite expression indexes (`json_extract`), equality/range/order/keyset выполняются в SQL. Не общая tenant JSON-таблица, не фильтрация всей базы в JavaScript и не полный Convex read-set engine. Цена JSON serialization и expression indexes требует замера; ускорение в миллисекундах пока не обещаем.
 

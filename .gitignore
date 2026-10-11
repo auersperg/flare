@@ -4,7 +4,7 @@ dist/
 frontend-dist/
 .wrangler/
 .private/
-.flared/
+.flare/
 artifacts/
 release/
 vendor/

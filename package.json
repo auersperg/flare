@@ -1,10 +1,10 @@
 {
-  "name": "flared-workspace",
+  "name": "flare-workspace",
   "private": true,
   "version": "0.3.1",
   "type": "module",
   "workspaces": [
-    "packages/flared",
+    "packages/flare",
     "packages/core",
     "packages/core/dashboard"
   ],
@@ -51,7 +51,7 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "https://github.com/auersperg/flared.git"
+    "url": "https://github.com/auersperg/flare.git"
   },
   "description": "Self-hosted Cloudflare-native reactive backend with live data, functions, SDK and an online dashboard",
   "packageManager": "bun@1.4.3",

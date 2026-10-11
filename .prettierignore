@@ -8,7 +8,7 @@ artifacts/
 .wrangler/
 bun.lock
 
-**/.flared/
+**/.flare/
 **/.dev-session.json
 tests/kernel/wrangler.cloud.json
 coverage/

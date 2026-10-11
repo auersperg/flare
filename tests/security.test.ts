@@ -19,7 +19,7 @@ import {
 } from "../packages/core/src/release.js";
 const base = {
   issuer: "https://identity.example",
-  audience: "flared-test",
+  audience: "flare-test",
   jwks: "https://identity.example/jwks",
 };
 const encode = (x: unknown) =>
@@ -61,7 +61,7 @@ async function jwt(patch: any = {}, header: any = {}) {
   return { token: h + "." + p + "." + s, config: { ...base, jwks: url } };
 }
 afterEach(() => jest.restoreAllMocks());
-describe("Flared security boundary", () => {
+describe("Flare security boundary", () => {
   it("verifies native RS256 and caches configured JWKS", async () => {
     const { token, config } = await jwt();
     expect((await verifyJwt(token, config)).subject).toBe("owner");
@@ -236,25 +236,25 @@ describe("native Worker Access", () => {
   it("accepts only the expected platform-verified Access app", async () => {
     const getIdentity = jest.fn(async () => ({ email: "Adam@auer.wien" }));
     expect(
-      await accessEmail({ aud: "flared", getIdentity } as any, "flared"),
+      await accessEmail({ aud: "flare", getIdentity } as any, "flare"),
     ).toBe("adam@auer.wien");
     expect(getIdentity).toHaveBeenCalledTimes(1);
   });
   it("rejects missing Access context and another matched app before loading identity", async () => {
-    await expect(accessEmail(undefined, "flared")).rejects.toMatchObject({
+    await expect(accessEmail(undefined, "flare")).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
     const getIdentity = jest.fn();
     await expect(
-      accessEmail({ aud: "other-app", getIdentity } as any, "flared"),
+      accessEmail({ aud: "other-app", getIdentity } as any, "flare"),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     expect(getIdentity).not.toHaveBeenCalled();
   });
   it("rejects missing user identity even if an Access application matched", async () => {
     await expect(
       accessEmail(
-        { aud: "flared", getIdentity: async () => undefined } as any,
-        "flared",
+        { aud: "flare", getIdentity: async () => undefined } as any,
+        "flare",
       ),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });

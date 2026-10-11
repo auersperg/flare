@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { fileMetadata, uploadFile } from "../packages/flared/src/sdk/client";
+import { fileMetadata, uploadFile } from "../packages/flare/src/sdk/client";
 describe("thin file client", () => {
   it("retains safe formats and treats unknown formats as downloadable binary", () => {
     expect(

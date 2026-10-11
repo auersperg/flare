@@ -62,7 +62,7 @@ export default function CliApproval() {
   }
   return (
     <main className="mx-auto max-w-lg p-8">
-      <h1 className="mb-4 text-xl font-semibold">Connect Flared CLI</h1>
+      <h1 className="mb-4 text-xl font-semibold">Connect Flare CLI</h1>
       {done ? (
         <p>Connected. Return to your terminal. You can close this tab.</p>
       ) : (

@@ -1,8 +1,8 @@
-import { bundle } from "../packages/flared/src/cli/bundle.mjs";
+import { bundle } from "../packages/flare/src/cli/bundle.mjs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 await mkdir("artifacts", { recursive: true });
-const base = process.env.FLARED_KERNEL_URL;
+const base = process.env.FLARE_KERNEL_URL;
 const local = process.argv.includes("--local");
 if (
   !base ||
@@ -10,7 +10,7 @@ if (
     ? !/^http:\/\/127\.0\.0\.1:\d+$/.test(base)
     : !base.startsWith("https://"))
 )
-  throw new Error("Provide FLARED_KERNEL_URL for the private kernel");
+  throw new Error("Provide FLARE_KERNEL_URL for the private kernel");
 const token = (await readFile(".private/kernel-token", "utf8")).trim();
 const scope = `sdk-${crypto.randomUUID().slice(0, 8)}/dev`;
 const headers = {

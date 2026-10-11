@@ -20,19 +20,23 @@ export interface FunctionRef<I = Json, O = Json> {
   readonly __input?: I;
   readonly __output?: O;
 }
-export class FlaredError extends Error {
+export class FlareError extends Error {
   constructor(
     readonly code: string,
     message: string,
     readonly ambiguous = false,
   ) {
     super(message);
-    this.name = "FlaredError";
+    this.name = "FlareError";
   }
 }
-/** SDK entrypoints are separately bundled; class identity is not a wire contract. */
+/** SDK entrypoints and retained pre-rename releases are separately bundled.
+ * Keep their bounded error-code wire contract, never their private messages. */
 export function errorCode(error: unknown): string {
-  if (error instanceof Error && error.name === "FlaredError") {
+  if (
+    error instanceof Error &&
+    ["FlareError", "FlaredError"].includes(error.name)
+  ) {
     const code = (error as Error & { code?: unknown }).code;
     if (typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code))
       return code;
@@ -47,7 +51,7 @@ export function assertPath(path: string): void {
       .split("/")
       .some((p) => ["__proto__", "prototype", "constructor"].includes(p))
   ) {
-    throw new FlaredError("INVALID_PATH", "Invalid function path");
+    throw new FlareError("INVALID_PATH", "Invalid function path");
   }
 }
 export function reference<I, O>(
@@ -62,20 +66,20 @@ export function stableJson(value: unknown): string {
   const ancestors = new Set<object>();
   function visit(v: unknown, depth: number): Json {
     if (depth > 40)
-      throw new FlaredError("INVALID_JSON", "JSON nesting limit exceeded");
+      throw new FlareError("INVALID_JSON", "JSON nesting limit exceeded");
     if (v === null || typeof v === "string" || typeof v === "boolean") return v;
     if (typeof v === "number" && Number.isFinite(v)) return v;
     if (typeof v !== "object" || v === null || ancestors.has(v))
-      throw new FlaredError("INVALID_JSON", "Expected lossless JSON");
+      throw new FlareError("INVALID_JSON", "Expected lossless JSON");
     if (
       !Array.isArray(v) &&
       Object.getPrototypeOf(v) !== Object.prototype &&
       Object.getPrototypeOf(v) !== null
     ) {
-      throw new FlaredError("INVALID_JSON", "Expected plain JSON object");
+      throw new FlareError("INVALID_JSON", "Expected plain JSON object");
     }
     if (Object.getOwnPropertySymbols(v).length)
-      throw new FlaredError("INVALID_JSON", "Symbol keys are unsupported");
+      throw new FlareError("INVALID_JSON", "Symbol keys are unsupported");
     ancestors.add(v);
     let result: Json;
     if (Array.isArray(v)) {
@@ -85,7 +89,7 @@ export function stableJson(value: unknown): string {
       for (const key of Object.keys(v).sort()) {
         const descriptor = Object.getOwnPropertyDescriptor(v, key)!;
         if (!("value" in descriptor))
-          throw new FlaredError("INVALID_JSON", "Getters are unsupported");
+          throw new FlareError("INVALID_JSON", "Getters are unsupported");
         out[key] = visit(descriptor.value, depth + 1);
       }
       result = out;
@@ -98,7 +102,7 @@ export function stableJson(value: unknown): string {
 export function boundedJson(value: unknown, maxBytes: number): string {
   const json = stableJson(value);
   if (new TextEncoder().encode(json).byteLength > maxBytes)
-    throw new FlaredError("TOO_LARGE", "JSON payload exceeds limit");
+    throw new FlareError("TOO_LARGE", "JSON payload exceeds limit");
   return json;
 }
 export interface FunctionContract {

@@ -29,8 +29,8 @@ export async function buildApplication(options) {
     if (error.code !== "ENOENT") throw error;
   }
   await access(entry);
-  await mkdir(join(working, ".flared/tmp"), { recursive: true });
-  const temporary = await mkdtemp(join(working, ".flared/tmp/build-"));
+  await mkdir(join(working, ".flare/tmp"), { recursive: true });
+  const temporary = await mkdtemp(join(working, ".flare/tmp/build-"));
   try {
     // Metadata evaluation executes only trusted application modules locally, never in a request.
     const metadataPath = join(temporary, "metadata.mjs");
@@ -113,7 +113,7 @@ export async function buildApplication(options) {
     }));
     const openapi = {
       openapi: "3.1.0",
-      info: { title: "Flared application contract", version: hash },
+      info: { title: "Flare application contract", version: hash },
       components: {
         schemas,
         securitySchemes: {
@@ -189,8 +189,8 @@ export async function buildApplication(options) {
 async function compileRole(role, entry, working) {
   const code =
     role === "facet"
-      ? `import app from ${JSON.stringify(entry)}; import {createFacet} from "flared/cloudflare"; export class AppFacet extends createFacet(app) {}`
-      : `import app from ${JSON.stringify(entry)}; import {createAction} from "flared/cloudflare"; export class Action extends createAction(app) {}`;
+      ? `import app from ${JSON.stringify(entry)}; import {createFacet} from "flare/cloudflare"; export class AppFacet extends createFacet(app) {}`
+      : `import app from ${JSON.stringify(entry)}; import {createAction} from "flare/cloudflare"; export class Action extends createAction(app) {}`;
   const virtualEntry = join(working, `${role}-entry.ts`);
   const result = await bundle({
     entrypoints: [virtualEntry],
@@ -215,7 +215,7 @@ async function compileRole(role, entry, working) {
 }
 
 export async function generateReferences(contract) {
-  let generated = 'import {reference} from "flared";\n';
+  let generated = 'import {reference} from "flare";\n';
   const refs = [];
   for (const [index, [path, fn]] of Object.entries(
     contract.functions,

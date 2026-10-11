@@ -2,7 +2,7 @@ import { afterEach, expect, it, jest } from "bun:test";
 import {
   createPasswordAuth,
   type PasswordAuthStorage,
-} from "../packages/flared/src/sdk/client.js";
+} from "../packages/flare/src/sdk/client.js";
 const token = "flared_session_" + "a".repeat(64);
 const user = { id: "user-a", login: "adam", disabled: false, createdAt: 1 };
 function storage(): PasswordAuthStorage & { values: Map<string, string> } {

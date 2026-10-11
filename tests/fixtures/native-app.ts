@@ -4,11 +4,11 @@ import {
   defineSchema,
   defineTable,
   createFunctions,
-} from "../../packages/flared/src/sdk/server.js";
+} from "../../packages/flare/src/sdk/server.js";
 import {
-  FlaredError,
+  FlareError,
   reference,
-} from "../../packages/flared/src/sdk/protocol.js";
+} from "../../packages/flare/src/sdk/protocol.js";
 const schema = defineSchema({
   tasks: defineTable(
     z.object({ title: z.string().min(1), done: z.boolean().default(false) }),
@@ -135,7 +135,7 @@ export default defineApp({
         handler: async ({ db, auth }, args) => {
           const row = await db.get("privateNotes", args.id);
           if (!row || row.owner !== auth!.subject)
-            throw new FlaredError("FORBIDDEN", "FORBIDDEN");
+            throw new FlareError("FORBIDDEN", "FORBIDDEN");
           await db.patch("privateNotes", args.id, { body: args.body });
           return true;
         },

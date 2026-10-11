@@ -72,7 +72,7 @@ function DashboardApp() {
     [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
     const abort = new AbortController();
-    setCollapsed(localStorage.getItem("flared.sidebar") === "collapsed");
+    setCollapsed(localStorage.getItem("flare.sidebar") === "collapsed");
     void Promise.all([
       api<Session>("session", undefined, abort.signal),
       api<Project[]>("projects", undefined, abort.signal),
@@ -82,8 +82,7 @@ function DashboardApp() {
         setSession(s);
         setProjects(p);
         setProject(
-          p.find((x) => x.id === localStorage.getItem("flared.project")) ??
-            p[0],
+          p.find((x) => x.id === localStorage.getItem("flare.project")) ?? p[0],
         );
         setLoading(false);
       })
@@ -102,7 +101,7 @@ function DashboardApp() {
     setEnv("dev");
     setView("health");
     setModal(undefined);
-    localStorage.setItem("flared.project", id);
+    localStorage.setItem("flare.project", id);
   };
   const newProject = () =>
     setModal({
@@ -184,8 +183,8 @@ function DashboardApp() {
     setProject(remaining[0]);
     setEnv("dev");
     setView("health");
-    if (remaining[0]) localStorage.setItem("flared.project", remaining[0].id);
-    else localStorage.removeItem("flared.project");
+    if (remaining[0]) localStorage.setItem("flare.project", remaining[0].id);
+    else localStorage.removeItem("flare.project");
   };
   const navigate = (next: View) => {
     setModal(undefined);
@@ -279,7 +278,7 @@ function DashboardApp() {
             onClick={() =>
               setCollapsed((v) => {
                 localStorage.setItem(
-                  "flared.sidebar",
+                  "flare.sidebar",
                   v ? "expanded" : "collapsed",
                 );
                 return !v;

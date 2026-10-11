@@ -1,16 +1,16 @@
-# Flared 0.3 — SDK and CLI
+# Flare 0.3 — SDK and CLI
 
-Applications install one `flared` package, including the portable SDK and lazy Bun CLI. No internal package archives, ORM, Agents, Wrangler or workerd are installed into an application.
+Applications install one `flare` package, including the portable SDK and lazy Bun CLI. No internal package archives, ORM, Agents, Wrangler or workerd are installed into an application.
 
-- `flared`: `createClient({url,getToken})`, references, errors, file upload helpers.
-- `flared/react`: `FlaredProvider`, `useFlared`, `useQuery(api.tasks.list,args)` → data or loading `undefined`.
-- `flared/server`: `defineSchema`, `defineTable`, `z`, function declarations and contracts.
-- `flared/cloudflare`: native facet/action factories, backend only.
-- `flared/protocol`: transport types and limits.
+- `flare`: `createClient({url,getToken})`, references, errors, file upload helpers.
+- `flare/react`: `FlareProvider`, `useFlare`, `useQuery(api.tasks.list,args)` → data or loading `undefined`.
+- `flare/server`: `defineSchema`, `defineTable`, `z`, function declarations and contracts.
+- `flare/cloudflare`: native facet/action factories, backend only.
+- `flare/protocol`: transport types and limits.
 
 ```ts
-// flared/schema.ts
-import { defineSchema, defineTable, z } from "flared/server";
+// flare/schema.ts
+import { defineSchema, defineTable, z } from "flare/server";
 export default defineSchema({
   tasks: defineTable(
     z.object({ title: z.string(), done: z.boolean().default(false) }),
@@ -18,7 +18,7 @@ export default defineSchema({
 });
 ```
 
-Functions import typed declarations from `./_generated/server`; `bunx flared dev` generates this module before compilation. Read: `db.get(table,id)`, `db.query(table).withIndex(name,q=>q.eq(field,value)).order("desc").paginate({limit,cursor})`, `take(100)` and `first()`. Write: `insert`, `patch`, `replace`, `delete`; IDs and creation timestamps are automatic. Insert/replace accept validator input types, including omitted defaults. Queries expose no SQL, writes, session or storage capability.
+Functions import typed declarations from `./_generated/server`; `bunx flare dev` generates this module before compilation. Read: `db.get(table,id)`, `db.query(table).withIndex(name,q=>q.eq(field,value)).order("desc").paginate({limit,cursor})`, `take(100)` and `first()`. Write: `insert`, `patch`, `replace`, `delete`; IDs and creation timestamps are automatic. Insert/replace accept validator input types, including omitted defaults. Queries expose no SQL, writes, session or storage capability.
 
 Standard Schema / Standard JSON Schema validators define one contract for CLI, documents, function arguments/results and dashboard forms. All writes and schema activation validate data; reads decode already validated records, without running the same table validator again on each row. Output validation still applies to every function call. Mutations are transactional and capabilities expire when the invocation finishes. Unawaited database work and scheduled jobs must settle before commit.
 
@@ -32,7 +32,7 @@ Scheduling: mutation `jobs.schedule(path,args,{delaySeconds})` and `jobs.cancel(
 
 Exactly three kinds: `query`, `mutation`, `action`. Declare each query once. JS: `client.onUpdate(ref,args,next,onError?)` delivers the first snapshot and later updates; `client.query(ref,args)` is the one-off alternative. Writes use `client.mutation`, external work uses `client.action`. The old `live`, `useLive`, `call` and `subscribe` APIs have been removed, not aliased. Regenerate references and redeploy applications with the updated CLI.
 
-React uses one `useQuery(ref,args)` inside `FlaredProvider`; `"skip"` makes no request. It returns values directly (not a custom result wrapper), handles cleanup and reconnect, and clears values for identity/auth changes. Function/auth errors reach the React error boundary. HTTP one-off reads do not require a persistent socket. Transport names such as `/v1/live` describe WebSockets, not another function type.
+React uses one `useQuery(ref,args)` inside `FlareProvider`; `"skip"` makes no request. It returns values directly (not a custom result wrapper), handles cleanup and reconnect, and clears values for identity/auth changes. Function/auth errors reach the React error boundary. HTTP one-off reads do not require a persistent socket. Transport names such as `/v1/live` describe WebSockets, not another function type.
 
 ## Scoped files and background work
 
@@ -45,20 +45,20 @@ Mutation outbox entries and data commit together. Native Queues batches confirm 
 The CLI is compiled separately from the portable SDK in this package. Bun 1.4.3+; no local dashboard or emulator.
 
 ```sh
-bun add flared       # target registry flow; currently install a private packed archive
-bunx flared dev     # browser approval → project → native schema/types → cloud-dev watch
-bunx flared deploy  # build and confirm production deployment
+bun add flare       # target registry flow; currently install a private packed archive
+bunx flare dev     # browser approval → project → native schema/types → cloud-dev watch
+bunx flare deploy  # build and confirm production deployment
 ```
 
-Schema and functions live in `flared/`. `_generated/server.ts` supplies schema-typed query/mutation declarations; `_generated/api.ts` supplies browser-safe references. SQL journals and db-generation commands are not needed. Compilation/checksums happen locally, not on an application request. Frontend changes do not trigger backend deployment; framework-prefixed public URL env entries preserve other variables.
+Schema and functions live in `flare/`. `_generated/server.ts` supplies schema-typed query/mutation declarations; `_generated/api.ts` supplies browser-safe references. SQL journals and db-generation commands are not needed. Compilation/checksums happen locally, not on an application request. Frontend changes do not trigger backend deployment; framework-prefixed public URL env entries preserve other variables.
 
 Advanced explicit commands:
 
 ```sh
-flared build --entry app.ts --outdir release
-flared link --platform https://api.example.com/control --project PROJECT_UUID
-flared dev --entry app.ts
-flared deploy --env dev --release release
+flare build --entry app.ts --outdir release
+flare link --platform https://api.example.com/control --project PROJECT_UUID
+flare dev --entry app.ts
+flare deploy --env dev --release release
 ```
 
 Immutable output contains facet/action modules, `schema.json`, manifest, checksums, generated TypeScript API and OpenAPI 3.1. Only ABI 4 is accepted. No old `tables` declarations, `--migrations` flag or Drizzle pipeline.
@@ -68,30 +68,30 @@ Browser approval is protected by online Access/owner authorization and same-orig
 ## Immutable releases
 
 ```sh
-bunx flared releases --env dev
-bunx flared deploy --env prod --cmd "bun run build"
-bunx flared promote --env prod --hash DEV_BUILD_HASH --cmd "bun run build"
-bunx flared rollback --env prod --hash PREVIOUS_BUILD_HASH
+bunx flare releases --env dev
+bunx flare deploy --env prod --cmd "bun run build"
+bunx flare promote --env prod --hash DEV_BUILD_HASH --cmd "bun run build"
+bunx flare rollback --env prod --hash PREVIOUS_BUILD_HASH
 ```
 
 History keeps the last five **distinct successful backend builds**, with their first publication date. Failed candidates are not promotable. Active builds and job/outbox references are protected from garbage collection. Repeating an unchanged build is not a new version.
 
 Promote copies the selected immutable dev bundle to prod without recompiling or copying development data. Rollback activates compatible historical code against current data; it does not rewind the database. Both require explicit confirmation (`--confirm PROJECT_UUID` in CI), validate schema/job compatibility and compare the target's expected active hash. A changed target returns a conflict, never an automatic write retry.
 
-`--cmd` generates client references for the exact selected bundle and builds the frontend **before** activating the backend. The child receives the selected environment URL via `FLARED_URL`, `PUBLIC_FLARED_URL`, `VITE_FLARED_URL`, `NEXT_PUBLIC_FLARED_URL` and `EXPO_PUBLIC_FLARED_URL`; local dev env files remain unchanged. A failed build does not publish backend code. Framework build variables must be public URLs, not credentials.
+`--cmd` generates client references for the exact selected bundle and builds the frontend **before** activating the backend. The child receives the selected environment URL via `FLARE_URL`, `PUBLIC_FLARE_URL`, `VITE_FLARE_URL`, `NEXT_PUBLIC_FLARE_URL` and `EXPO_PUBLIC_FLARE_URL`; local dev env files remain unchanged. A failed build does not publish backend code. Framework build variables must be public URLs, not credentials.
 
-Frontend hosting stays with native Wrangler or another hosting tool. An application release script can sequence Flared + build + Wrangler. Frontend publication failure after backend activation is an explicit partial release, not an atomic transaction. Dashboard Health → Development/Production releases offers contract inspection, backend promotion and rollback on demand, with no polling. It does not publish the frontend.
+Frontend hosting stays with native Wrangler or another hosting tool. An application release script can sequence Flare + build + Wrangler. Frontend publication failure after backend activation is an explicit partial release, not an atomic transaction. Dashboard Health → Development/Production releases offers contract inspection, backend promotion and rollback on demand, with no polling. It does not publish the frontend.
 
 Isolated historical preview environments and a paired frontend/backend version catalogue are not implemented. A saved backend hash is not a preview URL or a Git commit. Use additive contracts when old clients may remain active.
 
 ## On-demand backups
 
 ```sh
-bunx flared backup list --env dev
-bunx flared backup create --env dev --confirm PROJECT_UUID
-bunx flared backup restore --from dev --env prod --id BACKUP_UUID --confirm PROJECT_UUID
-bunx flared backup status --env prod
-bunx flared backup delete --env dev --id BACKUP_UUID --confirm PROJECT_UUID
+bunx flare backup list --env dev
+bunx flare backup create --env dev --confirm PROJECT_UUID
+bunx flare backup restore --from dev --env prod --id BACKUP_UUID --confirm PROJECT_UUID
+bunx flare backup status --env prod
+bunx flare backup delete --env dev --id BACKUP_UUID --confirm PROJECT_UUID
 ```
 
 Writes require owner access and explicit confirmation (interactive `yes`, or the project UUID in CI). Creation prints its ID before sending the request; after an uncertain response retry explicitly with `--id` and that same ID. No automatic write retry. Restore copies data, IDs, creation timestamps, files and the exact backend build into the **other, empty environment of the same project**. It does not promote a release or overwrite an occupied production database.
@@ -103,8 +103,8 @@ Pause cron and drain jobs/actions/uploads first. Limits: 10,000 documents / 4 Mi
 Owner enables authentication/public registration per environment in dashboard → Auth. No external provider is required for native passwords. Applications explicitly decide which functions are public; required remains the default. User role/ownership checks still belong in handlers.
 
 ```ts
-import { createClient, createPasswordAuth } from "flared";
-const url = import.meta.env.PUBLIC_FLARED_URL;
+import { createClient, createPasswordAuth } from "flare";
+const url = import.meta.env.PUBLIC_FLARE_URL;
 const auth = createPasswordAuth({ url });
 const client = createClient({ url, getToken: auth.getToken });
 const stopAuth = auth.onChange(() => client.refreshAuth());

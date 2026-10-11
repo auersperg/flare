@@ -4,28 +4,28 @@ import { join, resolve } from "node:path";
 import { it, expect } from "bun:test";
 it("discovers schema/functions and generates typed API/server without SQL journals", async () => {
   const root = process.cwd();
-  await mkdir(join(root, ".flared"), { recursive: true });
-  const dir = await mkdtemp(join(root, ".flared", "cli-proof-"));
+  await mkdir(join(root, ".flare"), { recursive: true });
+  const dir = await mkdtemp(join(root, ".flare", "cli-proof-"));
   try {
     const script = `
- import {prepare,generateApi,frontendEnvironment} from ${JSON.stringify(resolve("packages/flared/src/cli/project.mjs"))};
- import {buildApplication} from ${JSON.stringify(resolve("packages/flared/src/cli/build.mjs"))};
+ import {prepare,generateApi,frontendEnvironment} from ${JSON.stringify(resolve("packages/flare/src/cli/project.mjs"))};
+ import {buildApplication} from ${JSON.stringify(resolve("packages/flare/src/cli/build.mjs"))};
  import {writeFile,readFile,mkdir,access} from 'node:fs/promises'; import assert from 'node:assert/strict';
- await writeFile('package.json','{"type":"module","private":true,"dependencies":{"astro":"7.3.8"}}');await mkdir('flared');
- await writeFile('flared/schema.ts','import {defineSchema,defineTable,z} from "flared/server";export default defineSchema({notes:defineTable(z.object({title:z.string()})).index("by_title",["title"])});');
- await writeFile('flared/notes.ts','import {query} from "./_generated/server";import {z} from "flared/server";export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(50)});');
- await writeFile('flared/queries.ts', 'import {query} from "./_generated/server";import {z} from "flared/server";export const only=query({input:z.object({}),output:z.string(),handler:()=>"QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME"});');
- await writeFile('flared/actions.ts', 'import {action} from "./_generated/server";import {z} from "flared/server";export const only=action({input:z.object({}),output:z.string(),handler:()=>"ACTION_HANDLER_IS_PRESENT"});');
+ await writeFile('package.json','{"type":"module","private":true,"dependencies":{"astro":"7.3.8"}}');await mkdir('flare');
+ await writeFile('flare/schema.ts','import {defineSchema,defineTable,z} from "flare/server";export default defineSchema({notes:defineTable(z.object({title:z.string()})).index("by_title",["title"])});');
+ await writeFile('flare/notes.ts','import {query} from "./_generated/server";import {z} from "flare/server";export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(50)});');
+ await writeFile('flare/queries.ts', 'import {query} from "./_generated/server";import {z} from "flare/server";export const only=query({input:z.object({}),output:z.string(),handler:()=>"QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME"});');
+ await writeFile('flare/actions.ts', 'import {action} from "./_generated/server";import {z} from "flare/server";export const only=action({input:z.object({}),output:z.string(),handler:()=>"ACTION_HANDLER_IS_PRESENT"});');
  const source=await prepare();await buildApplication({...source,outdir:'release1'});await generateApi('release1');
  const actionCode=await readFile('release1/action.js','utf8');assert(actionCode.includes('ACTION_HANDLER_IS_PRESENT'));assert(!actionCode.includes('QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME'));
  assert((await readFile('release1/facet.js','utf8')).includes('QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME'));
  assert.equal(JSON.parse(await readFile('release1/manifest.json','utf8')).runtimeAbi,4);
  assert.equal(JSON.parse(await readFile('release1/schema.json','utf8')).notes.document.properties.title.type,'string');
- const api=await readFile('flared/_generated/api.ts','utf8');assert(api.includes('"notes":')&&api.includes('"list":'));
- assert((await readFile('flared/_generated/server.ts','utf8')).includes('createFunctions<typeof schema>'));
- await assert.rejects(access('flared/migrations'));await prepare();
+ const api=await readFile('flare/_generated/api.ts','utf8');assert(api.includes('"notes":')&&api.includes('"list":'));
+ assert((await readFile('flare/_generated/server.ts','utf8')).includes('createFunctions<typeof schema>'));
+ await assert.rejects(access('flare/migrations'));await prepare();
  await writeFile('.env.local','OTHER=value\\n');await frontendEnvironment('https://api.example.test/test/dev');await frontendEnvironment('https://api.example.test/test/dev');
- const env=await readFile('.env.local','utf8');assert(env.startsWith('OTHER=value\\n'));assert.equal((env.match(/PUBLIC_FLARED_URL=/g)||[]).length,1);assert(!env.includes('TOKEN'));
+ const env=await readFile('.env.local','utf8');assert(env.startsWith('OTHER=value\\n'));assert.equal((env.match(/PUBLIC_FLARE_URL=/g)||[]).length,1);assert(!env.includes('TOKEN'));
  console.log('PASS native flow');`;
     const result = spawnSync(
       process.execPath,
@@ -39,15 +39,13 @@ it("discovers schema/functions and generates typed API/server without SQL journa
   }
 }, 60000);
 it("backup CLI is explicit, project-scoped and never retries writes", async () => {
-  const directory = await mkdtemp(
-    join(process.cwd(), ".flared", "backup-cli-"),
-  );
+  const directory = await mkdtemp(join(process.cwd(), ".flare", "backup-cli-"));
   try {
     const source = `
-      import {backup} from ${JSON.stringify(resolve("packages/flared/src/cli/cloud.mjs"))};
+      import {backup} from ${JSON.stringify(resolve("packages/flare/src/cli/cloud.mjs"))};
       import {mkdir,writeFile} from 'node:fs/promises'; import assert from 'node:assert/strict';
       const project='00000000-0000-4000-8000-000000000001', id='00000000-0000-4000-8000-000000000002';
-      await mkdir('.flared'); await writeFile('.flared/project.json',JSON.stringify({project,platform:'https://api.example.test/control'}));
+      await mkdir('.flare'); await writeFile('.flare/project.json',JSON.stringify({project,platform:'https://api.example.test/control'}));
       const calls=[]; globalThis.fetch=async(url,init)=>{calls.push({url,init});return Response.json({ok:true});};
       await backup({operation:'list',env:'dev'});assert(calls[0].url.endsWith('/dev/backups'));
       await assert.rejects(backup({operation:'restore',env:'prod',from:'prod',id,confirm:project}));assert.equal(calls.length,1);
@@ -63,7 +61,7 @@ it("backup CLI is explicit, project-scoped and never retries writes", async () =
       {
         cwd: directory,
         encoding: "utf8",
-        env: { ...process.env, FLARED_DEPLOY_TOKEN: "synthetic-test-token" },
+        env: { ...process.env, FLARE_DEPLOY_TOKEN: "synthetic-test-token" },
         timeout: 10000,
       },
     );
@@ -75,20 +73,20 @@ it("backup CLI is explicit, project-scoped and never retries writes", async () =
 
 it("release build hook uses target URL, preserves dev env and never publishes after a failed build", async () => {
   const directory = await mkdtemp(
-    join(process.cwd(), ".flared", "release-cli-"),
+    join(process.cwd(), ".flare", "release-cli-"),
   );
   try {
     const source = `
- import {deploy,promote,rollback} from ${JSON.stringify(resolve("packages/flared/src/cli/cloud.mjs"))};
+ import {deploy,promote,rollback} from ${JSON.stringify(resolve("packages/flare/src/cli/cloud.mjs"))};
  import {mkdir,writeFile,readFile} from 'node:fs/promises';import assert from 'node:assert/strict';
  const project='00000000-0000-4000-8000-000000000001',hash='b'.repeat(64),active='a'.repeat(64);
- await mkdir('.flared');await writeFile('.flared/project.json',JSON.stringify({project,platform:'https://api.example.test/control'}));
- await writeFile('.env.local','PUBLIC_FLARED_URL=https://api.example.test/app/dev\\n');
+ await mkdir('.flare');await writeFile('.flare/project.json',JSON.stringify({project,platform:'https://api.example.test/control'}));
+ await writeFile('.env.local','PUBLIC_FLARE_URL=https://api.example.test/app/dev\\n');
  await mkdir('release');const bundle={release:{hash},manifest:{functions:{}},schema:{},facet:'code',action:'code'};
  for(const [key,value] of Object.entries(bundle))await writeFile('release/'+key+(key==='facet'||key==='action'?'.js':'.json'),typeof value==='string'?value:JSON.stringify(value));
  await writeFile('release/api.ts','export const api={};');
  const calls=[];globalThis.fetch=async(url,init)=>{calls.push({url,init});return Response.json(url.includes('/settings')?{url:'https://api.example.test/app/prod'}:url.includes('/health')?{active}:url.includes('/release-bundle')?bundle:{hash});};
- await deploy({env:'prod',release:'release',confirm:project,cmd:'bun -e \\'await Bun.write("built-url",process.env.PUBLIC_FLARED_URL)\\''});
+ await deploy({env:'prod',release:'release',confirm:project,cmd:'bun -e \\'await Bun.write("built-url",process.env.PUBLIC_FLARE_URL)\\''});
  assert.equal(await readFile('built-url','utf8'),'https://api.example.test/app/prod');assert((await readFile('.env.local','utf8')).endsWith('/dev\\n'));
  assert.equal(calls.filter(c=>c.init.method==='POST').length,1);
  calls.length=0;await assert.rejects(deploy({env:'prod',release:'release',confirm:project,cmd:'exit 13'}));assert.equal(calls.filter(c=>c.init.method==='POST').length,0);
@@ -102,7 +100,7 @@ it("release build hook uses target URL, preserves dev env and never publishes af
       {
         cwd: directory,
         encoding: "utf8",
-        env: { ...process.env, FLARED_DEPLOY_TOKEN: "synthetic-test-token" },
+        env: { ...process.env, FLARE_DEPLOY_TOKEN: "synthetic-test-token" },
         timeout: 30000,
       },
     );

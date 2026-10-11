@@ -1,4 +1,4 @@
-# Flared platform 0.3 — native-data preview
+# Flare platform 0.3 — native-data preview
 
 Shared Admin + Static Assets and Runtime Workers in the operator's own Cloudflare account, not Workers per application. Online-only Astro/shadcn dashboard, Access, D1 control catalogue/audit, Dynamic Workers, supervisor Durable Objects, persistent native SQLite `app` facets, hibernating live, R2 and Queues/Scheduler.
 

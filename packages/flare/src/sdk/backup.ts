@@ -1,4 +1,4 @@
-import { boundedJson, FlaredError, stableJson, type Json } from "./protocol.js";
+import { boundedJson, FlareError, stableJson, type Json } from "./protocol.js";
 import {
   documentValue,
   quote,
@@ -21,7 +21,7 @@ export type DataSnapshot = {
   >;
 };
 const reject = (code: string): never => {
-  throw new FlaredError(code, code);
+  throw new FlareError(code, code);
 };
 export function emptyData(storage: NativeStorage, schema: Schema) {
   for (const name of Object.keys(schema))

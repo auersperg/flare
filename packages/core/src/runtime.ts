@@ -18,19 +18,19 @@ import {
 import { WebSockets } from "agents/websockets";
 import { Scheduler } from "agents/schedules";
 import {
-  FlaredError,
+  FlareError,
   LIMITS,
   boundedJson,
   stableJson,
   assertPath,
   type Auth,
   type Json,
-} from "../../flared/src/sdk/protocol.js";
+} from "../../flare/src/sdk/protocol.js";
 import type {
   FacetRpc,
   Invocation,
   OutboxJob,
-} from "../../flared/src/sdk/cloudflare.js";
+} from "../../flare/src/sdk/cloudflare.js";
 import {
   digest,
   devToken,
@@ -151,7 +151,7 @@ export class DynamicTail extends WorkerEntrypoint<Env, { scope: string }> {
       if (e.outcome === "ok" && !e.exceptions.length && !e.logs.length)
         continue;
       console.log({
-        source: "flared-dynamic",
+        source: "flare-dynamic",
         scope: this.ctx.props.scope,
         outcome: e.outcome,
         exceptions: e.exceptions.slice(0, 5).map((x) => ({
@@ -1224,7 +1224,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       );
     } catch (error) {
       this.nextRetention = now + 60000;
-      console.warn({ source: "flared-retention", code: status(error).code });
+      console.warn({ source: "flare-retention", code: status(error).code });
     }
   }
   private async record(
@@ -2019,7 +2019,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/health")
       return Response.json({
-        service: "flared-runtime",
+        service: "flare-runtime",
         version: "0.3.0",
         status: "service-reachable",
       });
@@ -2168,7 +2168,7 @@ export default {
     } catch (e) {
       const out = status(e);
       if (out.status >= 500)
-        console.error({ source: "flared-runtime", scope, code: out.code });
+        console.error({ source: "flare-runtime", scope, code: out.code });
       return Response.json(
         { error: out.code },
         {
@@ -2189,7 +2189,7 @@ export default {
       (body) => getSupervisor(env, body.scope).job(body.job),
       (body, error) =>
         console.error({
-          source: "flared-job",
+          source: "flare-job",
           scope: body.scope,
           id: body.job.id,
           code: status(error).code,

@@ -2,7 +2,7 @@ import type {
   StandardSchemaV1,
   StandardJSONSchemaV1,
 } from "@standard-schema/spec";
-import { FlaredError, boundedJson, stableJson, type Json } from "./protocol.js";
+import { FlareError, boundedJson, stableJson, type Json } from "./protocol.js";
 
 export type SqlValue = ArrayBuffer | string | number | null;
 /** The small structural portion of native storage needed by the adapter; no Worker globals in public types. */
@@ -36,14 +36,16 @@ export interface Table<
     fields: F,
   ): Table<V, I & Record<N, F>>;
 }
-export type Schema = Record<string, Table>;
-export type Value<T extends Table> = StandardSchemaV1.InferOutput<
+/** Runtime schema needs only immutable validators and indexes, not builder methods. */
+export type TableDefinition = Pick<Table, "validator" | "indexes">;
+export type Schema = Record<string, TableDefinition>;
+export type Value<T extends TableDefinition> = StandardSchemaV1.InferOutput<
   T["validator"]
 >;
-export type Input<T extends Table> = StandardSchemaV1.InferInput<
+export type Input<T extends TableDefinition> = StandardSchemaV1.InferInput<
   T["validator"]
 >;
-export type Doc<T extends Table> = Value<T> & {
+export type Doc<T extends TableDefinition> = Value<T> & {
   readonly _id: string;
   readonly _creationTime: number;
 };
@@ -56,7 +58,7 @@ export function identifier(name: string): string {
     !/^[a-zA-Z][a-zA-Z0-9_]{0,47}$/.test(name) ||
     name.toLowerCase().startsWith("sqlite_")
   )
-    throw new FlaredError(
+    throw new FlareError(
       "INVALID_SCHEMA",
       "Invalid table, index or field name",
     );
@@ -64,7 +66,7 @@ export function identifier(name: string): string {
 }
 export const quote = (name: string) => {
   if (!/^[a-zA-Z][a-zA-Z0-9_]{0,127}$/.test(name))
-    throw new FlaredError("INVALID_SCHEMA", "Invalid SQL identifier");
+    throw new FlareError("INVALID_SCHEMA", "Invalid SQL identifier");
   return `"${name}"`;
 };
 export const fieldSql = (field: string) =>
@@ -87,7 +89,7 @@ export function defineTable<V extends Validator>(validator: V): Table<V, {}> {
           fields.length > 4 ||
           new Set(fields).size !== fields.length
         )
-          throw new FlaredError("INVALID_SCHEMA", "Invalid index");
+          throw new FlareError("INVALID_SCHEMA", "Invalid index");
         fields.forEach(identifier);
         return table({ ...indexes, [name]: Object.freeze([...fields]) });
       },
@@ -98,7 +100,7 @@ export function defineTable<V extends Validator>(validator: V): Table<V, {}> {
 export function schemaContract(schema: Schema): SchemaContract {
   const out: SchemaContract = Object.create(null);
   if (Object.keys(schema).length > 100)
-    throw new FlaredError("INVALID_SCHEMA", "Maximum 100 tables");
+    throw new FlareError("INVALID_SCHEMA", "Maximum 100 tables");
   for (const [name, table] of Object.entries(schema)) {
     identifier(name);
     const document = table.validator["~standard"].jsonSchema.output({
@@ -117,11 +119,11 @@ export function assertSchemaContract(contract: SchemaContract): void {
     typeof contract !== "object" ||
     Object.keys(contract).length > 100
   )
-    throw new FlaredError("INVALID_SCHEMA", "Invalid schema");
+    throw new FlareError("INVALID_SCHEMA", "Invalid schema");
   const names = new Set<string>();
   for (const [name, table] of Object.entries(contract)) {
     if (names.has(name.toLowerCase()))
-      throw new FlaredError(
+      throw new FlareError(
         "INVALID_SCHEMA",
         "SQLite table names are case-insensitive",
       );
@@ -134,7 +136,7 @@ export function assertSchemaContract(contract: SchemaContract): void {
       !doc.properties ||
       doc.additionalProperties !== false
     )
-      throw new FlaredError(
+      throw new FlareError(
         "INVALID_SCHEMA",
         "Tables require a closed object validator",
       );
@@ -144,11 +146,11 @@ export function assertSchemaContract(contract: SchemaContract): void {
       !table.indexes ||
       Object.keys(table.indexes).length > 20
     )
-      throw new FlaredError("INVALID_SCHEMA", "Schema exceeds limits");
+      throw new FlareError("INVALID_SCHEMA", "Schema exceeds limits");
     const indexes = new Set<string>();
     for (const [index, fields] of Object.entries(table.indexes)) {
       if (indexes.has(index.toLowerCase()))
-        throw new FlaredError(
+        throw new FlareError(
           "INVALID_SCHEMA",
           "SQLite index names are case-insensitive",
         );
@@ -160,7 +162,7 @@ export function assertSchemaContract(contract: SchemaContract): void {
         fields.length > 4 ||
         new Set(fields).size !== fields.length
       )
-        throw new FlaredError("INVALID_SCHEMA", "Invalid index fields");
+        throw new FlareError("INVALID_SCHEMA", "Invalid index fields");
       for (const field of fields) {
         identifier(field);
         const p = doc.properties[field];
@@ -174,7 +176,7 @@ export function assertSchemaContract(contract: SchemaContract): void {
           ) ||
           (Array.isArray(s?.anyOf) && s.anyOf.every(scalar));
         if (!p || !scalar(p))
-          throw new FlaredError(
+          throw new FlareError(
             "INVALID_SCHEMA",
             "Indexes require declared scalar fields",
           );
@@ -187,7 +189,7 @@ export function defineSchema<const S extends Schema>(schema: S): S {
   return Object.freeze(schema);
 }
 const documents = new WeakMap<object, any>();
-function documentSchema(table: Table) {
+function documentSchema(table: TableDefinition) {
   let doc = documents.get(table.validator);
   if (!doc) {
     doc = table.validator["~standard"].jsonSchema.output({
@@ -198,7 +200,7 @@ function documentSchema(table: Table) {
   return doc;
 }
 export async function documentValue(
-  table: Table,
+  table: TableDefinition,
   input: unknown,
 ): Promise<Record<string, Json>> {
   boundedJson(input, 65536);
@@ -209,7 +211,7 @@ export async function documentValue(
     typeof input !== "object" ||
     Object.keys(input).some((k) => !Object.hasOwn(properties, k))
   )
-    throw new FlaredError("INVALID_INPUT", "Unknown document field");
+    throw new FlareError("INVALID_INPUT", "Unknown document field");
   const result = await table.validator["~standard"].validate(input);
   if (
     result.issues ||
@@ -218,7 +220,7 @@ export async function documentValue(
     typeof result.value !== "object" ||
     Object.keys(result.value).some((k) => !Object.hasOwn(properties, k))
   )
-    throw new FlaredError("INVALID_INPUT", "Document failed schema validation");
+    throw new FlareError("INVALID_INPUT", "Document failed schema validation");
   return JSON.parse(boundedJson(result.value, 65536));
 }
 export async function applySchema(storage: NativeStorage, schema: Schema) {
@@ -241,7 +243,7 @@ export async function applySchema(storage: NativeStorage, schema: Schema) {
           storage.sql.exec(`SELECT 1 FROM ${quote(name)} LIMIT 1`).toArray()
             .length
         )
-          throw new FlaredError(
+          throw new FlareError(
             "INVALID_SCHEMA",
             "Cannot remove a nonempty table; explicitly clear it first",
           );
