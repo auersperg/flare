@@ -18,7 +18,7 @@ There is one private tarball and no overrides:
 ```json
 {
   "dependencies": {
-    "flared": "file:.packages/flared-0.3.0.tgz"
+    "flared": "file:.packages/flared-0.3.1.tgz"
   }
 }
 ```

@@ -1,6 +1,6 @@
 {
   "name": "@flared/sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "Thin application SDK for the Cloudflare-hosted Flared platform (private minimum)",
   "type": "module",

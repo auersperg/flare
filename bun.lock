@@ -26,29 +26,29 @@
     },
     "packages/cli": {
       "name": "@flared/cli",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "bin": {
         "flared": "./bin/flared.mjs",
       },
       "dependencies": {
-        "@flared/sdk": "0.2.0",
+        "@flared/sdk": "0.3.1",
         "json-schema-to-typescript": "16.0.0",
       },
     },
     "packages/core": {
       "name": "@flared/platform",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "agents": "0.28.0",
       },
     },
     "packages/core/dashboard": {
       "name": "@flared/dashboard",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@astrojs/react": "7.0.1",
         "@base-ui/react": "1.9.0",
-        "@flared/sdk": "0.2.0",
+        "@flared/sdk": "0.3.1",
         "@fontsource-variable/geist": "5.3.0",
         "@tailwindcss/vite": "4.3.3",
         "astro": "7.3.8",
@@ -68,7 +68,7 @@
     },
     "packages/flared": {
       "name": "flared",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "bin": {
         "flared": "./bin.mjs",
       },
@@ -86,7 +86,7 @@
     },
     "packages/sdk": {
       "name": "@flared/sdk",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@standard-schema/spec": "1.1.0",
       },

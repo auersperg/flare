@@ -74,7 +74,7 @@
 
 ```sh
 # Сейчас — проверенный приватный tarball, не опубликованный npm пакет
-bun add /path/to/flared-0.3.0.tgz
+bun add /path/to/flared-0.3.1.tgz
 bunx flared dev
 # Browser approval → выбор/создание проекта → cloud dev + typed API
 # Frontend запускается своим обычным dev server
@@ -188,6 +188,6 @@ Auth defaults disabled for an environment. Owner enables Auth and public registr
 
 Auth tab paginates 50 users, refreshes on demand, and permits owner-only create/reset/block/revoke/configuration with production confirmation, Access/CSRF checks and audit. Project-scoped CLI credentials cannot modify end-user authentication. Password changes revoke every session; explicit logout revokes its own session. Revoked socket identities are closed and also rechecked before delivery/calls; queries/actions receive the same ctx.auth. App functions still implement record/organization permissions; authentication is not automatic row-level security. External identities should be keyed by issuer+subject, not unverified client user IDs.
 
-createPasswordAuth stores a bearer only in memory and provides register/login/logout/me/changePassword/getToken/onChange; connect onChange to client.refreshAuth. It does not persist passwords/tokens, automatically retry writes or put credentials in URLs. Reload requires login again. Astro, server JS and mobile clients use the same protocol; no browser-global requirement in the SDK.
+createPasswordAuth persists only the opaque session token and expiry in browser localStorage, namespaced by the complete project/environment URL. Call restore() before protected UI: it verifies /auth/me on the server before exposing a token or user. Connect onChange to client.refreshAuth; getUser() returns the already verified user without an extra request. Expired/revoked sessions are cleared; a network failure preserves storage for retry. Logout clears local state even when offline; browser storage events synchronize other tabs. No passwords, always-on polling, automatic write retries or credentials in URLs. Browser persistence remains JavaScript-readable, as with the Convex Auth browser pattern: prevent XSS and avoid untrusted scripts. This is a bounded 12-hour session, not an indefinite refresh-token flow. Server JS defaults to memory-only, and storage can be null or a custom synchronous adapter. Dispose removes listeners without revoking or deleting a durable session. No backend migration or additional KV/DO is required.
 
 Private logical backups now preserve user IDs/login/password hashes/blocked status but never active sessions. Only an empty target (including no users) can be restored. Authentication enablement/registration settings stay with the target and are not promoted or restored implicitly. Old capsules lacking accounts restore no users. Credential backups are sensitive private R2 objects, not downloadable through dashboard. No email verification, emailed recovery, MFA, refresh-token flow or automated abuse challenge is claimed. Owners can reset passwords; anonymous recovery is unavailable. Public synthetic demo data remains public even after adding login.

@@ -10,7 +10,7 @@ Customer frontend/backend source belongs in separate application repositories. T
 
 ## Build and dependency boundaries
 
-- One Bun workspace and lockfile; SDK/CLI 0.3.0, shared Admin/Runtime, Astro 7.3.8 and actual shadcn 4.21.4 preset `bKGijeGe`.
+- One Bun workspace and lockfile; SDK/CLI 0.3.1, shared Admin/Runtime, Astro 7.3.8 and actual shadcn 4.21.4 preset `bKGijeGe`.
 - Preset: Base UI Lyra / Stone / Geist / Lucide / subtle menu accent. Use checked-in components.json; don't add custom button/badge geometry.
 - Native runtime dependencies remain pinned (Agents 0.28.0, Wrangler 4.149.0). UI maintenance does not add Cloudflare services or replace Dynamic Workers/Facets with per-project Workers.
 - TypeScript 6.0.2 is supported by Astro/Volar's compiler API; don't force TypeScript 7 peers. Native Vite prerender resolution keeps the React virtual-module consumer and Astro cookie version bundled.

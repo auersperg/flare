@@ -595,14 +595,56 @@ export type PasswordSession = {
   expiresAt: number;
   user: PasswordUser;
 };
-/** In-memory bearer session; no automatic storage, credentials in URLs or write retries.
- * Connect onChange to client.refreshAuth() to clear/reconnect reactive state. */
-export function createPasswordAuth(options: { url: string }) {
+/** Browser persistence is scoped to the full deployment URL. Passwords are never stored.
+ * Server/mobile callers can provide storage explicitly, or use null for memory-only auth.
+ * Connect onChange to client.refreshAuth() and call restore() before rendering protected UI. */
+export type PasswordAuthStorage = Pick<
+  Storage,
+  "getItem" | "setItem" | "removeItem"
+>;
+export function createPasswordAuth(options: {
+  url: string;
+  storage?: PasswordAuthStorage | null;
+}) {
   const base = options.url.replace(/\/$/, "");
-  let session: PasswordSession | null = null;
+  const key = "flared:session:" + encodeURIComponent(base);
+  let storage = options.storage ?? null;
+  let browserStorage: Storage | null = null;
+  if (typeof window !== "undefined") {
+    try {
+      browserStorage = window.localStorage;
+    } catch {
+      /* Browser storage may be denied. */
+    }
+    if (options.storage === undefined) storage = browserStorage;
+  }
+  let session: Pick<PasswordSession, "token" | "expiresAt"> | null = null;
+  let user: PasswordUser | null = null;
+  let version = 0;
+  let listening = false;
+  let restoring: {
+    version: number;
+    promise: Promise<PasswordUser | null>;
+  } | null = null;
   const listeners = new Set<() => void>();
   const changed = () => {
     for (const listener of listeners) listener();
+  };
+  const persist = () => {
+    if (!storage) return;
+    try {
+      if (session) storage.setItem(key, JSON.stringify(session));
+      else storage.removeItem(key);
+    } catch {
+      /* A denied/quota-limited store must not prevent sign-out. */
+    }
+  };
+  const clear = () => {
+    ++version;
+    session = null;
+    user = null;
+    persist();
+    changed();
   };
   const request = async <T>(
     op: string,
@@ -628,18 +670,98 @@ export function createPasswordAuth(options: { url: string }) {
       );
     return data as T;
   };
+  const restore = (): Promise<PasswordUser | null> => {
+    if (!listening && browserStorage && storage === browserStorage) {
+      window.addEventListener("storage", onStorage);
+      listening = true;
+    }
+    if (restoring?.version === version) return restoring.promise;
+    const current = version;
+    const promise = (async () => {
+      let saved = session;
+      if (storage) {
+        try {
+          const raw = storage.getItem(key);
+          saved = raw ? JSON.parse(raw) : null;
+        } catch {
+          saved = null;
+        }
+      }
+      if (
+        !saved ||
+        !/^flared_session_[a-f0-9]{64}$/.test(saved.token) ||
+        !Number.isSafeInteger(saved.expiresAt) ||
+        saved.expiresAt <= Date.now()
+      ) {
+        if (current === version) clear();
+        return null;
+      }
+      try {
+        const verified = await request<PasswordUser>("me", {}, saved.token);
+        if (current !== version) return null;
+        session = { token: saved.token, expiresAt: saved.expiresAt };
+        user = verified;
+        changed();
+        return verified;
+      } catch (error) {
+        if (current !== version) return null;
+        if (
+          error instanceof FlaredError &&
+          ["UNAUTHORIZED", "AUTH_EXPIRED", "AUTH_DISABLED"].includes(error.code)
+        ) {
+          clear();
+          return null;
+        }
+        // Network failures are not evidence of an invalid session. Keep storage for retry.
+        throw error;
+      }
+    })();
+    restoring = { version: current, promise };
+    void promise
+      .finally(() => {
+        if (restoring?.promise === promise) restoring = null;
+      })
+      .catch(() => {});
+    return promise;
+  };
+  function onStorage(event: StorageEvent) {
+    if (
+      event.storageArea !== browserStorage ||
+      (event.key !== key && event.key !== null)
+    )
+      return;
+    ++version;
+    session = null;
+    user = null;
+    changed();
+    void restore().catch(() => {});
+  }
   const signIn = async (op: string, login: string, password: string) => {
-    session = await request<PasswordSession>(
+    const current = ++version;
+    const result = await request<PasswordSession>(
       op,
       { login, password },
       undefined,
     );
+    if (current !== version) {
+      await request("logout", {}, result.token).catch(() => {});
+      throw new FlaredError(
+        "AUTH_CHANGED",
+        "Authentication changed during sign-in",
+      );
+    }
+    session = { token: result.token, expiresAt: result.expiresAt };
+    user = result.user;
+    persist();
     changed();
-    return session.user;
+    return result.user;
   };
+  const getToken = () =>
+    session && session.expiresAt > Date.now() ? session.token : null;
   return {
-    getToken: () =>
-      session && session.expiresAt > Date.now() ? session.token : null,
+    getToken,
+    getUser: () => (getToken() ? user : null),
+    restore,
     onChange(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -648,17 +770,50 @@ export function createPasswordAuth(options: { url: string }) {
       signIn("register", login, password),
     login: (login: string, password: string) =>
       signIn("login", login, password),
-    me: () => request<PasswordUser>("me", {}),
+    async me() {
+      const current = version;
+      try {
+        const value = await request<PasswordUser>("me", {});
+        if (current === version) user = value;
+        return value;
+      } catch (error) {
+        if (
+          current === version &&
+          error instanceof FlaredError &&
+          ["UNAUTHORIZED", "AUTH_EXPIRED", "AUTH_DISABLED"].includes(error.code)
+        )
+          clear();
+        throw error;
+      }
+    },
     async logout() {
-      const token = session?.token;
-      session = null;
-      changed();
+      let token = session?.token;
+      // Logout may be requested before restore finishes. Revoke the saved session too.
+      if (!token && storage) {
+        try {
+          const saved = JSON.parse(storage.getItem(key) ?? "null");
+          if (saved && /^flared_session_[a-f0-9]{64}$/.test(saved.token))
+            token = saved.token;
+        } catch {
+          /* No valid saved session. */
+        }
+      }
+      clear();
       if (token) await request("logout", {}, token);
     },
     async changePassword(currentPassword: string, password: string) {
+      const current = version;
       await request("change-password", { currentPassword, password });
+      if (current === version) clear();
+    },
+    dispose() {
+      ++version;
+      if (listening) window.removeEventListener("storage", onStorage);
+      listening = false;
+      listeners.clear();
       session = null;
-      changed();
+      user = null;
+      // Disposing a view is not logging out: keep the durable session.
     },
   };
 }

@@ -37,7 +37,7 @@ describe("Flared product consistency", () => {
       const folder = name === "platform" ? "core" : name;
       const pkg = JSON.parse(read(`packages/${folder}/package.json`));
       expect(pkg.name).toBe(profile.packages[name]);
-      expect(pkg.version).toBe("0.3.0");
+      expect(pkg.version).toBe(JSON.parse(read("package.json")).version);
       expect(pkg.license).toBe("UNLICENSED");
       expect(pkg.private).toBe(true);
     },
@@ -45,7 +45,9 @@ describe("Flared product consistency", () => {
   it("ships only a flared CLI without core/emulator/dashboard dependencies", () => {
     const pkg = JSON.parse(read("packages/cli/package.json"));
     expect(pkg.bin).toEqual({ flared: "./bin/flared.mjs" });
-    expect(pkg.dependencies[profile.packages.sdk]).toBe("0.3.0");
+    expect(pkg.dependencies[profile.packages.sdk]).toBe(
+      JSON.parse(read("packages/sdk/package.json")).version,
+    );
     for (const name of Object.keys(pkg.dependencies))
       expect(name).not.toMatch(
         /agents|wrangler|workerd|vite|platform|dashboard/i,
