@@ -48,6 +48,11 @@ describe("password authentication", () => {
     await expect(hashPassword("short")).rejects.toMatchObject({
       code: "INVALID_PASSWORD",
     });
+    expect(await verifyPassword("six123", await hashPassword("six123"))).toBe(
+      true,
+    );
+    const { auth } = store();
+    expect(auth.settings().passwordMinLength).toBe(6);
   });
   it("defaults closed and enables scoped open registration without exposing hashes", async () => {
     const { auth, db } = store();

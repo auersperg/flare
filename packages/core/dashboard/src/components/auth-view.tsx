@@ -39,11 +39,26 @@ export default function AuthView(scope: Scope) {
       productionId: scope.env === "prod" ? scope.project.id : undefined,
       fields,
       submit: async (form) => {
-        await api(path + "/" + op, {
-          ...input,
-          ...values(fields, (key) => new FormData(form).get(key)),
-          confirm: scope.project.id,
-        });
+        try {
+          await api(path + "/" + op, {
+            ...input,
+            ...values(fields, (key) => new FormData(form).get(key)),
+            confirm: scope.project.id,
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message === "INVALID_PASSWORD")
+            throw new Error(
+              "Password must contain 6–128 characters. Spaces are allowed; the password is not trimmed.",
+            );
+          if (
+            error instanceof Error &&
+            error.message === "REGISTRATION_UNAVAILABLE"
+          )
+            throw new Error(
+              "This login is already registered. Choose another login or manage the existing user.",
+            );
+          throw error;
+        }
         users.refresh();
         config.refresh();
       },
@@ -53,7 +68,7 @@ export default function AuthView(scope: Scope) {
     name: "password",
     type: "password",
     required: true,
-    description: "15–128 characters. No recovery by email is configured.",
+    description: "6–128 characters. No recovery by email is configured.",
   };
   return (
     <div className="space-y-4 p-4">

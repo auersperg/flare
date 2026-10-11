@@ -52,7 +52,7 @@ export function loginName(value: unknown): string {
   return login;
 }
 function passwordValue(value: unknown): string {
-  if (typeof value !== "string" || value.length < 15 || value.length > 128)
+  if (typeof value !== "string" || value.length < 6 || value.length > 128)
     fail("INVALID_PASSWORD");
   return value;
 }
@@ -138,7 +138,7 @@ export class PasswordAuth {
     return {
       enabled: !!row.enabled,
       registration: !!row.registration,
-      passwordMinLength: 15,
+      passwordMinLength: 6,
       sessionHours: 12,
     };
   }

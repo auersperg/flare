@@ -162,6 +162,14 @@ describe("Astro/shadcn dashboard", () => {
       'cursor ? "?cursor=" + encodeURIComponent(cursor) : ""',
     );
     expect(authView).not.toContain('"/auth-users?cursor="');
+    expect(authView).toContain("Password must contain 6–128 characters");
+    const forms = read("packages/core/dashboard/src/components/common.tsx");
+    expect(forms).toContain(
+      'minLength={f.type === "password" ? 6 : undefined}',
+    );
+    expect(forms).toContain(
+      'maxLength={f.type === "password" ? 128 : undefined}',
+    );
   });
   it("uses the supplied real preset and local fonts", () => {
     const config = JSON.parse(read("packages/core/dashboard/components.json"));

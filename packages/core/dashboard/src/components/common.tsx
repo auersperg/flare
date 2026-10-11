@@ -328,6 +328,9 @@ function FieldInput({ field: f, index: i }: { field: Field; index: number }) {
                     : "text"
               }
               autoComplete={f.type === "password" ? "new-password" : undefined}
+              minLength={f.type === "password" ? 6 : undefined}
+              maxLength={f.type === "password" ? 128 : undefined}
+              required={f.required && mode === "value"}
               step={f.type === "integer" ? 1 : "any"}
               min={f.minimum}
               max={f.maximum}

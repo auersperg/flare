@@ -320,7 +320,7 @@ try {
   });
   await test("Cloud native scrypt, public registration, user context and administrator password reset", async () => {
     const url = install.runtimeUrl + "/p/" + id + "/dev",
-      password = "Cloud acceptance long passphrase 73!";
+      password = "Six73!";
     const auth = createPasswordAuth({ url }),
       client = createClient({ url, getToken: auth.getToken });
     clients.push(client);
