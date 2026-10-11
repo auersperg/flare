@@ -1,8 +1,8 @@
 import { describe, expect, it, jest } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createClient, reference } from "../packages/sdk/src/client.js";
-import { FlaredProvider, useQuery } from "../packages/sdk/src/react.js";
+import { createClient, reference } from "../packages/flared/src/sdk/client.js";
+import { FlaredProvider, useQuery } from "../packages/flared/src/sdk/react.js";
 
 describe("React query contract", () => {
   it.each([{}, "skip"] as const)(

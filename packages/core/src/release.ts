@@ -3,11 +3,11 @@ import {
   stableJson,
   assertPath,
   type Manifest,
-} from "../../sdk/src/protocol.js";
+} from "../../flared/src/sdk/protocol.js";
 import {
   assertSchemaContract,
   type SchemaContract,
-} from "../../sdk/src/schema.js";
+} from "../../flared/src/sdk/schema.js";
 import { scopeForDeletion } from "./maintenance.js";
 import { digest, fail } from "./security.js";
 export type ReleaseUpload = {

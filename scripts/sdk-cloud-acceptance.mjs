@@ -1,4 +1,4 @@
-import { bundle } from "../packages/cli/lib/bundle.mjs";
+import { bundle } from "../packages/flared/src/cli/bundle.mjs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 await mkdir("artifacts", { recursive: true });

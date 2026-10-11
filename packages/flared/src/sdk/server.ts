@@ -1,3 +1,4 @@
+export { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Validator, Schema } from "./schema.js";
 import { schemaContract } from "./schema.js";

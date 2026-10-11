@@ -22,8 +22,6 @@ New projects start **empty**, with no demo tables, functions or records. Define 
 | ----------------- | -------------------------------------------------------------------------- |
 | `packages/flared` | One application-facing package: SDK exports and CLI command                |
 | `packages/core`   | Platform runtime, online dashboard, D1 migrations, empty project bootstrap |
-| `packages/sdk`    | Client, React hooks, server declarations and native adapters               |
-| `packages/cli`    | Application compilation and deployment commands                            |
 | `tests`           | Regression tests and small test-only fixtures, never production seeds      |
 | `scripts`         | Reproducible builds, packaging checks and explicit cloud acceptance        |
 | `docs`            | Architecture, operations and remaining production gates                    |
@@ -61,7 +59,7 @@ Dashboard: Astro 7.3.8, React 19.3.0, actual shadcn `bKGijeGe` preset (Base UI L
 
 ## Application development
 
-Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`flared`**: client, server declarations and CLI in one installation. SDK/CLI remain internal source workspaces, not distributed dependencies. The `flared` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flared/sdk` / `@flared/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
+Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`flared`**: client, server declarations and CLI in one installation. SDK/CLI live inside `packages/flared/src`, not separate source workspaces. The `flared` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flared/sdk` / `@flared/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
 
 Target registry installation (not available yet: private/unpublished):
 
@@ -246,6 +244,6 @@ names are not a description of an operator's current installation.
 
 Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx flared promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx flared rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
 
-`bunx flared deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/cli/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
+`bunx flared deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flared/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
 
 Operator checklist: [production runbook](docs/production-runbook.md). Short acceptance does not certify a monthly bill or an unperformed load test.

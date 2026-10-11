@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { scrypt, timingSafeEqual } from "node:crypto";
 import { fail, digest } from "./security.js";
-import type { Auth } from "../../sdk/src/protocol.js";
+import type { Auth } from "../../flared/src/sdk/protocol.js";
 
 export type AuthBackupUser = {
   id: string;

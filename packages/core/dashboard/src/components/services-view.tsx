@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { fileMetadata, uploadFile } from "@flared/sdk";
+import { fileMetadata, uploadFile } from "flared";
 import { RefreshCw, Download, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";

@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createHmac } from "node:crypto";
-import { buildApplication } from "../packages/cli/lib/build.mjs";
+import { buildApplication } from "../packages/flared/src/cli/build.mjs";
 import {
   createClient,
   reference,
   uploadFile,
   createPasswordAuth,
-} from "../packages/sdk/dist/client.js";
+} from "../packages/flared/dist/sdk/client.js";
 const base = process.env.FLARED_KERNEL_URL;
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(base ?? ""))
   throw Error(
@@ -303,7 +303,10 @@ try {
     const entry = join(directory, "versions.ts");
     const baseSource = (
       await readFile("tests/fixtures/native-app.ts", "utf8")
-    ).replaceAll("../../packages/sdk/src/", resolve("packages/sdk/src") + "/");
+    ).replaceAll(
+      "../../packages/flared/src/sdk/",
+      resolve("packages/flared/src/sdk") + "/",
+    );
     try {
       for (const env of [dev, prod])
         await control("configure", { scope: env, origins: [], oidc: null });
@@ -384,7 +387,10 @@ try {
     const entry = join(directory, "crash-release.ts");
     const source = (
       await readFile("tests/fixtures/native-app.ts", "utf8")
-    ).replaceAll("../../packages/sdk/src/", resolve("packages/sdk/src") + "/");
+    ).replaceAll(
+      "../../packages/flared/src/sdk/",
+      resolve("packages/flared/src/sdk") + "/",
+    );
     const proof = createClient({ url: base + "/p/" + target });
     try {
       await control("configure", { scope: target, origins: [], oidc: null });

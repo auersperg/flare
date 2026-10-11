@@ -1,7 +1,7 @@
 import { bundle } from "./bundle.mjs";
 import { compile } from "json-schema-to-typescript";
-import { manifest, schemaContract } from "@flared/sdk/server";
-import { stableJson } from "@flared/sdk/protocol";
+import { manifest, schemaContract } from "../sdk/server.js";
+import { stableJson } from "../sdk/protocol.js";
 import { createHash } from "node:crypto";
 import {
   access,

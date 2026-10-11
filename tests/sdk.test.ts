@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { z } from "zod";
-import { defineTable } from "../packages/sdk/src/schema.js";
-import { createClient, type Socket } from "../packages/sdk/src/client.js";
+import { defineTable } from "../packages/flared/src/sdk/schema.js";
+import {
+  createClient,
+  type Socket,
+} from "../packages/flared/src/sdk/client.js";
 import {
   action,
   defineApp,
@@ -10,14 +13,14 @@ import {
   mutation,
   query,
   validate,
-} from "../packages/sdk/src/server.js";
+} from "../packages/flared/src/sdk/server.js";
 import {
   assertPath,
   errorCode,
   boundedJson,
   reference,
   stableJson,
-} from "../packages/sdk/src/protocol.js";
+} from "../packages/flared/src/sdk/protocol.js";
 
 afterEach(() => jest.useRealTimers());
 const json = (result: unknown, status = 200) =>

@@ -1,4 +1,4 @@
-import { LIMITS } from "../../sdk/src/protocol.js";
+import { LIMITS } from "../../flared/src/sdk/protocol.js";
 import { fail, status } from "./security.js";
 import { scopeForDeletion } from "./maintenance.js";
 export type FileInput = { name: string; type: string; size: number };

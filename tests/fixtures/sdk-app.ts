@@ -5,7 +5,7 @@ import {
   defineSchema,
   defineTable,
   createFunctions,
-} from "../../packages/sdk/src/server.js";
+} from "../../packages/flared/src/sdk/server.js";
 const schema = defineSchema({
   counter: defineTable(z.object({ value: z.number() })),
 });

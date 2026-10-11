@@ -1,8 +1,8 @@
 import React, { Component, createElement as h, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { FlaredProvider, useQuery } from "../../packages/sdk/src/react";
-import { FlaredError, reference } from "../../packages/sdk/src/protocol";
+import { FlaredProvider, useQuery } from "../../packages/flared/src/sdk/react";
+import { FlaredError, reference } from "../../packages/flared/src/sdk/protocol";
 const listeners = new Map<
   string,
   { next: (v: number) => void; error: (e: FlaredError) => void }

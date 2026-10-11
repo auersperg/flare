@@ -25,12 +25,12 @@ import {
   assertPath,
   type Auth,
   type Json,
-} from "../../sdk/src/protocol.js";
+} from "../../flared/src/sdk/protocol.js";
 import type {
   FacetRpc,
   Invocation,
   OutboxJob,
-} from "../../sdk/src/cloudflare.js";
+} from "../../flared/src/sdk/cloudflare.js";
 import {
   digest,
   devToken,

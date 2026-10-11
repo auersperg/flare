@@ -218,7 +218,7 @@ describe("Dashboard standardization", () => {
     }
     expect(read("common.tsx")).toContain("<EmptyRoot>");
     expect(read("sdk-view.tsx")).not.toContain(
-      'from "../../../../sdk/src/client"',
+      'from "../../../../flared/src/sdk/client"',
     );
     expect(read("sdk-view.tsx").replace(/\s+/g, " ")).toContain(
       "this page opens no background subscription",

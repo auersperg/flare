@@ -1,20 +1,14 @@
-import { cp, mkdir, rm } from "node:fs/promises";
-await rm("packages/sdk/dist", { recursive: true, force: true });
-await mkdir("packages/sdk/dist", { recursive: true });
+import { mkdir, rm } from "node:fs/promises";
+const out = "packages/flared/dist";
+await rm(out, { recursive: true, force: true });
+await mkdir(`${out}/sdk`, { recursive: true });
 const transpiler = new Bun.Transpiler({ loader: "ts", target: "browser" });
-for (const name of [
-  "client",
-  "server",
-  "react",
-  "protocol",
-  "cloudflare",
-  "schema",
-  "database",
-  "backup",
-]) {
-  const source = await Bun.file(`packages/sdk/src/${name}.ts`).text();
+const sourceRoot = "packages/flared/src/sdk";
+for await (const file of new Bun.Glob("**/*.ts").scan({ cwd: sourceRoot })) {
+  if (file.endsWith(".d.ts")) continue;
+  const source = await Bun.file(`${sourceRoot}/${file}`).text();
   await Bun.write(
-    `packages/sdk/dist/${name}.js`,
+    `${out}/sdk/${file.replace(/\.ts$/, ".js")}`,
     transpiler.transformSync(source),
   );
 }
@@ -23,19 +17,16 @@ const result = Bun.spawnSync(
     process.execPath,
     "node_modules/typescript/bin/tsc",
     "-p",
-    "packages/sdk/tsconfig.build.json",
+    "packages/flared/tsconfig.build.json",
   ],
   { stdout: "inherit", stderr: "inherit" },
 );
 if (result.exitCode !== 0) process.exit(result.exitCode);
-// One distributable package. Internal workspaces are never registry dependencies
-// of flared; the portable SDK and the Bun-only CLI have separate entry points.
-await rm("packages/flared/dist", { recursive: true, force: true });
-await cp("packages/sdk/dist", "packages/flared/dist/sdk", { recursive: true });
 const pkg = await Bun.file("packages/flared/package.json").json();
 const cli = await Bun.build({
-  entrypoints: ["packages/cli/bin/flared.mjs"],
-  outdir: "packages/flared/dist/cli",
+  entrypoints: ["packages/flared/src/cli/main.mjs"],
+  outdir: `${out}/cli`,
+  naming: { entry: "flared.js" },
   target: "bun",
   format: "esm",
   splitting: true,
@@ -49,7 +40,7 @@ if (
     /packages\/core\/|node_modules\/(agents|wrangler|workerd)\//.test(path),
   )
 )
-  throw new Error("Platform code entered application CLI");
+  throw Error("Platform code entered application CLI");
 console.log(
-  "Single flared package built: portable SDK/types and separate lazy Bun CLI",
+  "Single flared package built directly: portable SDK/types and lazy Bun CLI",
 );

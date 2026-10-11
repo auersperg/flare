@@ -9,9 +9,14 @@
 - `flared/react`: hooks; React is an optional peer, not required by non-React apps.
 - `flared/protocol`: serializable contracts.
 - `flared/cloudflare`: build-time native adapters, not a frontend import.
-- `bin.mjs`: Bun-only CLI, compiled separately with lazy chunks for help/login/compiler paths.
+- `dist/cli/flared.js`: Bun-only CLI, compiled separately with lazy chunks for help/login/compiler paths.
 
-The internal `packages/sdk` and `packages/cli` workspaces are source organisation, not packages an application must install. `build-packages.mjs` emits portable SDK modules/declarations into `packages/flared/dist/sdk` and builds the CLI into `dist/cli`. Ordinary compiler dependencies remain declared; this is not a claim of zero transitive dependencies. SDK/browser entry points never import the CLI, Bun runtime or platform. No duplicate SDK source is maintained.
+There are exactly two top-level source packages: `packages/flared` and `packages/core`.
+SDK and CLI are modules inside `flared/src/sdk` and `flared/src/cli`, not separate
+workspaces or packages. The SDK emits directly into `dist/sdk`; the lazy CLI emits
+into `dist/cli`. Public exports point directly to these files, without forwarding
+wrappers or copying an intermediate SDK build. Ordinary compiler dependencies
+remain declared. Browser entry points never import CLI, Bun or Core.
 
 There is one private tarball and no overrides:
 

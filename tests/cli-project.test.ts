@@ -8,8 +8,8 @@ it("discovers schema/functions and generates typed API/server without SQL journa
   const dir = await mkdtemp(join(root, ".flared", "cli-proof-"));
   try {
     const script = `
- import {prepare,generateApi,frontendEnvironment} from ${JSON.stringify(resolve("packages/cli/lib/project.mjs"))};
- import {buildApplication} from ${JSON.stringify(resolve("packages/cli/lib/build.mjs"))};
+ import {prepare,generateApi,frontendEnvironment} from ${JSON.stringify(resolve("packages/flared/src/cli/project.mjs"))};
+ import {buildApplication} from ${JSON.stringify(resolve("packages/flared/src/cli/build.mjs"))};
  import {writeFile,readFile,mkdir,access} from 'node:fs/promises'; import assert from 'node:assert/strict';
  await writeFile('package.json','{"type":"module","private":true,"dependencies":{"astro":"7.3.8"}}');await mkdir('flared');
  await writeFile('flared/schema.ts','import {defineSchema,defineTable,z} from "flared/server";export default defineSchema({notes:defineTable(z.object({title:z.string()})).index("by_title",["title"])});');
@@ -44,7 +44,7 @@ it("backup CLI is explicit, project-scoped and never retries writes", async () =
   );
   try {
     const source = `
-      import {backup} from ${JSON.stringify(resolve("packages/cli/lib/cloud.mjs"))};
+      import {backup} from ${JSON.stringify(resolve("packages/flared/src/cli/cloud.mjs"))};
       import {mkdir,writeFile} from 'node:fs/promises'; import assert from 'node:assert/strict';
       const project='00000000-0000-4000-8000-000000000001', id='00000000-0000-4000-8000-000000000002';
       await mkdir('.flared'); await writeFile('.flared/project.json',JSON.stringify({project,platform:'https://api.example.test/control'}));
@@ -79,7 +79,7 @@ it("release build hook uses target URL, preserves dev env and never publishes af
   );
   try {
     const source = `
- import {deploy,promote,rollback} from ${JSON.stringify(resolve("packages/cli/lib/cloud.mjs"))};
+ import {deploy,promote,rollback} from ${JSON.stringify(resolve("packages/flared/src/cli/cloud.mjs"))};
  import {mkdir,writeFile,readFile} from 'node:fs/promises';import assert from 'node:assert/strict';
  const project='00000000-0000-4000-8000-000000000001',hash='b'.repeat(64),active='a'.repeat(64);
  await mkdir('.flared');await writeFile('.flared/project.json',JSON.stringify({project,platform:'https://api.example.test/control'}));

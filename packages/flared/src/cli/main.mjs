@@ -51,11 +51,11 @@ else if (
     if (command === "build") {
       if (!options.entry || !options.outdir)
         throw Error("Required: --entry, --outdir");
-      const { buildApplication } = await import("../lib/build.mjs");
+      const { buildApplication } = await import("./build.mjs");
       const x = await buildApplication(options);
       console.log(`Built immutable release ${x.hash}\n${x.outdir}`);
     } else {
-      const cloud = await import("../lib/cloud.mjs");
+      const cloud = await import("./cloud.mjs");
       const x = await cloud[command](options);
       if (x) console.log(JSON.stringify(x, null, 2));
     }

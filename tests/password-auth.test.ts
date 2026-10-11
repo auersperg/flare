@@ -5,7 +5,7 @@ import {
   hashPassword,
   verifyPassword,
 } from "../packages/core/src/auth.js";
-import { createPasswordAuth } from "../packages/sdk/src/client.js";
+import { createPasswordAuth } from "../packages/flared/src/sdk/client.js";
 const password = "A unique long test passphrase 73!";
 const databases: Database[] = [];
 function store(scope = "proof/dev") {

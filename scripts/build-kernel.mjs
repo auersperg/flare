@@ -1,4 +1,4 @@
-import { bundle } from "../packages/cli/lib/bundle.mjs";
+import { bundle } from "../packages/flared/src/cli/bundle.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 await mkdir("artifacts", { recursive: true });
 for (const version of [1, 2, 3]) {

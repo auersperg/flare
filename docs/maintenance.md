@@ -2,7 +2,7 @@
 
 ## Production-focused source tree
 
-Internal product packages: Core, SDK, CLI. The user-facing `flared` package exposes SDK entrypoints and the CLI in one installation. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
+Two top-level packages: `core` and `flared`. SDK and CLI live inside `flared/src/sdk` and `flared/src/cli`, with one package manifest and no forwarding wrappers. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
 
 Task/counter fixtures exist only under tests or in disposable acceptance workspaces. Normal platform builds must never compile them, seed their tables/functions or depend on their directories. Existing cloud projects keep their releases/data; an empty bootstrap applies only to newly created projects after deploying the updated Admin.
 

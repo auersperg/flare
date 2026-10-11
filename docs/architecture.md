@@ -62,11 +62,10 @@
 
 ## 5. Пакеты и тонкий локальный flow
 
-| Пакет              | Граница                                                                               |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| `@flared/sdk`      | Объявления функций, browser/server JS client, React hooks, build-time native adapters |
-| `@flared/cli`      | Сборка, link/watch/deploy; без dashboard, Agents, Wrangler/workerd зависимости        |
-| `@flared/platform` | Облачный core и онлайн-dashboard; не frontend dependency                              |
+| Пакет                       | Граница                                                                                   |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| `flared`                    | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
+| `@flared/platform` (`core`) | Облачный runtime и онлайн-dashboard; не dependency приложения                             |
 
 Исполняемый файл — `flared`. Это локальные tarballs, не опубликованные пакеты. Scope не означает подтверждённого владения npm namespace. License пока UNLICENSED; open source требует явно выбранной лицензии и независимой установки в другом аккаунте.
 
@@ -114,7 +113,7 @@ Legacy SDK/CLI и обе демонстрации убраны из рабоче
 
 ### Application distribution
 
-`flared` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled from the internal SDK/CLI workspaces. It has no `@flared/sdk` or `@flared/cli` registry dependency. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
+`flared` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled directly from its own SDK/CLI source modules. There are no internal SDK/CLI registry dependencies. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
 
 ## 8. Native document API 0.3 — breaking rewrite
 

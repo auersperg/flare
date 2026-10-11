@@ -3,7 +3,7 @@ import {
   LIMITS,
   boundedJson,
   type Auth,
-} from "../../sdk/src/protocol.js";
+} from "../../flared/src/sdk/protocol.js";
 export function fail(code: string): never {
   throw new FlaredError(code, code);
 }

@@ -4,8 +4,11 @@ import {
   defineSchema,
   defineTable,
   createFunctions,
-} from "../../packages/sdk/src/server.js";
-import { FlaredError, reference } from "../../packages/sdk/src/protocol.js";
+} from "../../packages/flared/src/sdk/server.js";
+import {
+  FlaredError,
+  reference,
+} from "../../packages/flared/src/sdk/protocol.js";
 const schema = defineSchema({
   tasks: defineTable(
     z.object({ title: z.string().min(1), done: z.boolean().default(false) }),

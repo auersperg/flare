@@ -35,7 +35,7 @@ test("local cleanup removes only reproducible output and preserves operator/appl
     const generated = [
       "artifacts/releases/old.tgz",
       ".wrangler/cache",
-      "packages/sdk/dist/index.js",
+      "packages/flared/dist/sdk/index.js",
       "packages/flared/dist/index.js",
       "packages/core/dist/dashboard/index 2.html",
       "packages/core/dashboard/.astro/types.d.ts",

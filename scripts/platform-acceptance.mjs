@@ -212,9 +212,10 @@ try {
     );
   });
   const source =
-    (await readFile("tests/fixtures/tasks/app.ts", "utf8"))
-      .replace('"@flared/sdk/server"', '"flared/server"')
-      .replace("export default defineApp", "const app = defineApp") +
+    (await readFile("tests/fixtures/tasks/app.ts", "utf8")).replace(
+      "export default defineApp",
+      "const app = defineApp",
+    ) +
     `
 app.functions.tasks.bulk=mutation({input:z.object({count:z.number().int().min(1).max(100)}),output:z.number(),handler:async({db},args)=>{for(let i=0;i<args.count;i++)await db.insert("tasks",{title:"Bulk "+i,done:false});return args.count;}});
 app.functions.tasks.rollback=mutation({input:z.object({}),output:z.boolean(),handler:async({db})=>{await db.insert("tasks",{title:"ROLLBACK_SENTINEL",done:false});await Promise.resolve();throw Error("ROLLBACK_SENTINEL");}});
@@ -222,7 +223,7 @@ app.functions.tasks.schedule=mutation({input:z.object({}),output:z.string(),hand
 export default app;
 `;
   await writeFile(join(directory, "app.ts"), source);
-  const bin = join(directory, "node_modules/flared/bin.mjs");
+  const bin = join(directory, "node_modules/flared/dist/cli/flared.js");
   await test("Packaged CLI links and deploys native dev/prod without reinstalling core", async () => {
     run([bin, "build", "--entry", "app.ts", "--outdir", "release"]);
     run([bin, "link", "--platform", platform, "--project", id]);

@@ -1,4 +1,4 @@
-import { boundedJson, FlaredError } from "../../sdk/src/protocol.js";
+import { boundedJson, FlaredError } from "../../flared/src/sdk/protocol.js";
 
 export type AppPolicy = { outbound: string[]; secrets: Record<string, string> };
 export type PolicyEnv = { APP_CAPABILITIES?: string };

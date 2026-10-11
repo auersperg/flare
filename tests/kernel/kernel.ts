@@ -90,7 +90,7 @@ import { fail } from "../../packages/core/src/security.js";
 import type {
   FacetRpc,
   Invocation,
-} from "../../packages/sdk/src/cloudflare.js";
+} from "../../packages/flared/src/sdk/cloudflare.js";
 
 interface Env {
   LOADER: WorkerLoader;

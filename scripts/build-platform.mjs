@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { bundle } from "../packages/cli/lib/bundle.mjs";
+import { bundle } from "../packages/flared/src/cli/bundle.mjs";
 import { mkdir, rm, cp, writeFile } from "node:fs/promises";
-import { buildApplication } from "../packages/cli/lib/build.mjs";
+import { buildApplication } from "../packages/flared/src/cli/build.mjs";
 const out = "packages/core/dist";
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });

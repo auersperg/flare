@@ -22,7 +22,7 @@ for (const name of [
   "schema",
   "database",
 ]) {
-  const code = await readFile(`packages/sdk/dist/${name}.js`, "utf8");
+  const code = await readFile(`packages/flared/dist/sdk/${name}.js`, "utf8");
   assert(
     !/\bBun\s*\.|(?:from|import)\s*["']bun(?::[^"']*)?["']/.test(code),
     `Bun runtime API entered portable SDK ${name}`,

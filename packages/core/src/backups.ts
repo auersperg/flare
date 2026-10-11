@@ -1,6 +1,9 @@
 import { validateAuthBackup, type AuthBackupUser } from "./auth.js";
-import { boundedJson, stableJson } from "../../sdk/src/protocol.js";
-import { SNAPSHOT_BYTES, type DataSnapshot } from "../../sdk/src/backup.js";
+import { boundedJson, stableJson } from "../../flared/src/sdk/protocol.js";
+import {
+  SNAPSHOT_BYTES,
+  type DataSnapshot,
+} from "../../flared/src/sdk/backup.js";
 import { fileInput, fileKey, type FileInput } from "./files.js";
 import { scopeForDeletion } from "./maintenance.js";
 import { digest, fail, uuid } from "./security.js";

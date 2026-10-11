@@ -1,13 +1,13 @@
 import { Database } from "bun:sqlite";
 import { describe, it, expect } from "bun:test";
 import { z } from "zod";
-import { database } from "../packages/sdk/src/database.js";
+import { database } from "../packages/flared/src/sdk/database.js";
 import {
   defineSchema,
   defineTable,
   applySchema,
   schemaContract,
-} from "../packages/sdk/src/schema.js";
+} from "../packages/flared/src/sdk/schema.js";
 
 const schema = defineSchema({
   tasks: defineTable(

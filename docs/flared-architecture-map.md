@@ -275,21 +275,21 @@ Hibernation может добавить cold constructor/readiness latency. Не
 
 ## 12. Навигация по исходникам и версиям
 
-| Файл / папка                                                 | Роль                                                                                                |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| [`runtime.ts`](../packages/core/src/runtime.ts)              | Supervisor, loader, live/recovery/jobs, DynamicTail и scoped capabilities                           |
-| [`admin.ts`](../packages/core/src/admin.ts)                  | Access, D1 membership/audit/control, static asset выдача                                            |
-| [`files.ts`](../packages/core/src/files.ts)                  | Streaming/grants/metadata recovery/private file scope                                               |
-| [`routing.ts`](../packages/core/src/routing.ts)              | UUID/alias routes и bounded positive cache                                                          |
-| [`release.ts`](../packages/core/src/release.ts)              | Проверка release bundles/manifest/schema                                                            |
-| [`security.ts`](../packages/core/src/security.ts)            | JWT/JWKS, scope/origin/input boundaries                                                             |
-| [`SDK cloudflare.ts`](../packages/sdk/src/cloudflare.ts)     | Facet SQLite, transaction/revision/outbox, admin DB adapter                                         |
-| [`SDK server.ts`](../packages/sdk/src/server.ts)             | Функции, context и validators                                                                       |
-| [`SDK client.ts`](../packages/sdk/src/client.ts)             | Portable JS client, live transport/reconnect/cleanup                                                |
-| [`CLI`](../packages/cli/lib)                                 | Build/login/project/watch/deploy, не облачный daemon                                                |
-| [`Dashboard`](../packages/core/dashboard/src/components)     | Семь разделов, lazy views, on-demand refresh                                                        |
-| [`Runtime config example`](../runtime.wrangler.example.json) | Loader/DO/R2/Queues/limits/observability bindings                                                   |
-| [`Admin config example`](../admin.wrangler.example.json)     | Static Assets/D1/RPC/Access config; worker-first для protected routes; hashed UI assets asset-first |
+| Файл / папка                                                    | Роль                                                                                                |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [`runtime.ts`](../packages/core/src/runtime.ts)                 | Supervisor, loader, live/recovery/jobs, DynamicTail и scoped capabilities                           |
+| [`admin.ts`](../packages/core/src/admin.ts)                     | Access, D1 membership/audit/control, static asset выдача                                            |
+| [`files.ts`](../packages/core/src/files.ts)                     | Streaming/grants/metadata recovery/private file scope                                               |
+| [`routing.ts`](../packages/core/src/routing.ts)                 | UUID/alias routes и bounded positive cache                                                          |
+| [`release.ts`](../packages/core/src/release.ts)                 | Проверка release bundles/manifest/schema                                                            |
+| [`security.ts`](../packages/core/src/security.ts)               | JWT/JWKS, scope/origin/input boundaries                                                             |
+| [`SDK cloudflare.ts`](../packages/flared/src/sdk/cloudflare.ts) | Facet SQLite, transaction/revision/outbox, admin DB adapter                                         |
+| [`SDK server.ts`](../packages/flared/src/sdk/server.ts)         | Функции, context и validators                                                                       |
+| [`SDK client.ts`](../packages/flared/src/sdk/client.ts)         | Portable JS client, live transport/reconnect/cleanup                                                |
+| [`CLI`](../packages/flared/src/cli)                             | Build/login/project/watch/deploy, не облачный daemon                                                |
+| [`Dashboard`](../packages/core/dashboard/src/components)        | Семь разделов, lazy views, on-demand refresh                                                        |
+| [`Runtime config example`](../runtime.wrangler.example.json)    | Loader/DO/R2/Queues/limits/observability bindings                                                   |
+| [`Admin config example`](../admin.wrangler.example.json)        | Static Assets/D1/RPC/Access config; worker-first для protected routes; hashed UI assets asset-first |
 
 Зафиксированные сейчас локальные версии: Bun 1.4.3, Wrangler 4.149.0 (Node 24 vendor tooling), Agents 0.28.0, Astro 7.3.8, React 19.3.0, TypeScript 6.0.2; compatibility date примеров — **2026-10-10**. Это прочитанные версии repository, не заявление «все latest в registry». Upgrade compatibility date может менять поведение runtime и требует regression/cloud tests.
 

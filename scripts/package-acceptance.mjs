@@ -37,6 +37,19 @@ try {
   const packed = JSON.parse(await files.get("package/package.json").text());
   assert.equal(packed.name, "flared");
   assert.equal(packed.sideEffects, false);
+  assert.ok(!files.has("package/index.js"), "Unexpected forwarding wrapper");
+  for (const contract of Object.values(packed.exports)) {
+    for (const entry of [contract.import, contract.types]) {
+      assert.ok(
+        files.has("package/" + entry.slice(2)),
+        "Missing direct export: " + entry,
+      );
+    }
+  }
+  assert.ok(
+    files.has("package/" + packed.bin.flared.slice(2)),
+    "Missing compiled CLI",
+  );
   assert.equal(packed.dependencies["@flared/sdk"], undefined);
   assert.equal(packed.dependencies["@flared/cli"], undefined);
   for (const file of files.keys())
@@ -357,7 +370,12 @@ export default function App() { return <FlaredProvider client={client}><Tasks />
   `,
   );
   run(
-    ["--preload", "./mock-control.mjs", "./node_modules/flared/bin.mjs", "dev"],
+    [
+      "--preload",
+      "./mock-control.mjs",
+      "./node_modules/flared/dist/cli/flared.js",
+      "dev",
+    ],
     external,
   );
   assert.match(

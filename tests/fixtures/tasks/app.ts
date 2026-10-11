@@ -4,7 +4,7 @@ import {
   defineSchema,
   defineTable,
   createFunctions,
-} from "@flared/sdk/server";
+} from "flared/server";
 const schema = defineSchema({
   tasks: defineTable(
     z.object({

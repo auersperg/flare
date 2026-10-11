@@ -16,8 +16,7 @@
     "backendEmulatorRequired": false
   },
   "packages": {
-    "sdk": "@flared/sdk",
-    "cli": "@flared/cli",
+    "application": "flared",
     "platform": "@flared/platform"
   },
   "cli": {

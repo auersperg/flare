@@ -5,12 +5,12 @@ import { readFile, writeFile, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { buildApplication } from "../packages/cli/lib/build.mjs";
+import { buildApplication } from "../packages/flared/src/cli/build.mjs";
 import {
   createClient,
   reference,
   uploadFile,
-} from "../packages/sdk/dist/client.js";
+} from "../packages/flared/dist/sdk/client.js";
 import { cleanupCloudScopes } from "./lib/cloud-cleanup.mjs";
 const install = JSON.parse(
   await readFile(".private/flared-install.json", "utf8"),
@@ -135,8 +135,8 @@ try {
     fixture,
     (await readFile("tests/fixtures/native-app.ts", "utf8"))
       .replaceAll(
-        "../../packages/sdk/src/",
-        join(process.cwd(), "packages/sdk/dist") + "/",
+        "../../packages/flared/src/sdk/",
+        join(process.cwd(), "packages/flared/dist/sdk") + "/",
       )
       .replace(
         'from "zod"',

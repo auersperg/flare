@@ -5,13 +5,13 @@ import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildApplication } from "../packages/cli/lib/build.mjs";
+import { buildApplication } from "../packages/flared/src/cli/build.mjs";
 import {
   createClient,
   reference,
   uploadFile,
   createPasswordAuth,
-} from "../packages/sdk/dist/client.js";
+} from "../packages/flared/dist/sdk/client.js";
 const install = JSON.parse(
   await readFile(".private/flared-install.json", "utf8"),
 );
@@ -83,8 +83,8 @@ async function bundle(
   if (entry === "tests/fixtures/native-app.ts") {
     const source = (await readFile(entry, "utf8"))
       .replaceAll(
-        "../../packages/sdk/src/",
-        join(process.cwd(), "packages/sdk/dist") + "/",
+        "../../packages/flared/src/sdk/",
+        join(process.cwd(), "packages/flared/dist/sdk") + "/",
       )
       .replace(
         'from "zod"',
@@ -472,8 +472,8 @@ try {
     );
     const source = (await readFile("tests/fixtures/native-app.ts", "utf8"))
       .replaceAll(
-        "../../packages/sdk/src/",
-        join(process.cwd(), "packages/sdk/dist") + "/",
+        "../../packages/flared/src/sdk/",
+        join(process.cwd(), "packages/flared/dist/sdk") + "/",
       )
       .replace(
         'from "zod"',

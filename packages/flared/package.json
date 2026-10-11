@@ -6,34 +6,32 @@
   "type": "module",
   "description": "Flared client, server declarations and development CLI",
   "bin": {
-    "flared": "./bin.mjs"
+    "flared": "./dist/cli/flared.js"
   },
   "files": [
-    "bin.mjs",
-    "*.js",
-    "*.d.ts",
-    "dist"
+    "dist",
+    "README.md"
   ],
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "import": "./index.js"
+      "types": "./dist/sdk/client.d.ts",
+      "import": "./dist/sdk/client.js"
     },
     "./server": {
-      "types": "./server.d.ts",
-      "import": "./server.js"
+      "types": "./dist/sdk/server.d.ts",
+      "import": "./dist/sdk/server.js"
     },
     "./react": {
-      "types": "./react.d.ts",
-      "import": "./react.js"
+      "types": "./dist/sdk/react.d.ts",
+      "import": "./dist/sdk/react.js"
     },
     "./protocol": {
-      "types": "./protocol.d.ts",
-      "import": "./protocol.js"
+      "types": "./dist/sdk/protocol.d.ts",
+      "import": "./dist/sdk/protocol.js"
     },
     "./cloudflare": {
-      "types": "./cloudflare.d.ts",
-      "import": "./cloudflare.js"
+      "types": "./dist/sdk/cloudflare.d.ts",
+      "import": "./dist/sdk/cloudflare.js"
     }
   },
   "dependencies": {

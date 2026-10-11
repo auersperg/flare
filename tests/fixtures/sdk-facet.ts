@@ -1,4 +1,4 @@
-import { createFacet } from "../../packages/sdk/src/cloudflare.js";
+import { createFacet } from "../../packages/flared/src/sdk/cloudflare.js";
 import { app } from "./sdk-app.js";
 export class AppFacet extends createFacet(app) {
   async snapshot() {
