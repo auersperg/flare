@@ -61,7 +61,11 @@ import {
   fileOriginAllowed,
   receiveUpload,
 } from "./files.js";
-import { scopeForDeletion, eraseEnvironment } from "./maintenance.js";
+import {
+  scopeForDeletion,
+  eraseEnvironment,
+  markEnvironmentDeleting,
+} from "./maintenance.js";
 export type ScopeConfig = {
   scope: string;
   origins: string[];
@@ -107,6 +111,7 @@ type SupervisorApi = Pick<
   | "call"
   | "job"
   | "destroy"
+  | "prepareDestroy"
   | "fileCommand"
   | "scheduleCommand"
 >;
@@ -166,7 +171,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   async dispatch(op: string, args: any[]): Promise<RpcResult<any>> {
     return capture(async () => {
       await this.lifecycle.start();
-      if (this.removed && op !== "destroy") {
+      if (this.removed && !["destroy", "prepareDestroy"].includes(op)) {
         if (op === "job") return null; // Acknowledge stale queue deliveries.
         fail("NOT_FOUND");
       }
@@ -186,6 +191,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
           "call",
           "job",
           "destroy",
+          "prepareDestroy",
           "fileCommand",
           "scheduleCommand",
         ].includes(op)
@@ -309,6 +315,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
           "SELECT name FROM sqlite_master WHERE type='table' AND name='_flared_deleted'",
         )
         .toArray().length > 0;
+    if (this.removed) return;
     for (const sql of [
       "CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY,value TEXT NOT NULL)",
       "CREATE TABLE IF NOT EXISTS releases (hash TEXT PRIMARY KEY,metadata TEXT NOT NULL,at INTEGER NOT NULL)",
@@ -367,23 +374,50 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     return next;
   }
   // Trusted control-plane RPC only: never routed from the public API.
+  private async closeForDeletion(scope: string) {
+    if (
+      !this.ctx.id.equals(
+        this.env.SUPERVISORS.idFromName(scopeForDeletion(scope)),
+      )
+    )
+      fail("FORBIDDEN");
+    if (this.activeActions || this.runningJobs.size) fail("CONFLICT");
+    if (!this.removed) {
+      await markEnvironmentDeleting(this.ctx);
+      this.removed = true;
+    }
+    for (const connection of this.sockets.getConnections())
+      connection.close(1008, "Project deleted");
+  }
+  // Used only when deleting the entire project: all restore participants are
+  // fenced before cleanup, so abandoned same-project backup pins can be erased.
+  async prepareDestroy(scope: string) {
+    await this.lifecycle.start();
+    return this.serial(() => this.closeForDeletion(scope));
+  }
   async destroy(scope: string) {
     await this.lifecycle.start();
     return this.serial(async () => {
-      if (this.activeActions || this.runningJobs.size) fail("CONFLICT");
-      if (
-        this.ctx.storage.sql.exec("SELECT 1 FROM backup_pins LIMIT 1").toArray()
-          .length
-      )
-        fail("BACKUP_BUSY");
       if (
         !this.ctx.id.equals(
           this.env.SUPERVISORS.idFromName(scopeForDeletion(scope)),
         )
       )
         fail("FORBIDDEN");
-      for (const connection of this.sockets.getConnections())
-        connection.close(1008, "Project deleted");
+      if (
+        this.removed &&
+        this.ctx.storage.sql
+          .exec("SELECT 1 FROM _flared_deleted WHERE id=1")
+          .toArray().length
+      )
+        return { deleted: true, scope };
+      if (
+        !this.removed &&
+        this.ctx.storage.sql.exec("SELECT 1 FROM backup_pins LIMIT 1").toArray()
+          .length
+      )
+        fail("BACKUP_BUSY");
+      await this.closeForDeletion(scope);
       if (this.env.FILES) {
         const prefix = `files/${scopeForDeletion(scope)}/`;
         let cursor: string | undefined;
@@ -422,6 +456,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     });
   }
   private config(): ScopeConfig {
+    if (this.removed) fail("NOT_FOUND");
     if (this.scopeConfig) return this.scopeConfig;
     const row = this.ctx.storage.sql
       .exec("SELECT value FROM config WHERE id=1")
@@ -438,6 +473,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     origins(config.origins);
     if (config.oidc) validateOidc(config.oidc);
     return this.serial(async () => {
+      if (this.removed) fail("NOT_FOUND");
       this.scopeConfig = undefined;
       this.ctx.storage.sql.exec(
         "INSERT OR REPLACE INTO config VALUES (1,?)",
@@ -538,6 +574,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     return unwrap(await stub.invoke(call));
   }
   private facet(): FacetRpc {
+    if (this.removed) fail("NOT_FOUND");
     return this.ctx.facets.get("app", () => ({
       class: this.loader(this.current(), "facet").getDurableObjectClass(
         "AppFacet",
@@ -1203,6 +1240,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     await this.serial(async () => this.record(path, kind, outcome, ms));
   }
   private assertAvailable() {
+    if (this.removed) fail("NOT_FOUND");
     if (this.restoring) fail("RESTORE_IN_PROGRESS");
   }
   private restoreState(): {
@@ -1381,6 +1419,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   async admin(op: string, input: any): Promise<any> {
     await this.lifecycle.start();
     return this.serial(async () => {
+      if (this.removed) fail("NOT_FOUND");
       if (op.startsWith("auth-")) {
         this.assertAvailable();
         const result = await this.passwords().admin(op, input);
@@ -1879,6 +1918,7 @@ export class RuntimeControl extends WorkerEntrypoint<Env> {
           "devIdentity",
           "publishAlias",
           "destroy",
+          "prepareDestroy",
         ].includes(op)
       )
         fail("INVALID_OPERATION");
@@ -1888,6 +1928,11 @@ export class RuntimeControl extends WorkerEntrypoint<Env> {
 
   destroy(scope: string) {
     return getSupervisor(this.env, scopeForDeletion(scope)).destroy(scope);
+  }
+  prepareDestroy(scope: string) {
+    return getSupervisor(this.env, scopeForDeletion(scope)).prepareDestroy(
+      scope,
+    );
   }
   configure(config: ScopeConfig) {
     return getSupervisor(this.env, config.scope).configure(config);

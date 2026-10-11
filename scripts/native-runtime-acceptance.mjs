@@ -707,7 +707,17 @@ try {
     }
     await admin("backup-delete", { id });
     assert.equal((await admin("backup-list")).page.length, 0);
+    await control("prepareDestroy", target);
+    await control("kernelAbort", target);
+    await assert.rejects(control("admin", target, "health", {}), /NOT_FOUND/);
     await control("destroy", target);
+    await control("kernelAbort", target);
+    assert.equal((await control("destroy", target)).deleted, true);
+    await assert.rejects(control("admin", target, "health", {}), /NOT_FOUND/);
+    await assert.rejects(
+      control("configure", { scope: target, origins: [], oidc: null }),
+      /NOT_FOUND/,
+    );
   });
   await test("Idle environment has no recurring alarm after live disconnect", async () => {
     stop();

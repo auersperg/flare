@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { StatusBadge } from "../packages/core/dashboard/src/components/status-badge";
+import SettingsView from "../packages/core/dashboard/src/components/settings-view";
 import {
   FunctionBadge,
   functionColors,
@@ -123,6 +124,28 @@ describe("Dashboard presentation", () => {
 });
 
 describe("Dashboard standardization", () => {
+  it.each(["owner", "editor", "viewer"] as const)(
+    "exposes project deletion only to the owner, not %s",
+    (role) => {
+      const html = renderToStaticMarkup(
+        createElement(SettingsView, {
+          project: {
+            id: "443eb045-22b8-4c1e-bfee-1eaf7b01a0f9",
+            name: "Test",
+            customer: "Team",
+          },
+          env: "dev",
+          session: {
+            role,
+            email: "owner@example.test",
+            runtime: "https://runtime.test",
+          },
+          onDeleted() {},
+        }),
+      );
+      expect(html.includes(">Delete project</button>")).toBe(role === "owner");
+    },
+  );
   it.each([
     ["Ready", "success"],
     ["Active", "success"],

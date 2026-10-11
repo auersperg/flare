@@ -8,6 +8,15 @@ export function scopeForDeletion(value: unknown): string {
   if (parts.length !== 2) fail("INVALID_INPUT");
   return `${uuid(parts[0])}/${environment(parts[1])}`;
 }
+export async function markEnvironmentDeleting(
+  ctx: Pick<DurableObjectState, "storage">,
+) {
+  ctx.storage.sql.exec(
+    "CREATE TABLE IF NOT EXISTS _flared_deleted (id INTEGER PRIMARY KEY)",
+  );
+  ctx.storage.sql.exec("INSERT OR IGNORE INTO _flared_deleted VALUES (0)");
+  await ctx.storage.sync();
+}
 export async function eraseEnvironment(
   ctx: Pick<DurableObjectState, "storage" | "facets">,
 ) {

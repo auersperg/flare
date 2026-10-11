@@ -1,4 +1,5 @@
 import { collectCatalog } from "./retention.js";
+import { authorizeProjectDeletion, deleteProject } from "./project-deletion.js";
 import { publicLogin, loginInfo, approveLogin } from "./cli-login.js";
 declare const FLARED_DASHBOARD_CSP_HASHES: {
   scripts: string[];
@@ -35,6 +36,8 @@ type RuntimeApi = {
   admin(scope: string, op: string, input: any): Promise<any>;
   devIdentity(scope: string, subject: string): Promise<string>;
   publishAlias(alias: string, projectId: string): Promise<void>;
+  destroy(scope: string): Promise<unknown>;
+  prepareDestroy(scope: string): Promise<unknown>;
 };
 interface Env {
   CATALOG: D1Database;
@@ -72,7 +75,7 @@ async function actor(
     if (!bearer?.startsWith("Bearer ") || bearer.length > 256)
       fail("UNAUTHORIZED");
     const row = await env.CATALOG.prepare(
-      "SELECT c.actor,c.projectId,m.role FROM credentials c JOIN members m ON m.email=c.actor WHERE c.hash=? AND c.revoked=0 AND c.expiresAt>?",
+      "SELECT c.actor,c.projectId,m.role FROM credentials c JOIN members m ON m.email=c.actor WHERE c.hash=? AND c.revoked=0 AND c.expiresAt>? AND NOT EXISTS (SELECT 1 FROM project_deletions d WHERE d.projectId=c.projectId)",
     )
       .bind(await digest(bearer.slice(7)), Date.now())
       .first<any>();
@@ -199,7 +202,9 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     const input = await jsonBody(request);
     const selected = uuid(input.project);
     if (
-      !(await env.CATALOG.prepare("SELECT id FROM projects WHERE id=?")
+      !(await env.CATALOG.prepare(
+        "SELECT id FROM projects WHERE id=? AND NOT EXISTS (SELECT 1 FROM project_deletions WHERE projectId=projects.id)",
+      )
         .bind(selected)
         .first())
     )
@@ -227,7 +232,7 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     });
   if (path === "/api/projects" && request.method === "GET") {
     const rows = await env.CATALOG.prepare(
-      "SELECT p.*,c.name customer,r.alias FROM projects p JOIN customers c ON c.id=p.customerId LEFT JOIN project_aliases r ON r.projectId=p.id AND r.published=1 WHERE (? IS NULL OR p.id=?) ORDER BY p.createdAt DESC LIMIT 100",
+      "SELECT p.*,c.name customer,r.alias,EXISTS(SELECT 1 FROM project_deletions d WHERE d.projectId=p.id) deleting FROM projects p JOIN customers c ON c.id=p.customerId LEFT JOIN project_aliases r ON r.projectId=p.id AND r.published=1 WHERE (? IS NULL OR p.id=?) ORDER BY p.createdAt DESC LIMIT 100",
     )
       .bind(a.projectId, a.projectId)
       .all();
@@ -305,17 +310,34 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     return json(result, 201);
   }
   const match = path.match(
-    /^\/api\/projects\/([^/]+)(?:\/(alias|dev|prod)(?:\/([a-z-]+))?)?$/,
+    /^\/api\/projects\/([^/]+)(?:\/(alias|delete|dev|prod)(?:\/([a-z-]+))?)?$/,
   );
   if (!match) fail("NOT_FOUND");
   const projectId = uuid(match[1]);
   if (a.projectId && a.projectId !== projectId) fail("FORBIDDEN");
   const project = await env.CATALOG.prepare(
-    "SELECT p.*,r.alias FROM projects p LEFT JOIN project_aliases r ON r.projectId=p.id AND r.published=1 WHERE p.id=?",
+    "SELECT p.*,r.alias,EXISTS(SELECT 1 FROM project_deletions d WHERE d.projectId=p.id) deleting FROM projects p LEFT JOIN project_aliases r ON r.projectId=p.id AND r.published=1 WHERE p.id=?",
   )
     .bind(projectId)
-    .first<{ id: string; alias: string | null }>();
+    .first<{
+      id: string;
+      name: string;
+      alias: string | null;
+      deleting: number;
+    }>();
   if (!project) fail("NOT_FOUND");
+  if (match[2] === "delete" && !match[3]) {
+    if (request.method !== "POST")
+      return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+    const input = await jsonBody(request);
+    authorizeProjectDeletion(a, project, input);
+    return json(
+      await audit(env, a, projectId, null, "project.delete", () =>
+        deleteProject(env.CATALOG, runtime(env), projectId),
+      ),
+    );
+  }
+  if (project.deleting && match[2]) fail("NOT_READY");
   if (match[2] === "alias") {
     if (request.method !== "POST")
       return json({ error: "METHOD_NOT_ALLOWED" }, 405);

@@ -14,7 +14,10 @@ import {
 } from "./common";
 import { api, message, scopePath, type Settings } from "../lib/model";
 import type { Scope } from "./dashboard";
-export default function SettingsView(scope: Scope) {
+export default function SettingsView({
+  onDeleted,
+  ...scope
+}: Scope & { onDeleted: () => void }) {
   const path = scopePath(scope.project, scope.env),
     r = useResource<Settings>(path + "/settings");
   return (
@@ -30,7 +33,86 @@ export default function SettingsView(scope: Scope) {
           <BackupsPanel {...scope} />
         </>
       )}
+      {scope.session.role === "owner" && (
+        <DeleteProject {...scope} onDeleted={onDeleted} />
+      )}
     </div>
+  );
+}
+function DeleteProject({
+  project,
+  onDeleted,
+}: Scope & { onDeleted: () => void }) {
+  const [modal, setModal] = useState<Modal>();
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Delete project</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-muted-foreground">
+            Permanently delete both development and production: data, users,
+            files, releases, backups and schedules. This cannot be undone.
+          </p>
+          {project.deleting ? (
+            <p role="alert">Deletion was started. Retry to finish cleanup.</p>
+          ) : null}
+          <Button
+            variant="destructive"
+            onClick={() =>
+              setModal({
+                title: "Delete project",
+                description: `Delete ${project.name} and both environments permanently? The short URL stays reserved; other projects are not affected.`,
+                destructive: true,
+                submitLabel: "Delete project",
+                content: (
+                  <Field>
+                    <FieldLabel htmlFor="delete-project-name">
+                      Type the project name: {project.name}
+                    </FieldLabel>
+                    <Input
+                      id="delete-project-name"
+                      name="name"
+                      required
+                      autoComplete="off"
+                      maxLength={100}
+                    />
+                  </Field>
+                ),
+                submit: async (form) => {
+                  const name = new FormData(form).get("name");
+                  if (name !== project.name)
+                    throw Error("Project name does not match");
+                  try {
+                    await api(`projects/${project.id}/delete`, {
+                      name,
+                      confirm: project.id,
+                    });
+                  } catch (error) {
+                    // A lost response may follow successful deletion. Verify the
+                    // catalog before treating NOT_FOUND as an already-finished delete.
+                    if (
+                      message(error) !== "NOT_FOUND" ||
+                      (await api<{ id: string }[]>("projects")).some(
+                        (p) => p.id === project.id,
+                      )
+                    )
+                      throw error;
+                  }
+                  onDeleted();
+                },
+              })
+            }
+          >
+            Delete project
+          </Button>
+        </CardContent>
+      </Card>
+      {modal && (
+        <FormDialog modal={modal} onClose={() => setModal(undefined)} />
+      )}
+    </>
   );
 }
 function SettingsForm({

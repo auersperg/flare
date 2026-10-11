@@ -2,9 +2,26 @@ import { describe, it, expect, jest } from "bun:test";
 import {
   scopeForDeletion,
   eraseEnvironment,
+  markEnvironmentDeleting,
 } from "../packages/core/src/maintenance.js";
 const id = "443eb045-22b8-4c1e-bfee-1eaf7b01a0f9";
 describe("trusted environment cleanup", () => {
+  it("durably closes an environment before physical cleanup starts", async () => {
+    const calls: string[] = [];
+    await markEnvironmentDeleting({
+      storage: {
+        sql: { exec: (sql: string) => calls.push(sql) },
+        sync: async () => {
+          calls.push("sync");
+        },
+      },
+    } as any);
+    expect(calls).toEqual([
+      "CREATE TABLE IF NOT EXISTS _flared_deleted (id INTEGER PRIMARY KEY)",
+      "INSERT OR IGNORE INTO _flared_deleted VALUES (0)",
+      "sync",
+    ]);
+  });
   it.each(["dev", "prod"])("accepts only exact immutable scopes: %s", (env) =>
     expect(scopeForDeletion(`${id}/${env}`)).toBe(`${id}/${env}`),
   );

@@ -19,6 +19,14 @@ Customer frontend/backend source belongs in separate application repositories. T
 - Add/Edit table prepares document schema drafts, never arbitrary live SQL or destructive schema edits. App schema, function contracts and release checksums stay versioned together.
 - CLI scratch directories clean up in finally after success/failure. Immutable release output cannot be overwritten.
 
+## Project deletion
+
+Project settings → Delete project is available only to the installation owner through the Access-protected dashboard. Confirm the exact project name; the API also checks the immutable project ID. Editors, viewers and project-scoped CLI credentials cannot delete projects. Deletion always includes **both dev and prod**, not just the selected environment.
+
+The D1 deletion barrier and deployment-credential revocation precede cleanup. Both supervisors' serial gates are durably fenced before any file/backup removal, so an admitted cross-environment restore finishes first. Supervisors close live connections, remove app facets/SQLite, alarms, files, releases and backups under their exact environment prefixes, and retain a tiny tombstone. Stale queue deliveries are acknowledged without executing; shared Queues are not deleted or purged. In-flight actions/jobs cause a retryable conflict. Abandoned backup pins within the deleted project are removed after both participants are fenced; standalone environment destruction still respects pins. Partial failures keep the project visible for another Delete attempt; cleanup is idempotent. The final catalog batch removes environments, credentials and the project.
+
+Audit, immutable project-ID/short-URL reservations and customer workspaces remain. Old URLs never become another customer's project. Cloudflare Logs follow their account retention; manually provisioned Secrets Store bindings remain operator-managed. Apply `0005_project_deletion.sql` before deploying the new Admin/Runtime. No background cleanup daemon, extra bucket or per-project Worker is introduced.
+
 ## Verification
 
 `bun run verify`: source checks, unit tests, production build verification and independent tarball package acceptance. The latter compiles both data-bearing test apps and an empty app, checks generated references/OpenAPI and builds an ephemeral Astro/React frontend with the packed SDK. Its external workspace is removed in finally.

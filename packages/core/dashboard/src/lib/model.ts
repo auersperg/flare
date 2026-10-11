@@ -9,6 +9,7 @@ export type Project = {
   name: string;
   customer: string;
   alias?: string;
+  deleting?: number;
 };
 export type Column = {
   name: string;

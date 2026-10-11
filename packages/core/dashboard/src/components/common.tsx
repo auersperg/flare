@@ -394,6 +394,8 @@ export type Modal = {
   fields?: Field[];
   content?: ReactNode;
   productionId?: string;
+  destructive?: boolean;
+  submitLabel?: string;
   submit: (form: HTMLFormElement) => Promise<void>;
 };
 export function FormDialog({
@@ -468,8 +470,12 @@ export function FormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Confirm"}
+            <Button
+              type="submit"
+              variant={modal.destructive ? "destructive" : "default"}
+              disabled={busy}
+            >
+              {busy ? "Working…" : (modal.submitLabel ?? "Confirm")}
             </Button>
           </DialogFooter>
         </form>

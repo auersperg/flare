@@ -178,6 +178,15 @@ function DashboardApp() {
       },
     });
   const scope = project && session ? { project, env, session } : null;
+  const projectDeleted = () => {
+    const remaining = projects.filter((p) => p.id !== project?.id);
+    setProjects(remaining);
+    setProject(remaining[0]);
+    setEnv("dev");
+    setView("health");
+    if (remaining[0]) localStorage.setItem("flared.project", remaining[0].id);
+    else localStorage.removeItem("flared.project");
+  };
   const navigate = (next: View) => {
     setModal(undefined);
     setView(next);
@@ -315,7 +324,7 @@ function DashboardApp() {
                 ) : view === "logs" ? (
                   <LogsView {...scope} />
                 ) : view === "settings" ? (
-                  <SettingsView {...scope} />
+                  <SettingsView {...scope} onDeleted={projectDeleted} />
                 ) : (
                   <SdkView {...scope} />
                 )}
