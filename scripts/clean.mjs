@@ -1,4 +1,4 @@
-import { readdir, rm } from "node:fs/promises";
+import { readdir, rm, rmdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +15,9 @@ for (const path of [
   "packages/core/dashboard/node_modules/.astro",
   "packages/core/dashboard/node_modules/.vite",
   "node_modules/.vite",
+  "node_modules/.vite-temp",
+  "packages/core/dashboard/node_modules/.vite-temp",
+  "test/node_modules/.vite",
   "packages/core/bootstrap/.flared",
   "tests/fixtures/tasks/.flared",
   "tests/kernel/.wrangler",
@@ -27,12 +30,18 @@ async function removeFinderMetadata(directory) {
     if (item.name === ".DS_Store" && item.isFile()) await rm(path);
     else if (
       item.isDirectory() &&
-      !["node_modules", ".git", ".private"].includes(item.name)
+      !["node_modules", ".git"].includes(item.name)
     )
       await removeFinderMetadata(path);
   }
 }
 await removeFinderMetadata(root);
+// Remove obsolete empty directories, never an application or CLI connection.
+for (const path of ["test/node_modules", "test", ".flared"]) {
+  await rmdir(resolve(root, path)).catch((error) => {
+    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code)) throw error;
+  });
+}
 console.log(
   "Generated builds, test reports, caches and Finder metadata removed. Sources and credentials preserved.",
 );

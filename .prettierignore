@@ -14,5 +14,3 @@ admin.wrangler.json
 runtime.wrangler.json
 tests/kernel/wrangler.cloud.json
 coverage/
-
-/test/

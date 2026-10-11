@@ -119,3 +119,13 @@ Not certified by this checkpoint: independent external OIDC-provider integration
 The native auth cloud proof passes registration/login, context through query/action, wrong-origin/wrong-environment refusal, project-CLI management denial, password reset/live revocation and account blocking. This is a bounded self-hosted password feature, not a complete consumer identity product. No emails, MFA or anonymous recovery. Owner resets require Access; recovery of the Cloudflare owner account follows Cloudflare's own procedures.
 
 Private backup capsules include salted user credential hashes to preserve IDs/ownership after empty-target restore. Treat capsule access as credential-store access, not a public export. Active sessions are intentionally discarded. Target auth settings remain unchanged and must be explicitly enabled after recovery; no automatic login or copied administrative privileges. Restoring onto an environment with existing users is rejected. Sessions/counters clean up on traffic, not periodic polling; idle storage still consumes storage quota.
+
+## Local cleanup
+
+`bun run clean` removes reproducible SDK/platform/dashboard output, tarballs,
+acceptance reports, Wrangler/Vite/Astro caches and Finder metadata. It also removes
+leftover Vite cache from the former root test app and prunes its empty directories.
+The root `test` app no longer exists; maintained fixtures are under `tests/fixtures`.
+Installed dependencies, tracked sources/tests, live Wrangler configurations,
+installation state, credentials and nonempty CLI connections remain intact.
+Cleanup never contacts Cloudflare. Build again before packaging or deployment.

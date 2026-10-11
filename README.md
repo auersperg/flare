@@ -228,15 +228,19 @@ No guarantee that $5 covers total usage or that Flared is cheaper/faster than Co
 
 Use 0.3 for a controlled, trusted-team installation only. Before treating it as a general production backend, complete the [production gates](docs/maintenance.md#remaining-production-gates): independent installation/optional external OIDC, release draining, workload-specific load/cost tests, extended disaster recovery and the unfinished service capabilities. No runtime architecture was replaced just to make repository checks pass.
 
-### Cloud update — 11 October 2026
+## Backups
 
-The explicitly authorised Big Bang update deployed 0.3 Admin/Runtime and the private Astro test application's dev/prod releases. The old data namespace was deleted, not migrated or backed up; the new EnvironmentSupervisor uses Cloudflare's declarative exports lifecycle. Domains/Access/owner policy remain unchanged. Temporary acceptance projects were removed after the completed run; only Local and test remain.
+Settings → Backups and the CLI create private R2 capsules containing documents,
+ready files and the exact backend release. Restore requires owner confirmation and
+an empty other environment of the same project. It is not in-place rollback or
+PITR. Limits and exclusions are in the
+[maintenance guide](docs/maintenance.md#on-demand-logical-backup-and-empty-target-recovery).
 
-16 platform cloud checks passed, including 1002-record keyset traversal, code upgrade preserving data/live and physical hibernation/resumption. The test application passed CRUD/two-client-live/action checks and actual R2/delayed-job/retry/cancel/cron checks; cron was stopped after acceptance. Dashboard upload was verified with a synthetic file in ready state. Current improvements additionally pass 276 unit tests and 43 native checks. A separate 30.40-minute/100-client cloud soak passed (17 cloud checks total); delivery samples do not measure the full monthly bill. See the [current architecture audit](docs/architecture-audit-0.3.md) for completed A–F and remaining product gates. Evidence: ignored artifacts/platform-acceptance.json and architecture documentation.
-
-### On-demand backup acceptance — 11 October 2026
-
-Settings → Backups and `bunx flared backup` now create private R2 capsules with documents, ready files and the exact backend release. Restore is explicit, owner-only and restricted to an empty other environment of the same project. Five real-cloud backup checks passed with 111 documents, file integrity, failed-restore fencing and explicit repair/retry; temporary resources were removed. Local workerd additionally proved that the fence survives forced supervisor abort. Limits and exclusions are in the [maintenance guide](docs/maintenance.md#on-demand-logical-backup-and-empty-target-recovery). This is not release promotion, in-place database rollback, unrestricted export or PITR. Local/test releases and the privately packed Astro SDK were upgraded without clearing their application data.
+Current verification commands and production gates are documented in the
+[maintenance guide](docs/maintenance.md) and
+[production runbook](docs/production-runbook.md). Test reports are generated locally,
+ignored by Git and removed by `bun run clean`; historical test counts and project
+names are not a description of an operator's current installation.
 
 ## Release history and promotion
 
