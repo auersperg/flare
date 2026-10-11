@@ -69,7 +69,7 @@ Dashboard: Astro 7.3.8, React 19.3.0, actual shadcn `bKGijeGe` preset (Base UI L
 
 Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`@auersperg/flare`**: client, server declarations and CLI in one installation. SDK/CLI live inside `packages/flare/src`, not separate source workspaces. The `@auersperg/flare` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flare/sdk` / `@flare/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
 
-npm preview installation (`0.3.1`, `next` tag):
+npm preview installation (`next` tag):
 
 ```sh
 bun add @auersperg/flare@next

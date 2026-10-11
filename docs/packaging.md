@@ -62,9 +62,9 @@ For a maintainer, from the repository root:
 bun install --frozen-lockfile
 bun run test:kernel
 bun pm pack --cwd packages/flare --destination artifacts/packages/flare
-npm publish artifacts/packages/flare/auersperg-flare-0.3.1.tgz --dry-run --ignore-scripts --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.2.tgz --dry-run --ignore-scripts --access public --tag next
 # Only after reviewing the archive and authorizing the public release:
-npm publish artifacts/packages/flare/auersperg-flare-0.3.1.tgz --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.2.tgz --access public --tag next
 ```
 
 The source package's `prepack` runs the full repository verification, including

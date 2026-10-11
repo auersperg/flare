@@ -120,5 +120,5 @@ Sessions are memory-only and expire after at most 12 hours. Reload requires logi
 ## License and distribution
 
 SDK and CLI are MIT-licensed; see LICENSE. npm name: `@auersperg/flare`.
-The `flare` binary remains unchanged. Version 0.3.1 is published under the `next` tag. Core/dashboard are separate non-published
+The `flare` binary remains unchanged. Preview releases are published under the `next` tag. Core/dashboard are separate non-published
 components and are not included in this package.
