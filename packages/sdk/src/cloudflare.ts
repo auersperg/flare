@@ -9,6 +9,7 @@ import {
 } from "./server.js";
 import {
   FlaredError,
+  errorCode,
   type Auth,
   type FunctionKind,
   type Json,
@@ -177,7 +178,7 @@ export function createFacet(app: {
       } catch (error) {
         return {
           ok: false as const,
-          code: error instanceof FlaredError ? error.code : "OPERATION_FAILED",
+          code: errorCode(error),
         };
       }
     }
@@ -209,7 +210,7 @@ export function createFacet(app: {
       } catch (error) {
         return {
           ok: false as const,
-          code: error instanceof FlaredError ? error.code : "OPERATION_FAILED",
+          code: errorCode(error),
         };
       }
     }
@@ -632,7 +633,7 @@ export function createAction(app: {
       } catch (e) {
         return {
           ok: false as const,
-          code: e instanceof FlaredError ? e.code : "OPERATION_FAILED",
+          code: errorCode(e),
         };
       }
     }

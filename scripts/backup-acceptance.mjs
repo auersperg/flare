@@ -1,5 +1,6 @@
 // Explicit cloud proof on disposable resources. Never reads or resets Local/test data.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -28,6 +29,9 @@ const operator = "flared-backup-proof-" + id.slice(0, 8),
   dir = await mkdtemp(join(tmpdir(), "flared-backup-proof-"));
 const report = {
   id,
+  revision: spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim(),
   customer,
   tests: [],
   startedAt: new Date().toISOString(),
@@ -76,6 +80,19 @@ async function bundle(
   entry = "tests/fixtures/native-app.ts",
   name = "release",
 ) {
+  if (entry === "tests/fixtures/native-app.ts") {
+    const source = (await readFile(entry, "utf8"))
+      .replaceAll(
+        "../../packages/sdk/src/",
+        join(process.cwd(), "packages/sdk/dist") + "/",
+      )
+      .replace(
+        'from "zod"',
+        "from " + JSON.stringify(Bun.resolveSync("zod", process.cwd())),
+      );
+    entry = join(process.cwd(), ".private", "native-entry-" + id + ".ts");
+    await writeFile(entry, source);
+  }
   const out = join(dir, name);
   await buildApplication({
     entry,
@@ -98,14 +115,20 @@ async function test(name, fn) {
 }
 let operatorUrl;
 async function operate(op, backup, file) {
-  const r = await fetch(operatorUrl, {
-    method: "POST",
-    headers: {
-      authorization: "Bearer " + operatorKey,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ op, backup, file }),
-  });
+  let r;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    r = await fetch(operatorUrl, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + operatorKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ op, backup, file }),
+    });
+    if (r.status !== 404) break;
+    await r.body?.cancel();
+    await Bun.sleep(2000);
+  }
   if (!r.ok)
     throw Error(
       "Operator HTTP " + r.status + " " + (await r.text()).slice(0, 400),
@@ -150,7 +173,7 @@ try {
     install.owner,
     Date.now() + 3600000,
   ]);
-  const source = `export default {async fetch(req,env){if(req.method!=="POST"||req.headers.get("authorization")!=="Bearer "+env.KEY)return new Response("Unauthorized",{status:401});const x=await req.json();if(["auth-configure","auth-password","auth-disable","auth-revoke","auth-users"].includes(x.op)){const r=await env.RUNTIME.command("admin",["${id}/dev",x.op,x.backup||{}]);if(!r.ok)return Response.json({error:r.code},{status:400});return Response.json(r.value);}if(x.op==="cleanup"){for(const scope of ["${id}/prod","${id}/dev"]){const r=await env.RUNTIME.command("destroy",[scope]);if(!r.ok)throw Error(r.code);}return Response.json({cleaned:true});}if(!/^[0-9a-f-]{36}$/.test(x.backup)||!/^[0-9a-f-]{36}$/.test(x.file)||!["corrupt","repair"].includes(x.op))return new Response("Invalid",{status:400});await env.BUNDLES.put("backups/${id}/dev/"+x.backup+"/files/"+x.file,x.op==="repair"?"Cloud backup bytes":"corrupt");return Response.json({done:true});}}`;
+  const source = `export default {async fetch(req,env){if(req.method!=="POST"||req.headers.get("authorization")!=="Bearer "+env.KEY)return new Response("Unauthorized",{status:401});const x=await req.json();if(["auth-configure","auth-password","auth-disable","auth-revoke","auth-users"].includes(x.op)){const r=await env.RUNTIME.command("admin",["${id}/dev",x.op,x.backup||{}]);if(!r.ok)return Response.json({error:r.code},{status:400});return Response.json(r.value);}if(x.op==="cleanup"){for(const op of ["prepareDestroy","destroy"])for(const scope of ["${id}/prod","${id}/dev"]){const r=await env.RUNTIME.command(op,[scope]);if(!r.ok)throw Error(r.code);}return Response.json({cleaned:true});}if(!/^[0-9a-f-]{36}$/.test(x.backup)||!/^[0-9a-f-]{36}$/.test(x.file)||!["corrupt","repair"].includes(x.op))return new Response("Invalid",{status:400});await env.BUNDLES.put("backups/${id}/dev/"+x.backup+"/files/"+x.file,x.op==="repair"?"Cloud backup bytes":"corrupt");return Response.json({done:true});}}`;
   new Bun.Transpiler({ loader: "js" }).transformSync(source);
   const form = new FormData();
   form.set(
@@ -335,6 +358,59 @@ try {
       await client.action(reference("lab/privateEcho", "action"), {}),
       user.id,
     );
+    const secondAuth = createPasswordAuth({ url });
+    const secondClient = createClient({ url, getToken: secondAuth.getToken });
+    clients.push(secondClient);
+    const secondUser = await secondAuth.register("acceptance-second", password);
+    assert.notEqual(secondUser.id, user.id);
+    const noteId = await client.mutation(
+      reference("privateNotes/add", "mutation"),
+      { body: "Private user data" },
+    );
+    assert.equal(
+      (await client.query(reference("privateNotes/list", "query"), {})).length,
+      1,
+    );
+    assert.deepEqual(
+      await secondClient.query(reference("privateNotes/list", "query"), {}),
+      [],
+    );
+    await assert.rejects(
+      secondClient.mutation(reference("privateNotes/edit", "mutation"), {
+        id: noteId,
+        body: "Unauthorized edit",
+      }),
+      (e) => e.code === "FORBIDDEN",
+    );
+    const otherFrames = [];
+    const stopOther = secondClient.onUpdate(
+      reference("privateNotes/list", "query"),
+      {},
+      (value) => otherFrames.push(value),
+    );
+    try {
+      const until = Date.now() + 15000;
+      while (!otherFrames.length && Date.now() < until) await Bun.sleep(50);
+      assert.deepEqual(otherFrames[0], []);
+      await client.mutation(reference("privateNotes/edit", "mutation"), {
+        id: noteId,
+        body: "Owner update",
+      });
+      await Bun.sleep(500);
+      assert(otherFrames.every((value) => value.length === 0));
+      assert.equal(
+        (await client.query(reference("privateNotes/list", "query"), {}))[0]
+          .body,
+        "Owner update",
+      );
+    } finally {
+      stopOther();
+      secondClient.dispose();
+    }
+    report.tests.push({
+      name: "Two password users: indexed ownership query, cross-user mutation refusal and live isolation",
+      status: "PASS",
+    });
     const frames = [],
       errors = [];
     const stop = client.onUpdate(
@@ -397,7 +473,7 @@ try {
     const source = (await readFile("tests/fixtures/native-app.ts", "utf8"))
       .replaceAll(
         "../../packages/sdk/src/",
-        join(process.cwd(), "packages/sdk/src") + "/",
+        join(process.cwd(), "packages/sdk/dist") + "/",
       )
       .replace(
         'from "zod"',
@@ -509,6 +585,9 @@ try {
     JSON.stringify(report, null, 2),
   );
   await rm(dir, { recursive: true, force: true });
+  await rm(join(process.cwd(), ".private", "native-entry-" + id + ".ts"), {
+    force: true,
+  });
   await rm(join(process.cwd(), ".private", "release-versions-" + id + ".ts"), {
     force: true,
   });

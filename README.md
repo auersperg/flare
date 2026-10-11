@@ -220,13 +220,13 @@ Commit only the configuration examples, never live installation files. `tests/ke
 
 Explicit cloud acceptance commands can create test resources/projects and write test data. They are not part of `verify`, and must not target customer production data. Production builds/cleanup perform no cloud operations.
 
-Dynamic Workers/Facets/Lifecycle depend on beta/experimental Cloudflare APIs. Supported scope is trusted applications/team members, not public untrusted multi-tenancy. Native scoped Secrets Store reads and a restricted action `globalOutbound` gateway are implemented but need operator bindings/policy and real-cloud acceptance. Dashboard secret provisioning, full analytics, unrestricted export/disaster recovery, complete release draining, portable installer and client-specific delegated membership remain unfinished. Protected production functions without OIDC stay closed. Queues are at-least-once; ambiguous mutations are not automatically retried.
+Dynamic Workers/Facets/Lifecycle depend on beta/experimental Cloudflare APIs. Supported scope is trusted applications/team members, not public untrusted multi-tenancy. Native scoped Secrets Store reads and a restricted action `globalOutbound` gateway are implemented but need operator bindings/policy and real-cloud acceptance. Dashboard secret provisioning, full analytics, unrestricted export/disaster recovery, complete release draining, portable installer and client-specific delegated membership remain unfinished. Protected functions accept enabled built-in password sessions or configured OIDC identities; application handlers enforce record permissions. Queues are at-least-once; ambiguous mutations are not automatically retried.
 
 No guarantee that $5 covers total usage or that Flared is cheaper/faster than Convex for every workload. This repository and all packages are private and **UNLICENSED**. No open-source licence is granted; public visibility, licensing and npm publication require a separate decision.
 
 ## Release status
 
-Use 0.3 for a controlled, trusted-team installation only. Before treating it as a general production backend, complete the [production gates](docs/maintenance.md#remaining-production-gates): independent installation/OIDC, release recovery, load/cost tests, extended disaster recovery and the unfinished service capabilities. No runtime architecture was replaced just to make repository checks pass.
+Use 0.3 for a controlled, trusted-team installation only. Before treating it as a general production backend, complete the [production gates](docs/maintenance.md#remaining-production-gates): independent installation/optional external OIDC, release draining, workload-specific load/cost tests, extended disaster recovery and the unfinished service capabilities. No runtime architecture was replaced just to make repository checks pass.
 
 ### Cloud update — 11 October 2026
 
@@ -243,3 +243,5 @@ Settings → Backups and `bunx flared backup` now create private R2 capsules wit
 Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx flared promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx flared rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
 
 `bunx flared deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/cli/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
+
+Operator checklist: [production runbook](docs/production-runbook.md). Short acceptance does not certify a monthly bill or an unperformed load test.

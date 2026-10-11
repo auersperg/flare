@@ -30,6 +30,15 @@ export class FlaredError extends Error {
     this.name = "FlaredError";
   }
 }
+/** SDK entrypoints are separately bundled; class identity is not a wire contract. */
+export function errorCode(error: unknown): string {
+  if (error instanceof Error && error.name === "FlaredError") {
+    const code = (error as Error & { code?: unknown }).code;
+    if (typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code))
+      return code;
+  }
+  return "OPERATION_FAILED";
+}
 export function assertPath(path: string): void {
   if (
     path.length > 256 ||

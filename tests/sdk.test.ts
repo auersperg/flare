@@ -13,6 +13,7 @@ import {
 } from "../packages/sdk/src/server.js";
 import {
   assertPath,
+  errorCode,
   boundedJson,
   reference,
   stableJson,
@@ -569,5 +570,34 @@ describe("expired live cache", () => {
     client.onUpdate(ref, {}, next);
     expect(next).not.toHaveBeenCalled();
     client.dispose();
+  });
+});
+
+describe("separately bundled error contracts", () => {
+  it("preserves only explicit bounded SDK codes without exposing messages", () => {
+    class SeparateFlaredError extends Error {
+      name = "FlaredError";
+      code = "FORBIDDEN";
+    }
+    expect(errorCode(new SeparateFlaredError("private details"))).toBe(
+      "FORBIDDEN",
+    );
+    expect(
+      errorCode(
+        Object.assign(new Error("private details"), { code: "FORBIDDEN" }),
+      ),
+    ).toBe("OPERATION_FAILED");
+    expect(errorCode({ name: "FlaredError", code: "FORBIDDEN" })).toBe(
+      "OPERATION_FAILED",
+    );
+    for (const code of [
+      "password details",
+      "X".repeat(65),
+      "",
+      "SECRET\nVALUE",
+    ])
+      expect(
+        errorCode(Object.assign(new SeparateFlaredError(), { code })),
+      ).toBe("OPERATION_FAILED");
   });
 });

@@ -24,7 +24,8 @@
     "deploy:dashboard": "bun run build && bun x --no-install wrangler deploy --config admin.wrangler.json",
     "test:build": "bun run build && bun scripts/verify-build.mjs",
     "verify": "bun run build && bun run check && bun run test && bun run format:check && bun scripts/verify-build.mjs && bun scripts/package-acceptance.mjs",
-    "clean": "bun scripts/clean.mjs"
+    "clean": "bun scripts/clean.mjs",
+    "test:deletion:cloud": "bun scripts/project-deletion-acceptance.mjs"
   },
   "dependencies": {
     "@standard-schema/spec": "1.1.0",

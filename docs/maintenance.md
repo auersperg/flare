@@ -59,7 +59,7 @@ Record changes to app contracts, migration semantics, auth boundaries and beta A
 
 ## Remaining production gates
 
-Repository cleanup is not full production certification. Remaining scope: independent OIDC provider acceptance, full release draining/crash recovery, native cloud guarantees/load/cost verification, operator Secrets Store/egress provisioning and real-cloud acceptance, analytics and extended files/cron crash/load acceptance, delegated client membership, portable installer, public licence and npm namespace ownership. Bounded logical backup/restore is now verified; unrestricted large exports, disaster recovery into a new project, in-place restore and PITR are not implemented. See architecture and README for actual product boundaries.
+Repository cleanup is not full production certification. Required gates depend on the application: representative workload/cost acceptance, an acceptable recovery policy, release draining under concurrent actions, and operational error/DLQ ownership. Native password auth is supported; an independent external OIDC provider is optional, not mandatory for password-only applications. Operator Secrets Store/egress provisioning, full analytics, extended files/cron crash/load acceptance, delegated client membership and portable installation remain unfinished. Public licence/npm ownership matters for distribution, not use in this private account. Bounded same-project empty-target backup/restore is verified; off-account recovery, in-place restore and PITR are not implemented. Follow the [production runbook](production-runbook.md); do not treat an unperformed or cancelled soak as PASS.
 
 ## On-demand logical backup and empty-target recovery
 

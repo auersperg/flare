@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { cleanupCloudScopes } from "./lib/cloud-cleanup.mjs";
 import { readFile, writeFile, mkdir, mkdtemp, cp, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { randomUUID, createHash, createHmac } from "node:crypto";
@@ -22,9 +23,19 @@ const base = install.runtimeUrl,
   customer = randomUUID(),
   token = randomUUID() + randomUUID(),
   now = Date.now();
+const cancellation = new AbortController();
+let cancelled = false;
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () => {
+    cancelled = true;
+    cancellation.abort();
+  });
 const directory = await mkdtemp(join(tmpdir(), "flared-cloud-proof-"));
 const report = {
   scope: id,
+  revision: spawnSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim(),
   directory,
   runtime: base,
   startedAt: new Date().toISOString(),
@@ -106,6 +117,7 @@ let sdk,
   refs,
   devUrl = base + "/p/" + id + "/dev";
 async function test(name, fn) {
+  if (cancelled) throw Error("Acceptance cancelled by operator");
   const at = performance.now();
   try {
     await fn();
@@ -633,7 +645,7 @@ export default app;
       report.clients = 100;
       const start = Date.now();
       while (Date.now() - start < loadMinutes * 60000) {
-        await sleep(60000);
+        await sleep(60000, undefined, { signal: cancellation.signal });
         if (tokenExpires - Date.now() / 1000 < 90) {
           tokenExpires = Math.floor(Date.now() / 1000) + 900;
           for (const c of clients) c.refreshAuth();
@@ -664,7 +676,12 @@ export default app;
         await writeFile(
           "artifacts/platform-soak-progress.json",
           JSON.stringify(
-            { elapsedMinutes: (Date.now() - start) / 60000, health },
+            {
+              scope: id,
+              startedAt: report.startedAt,
+              elapsedMinutes: (Date.now() - start) / 60000,
+              health,
+            },
             null,
             2,
           ),
@@ -673,17 +690,39 @@ export default app;
       report.soakMinutes = (Date.now() - start) / 60000;
     });
   }
+  if (cancelled) throw Error("Acceptance cancelled by operator");
   report.status = "PASS";
 } catch (e) {
-  report.status = "FAIL";
+  report.status = cancelled ? "CANCELLED" : "FAIL";
   report.error = String(e);
   console.error(String(e));
-  process.exitCode = 1;
+  process.exitCode = cancelled ? 130 : 1;
 } finally {
   for (const c of clients) c.dispose();
   await db("UPDATE credentials SET revoked=1 WHERE hash=?", [sha(token)]).catch(
     () => {},
   );
+  try {
+    await cleanupCloudScopes({
+      account: `https://api.cloudflare.com/client/v4/accounts/${install.account}`,
+      oauth,
+      scopes: [id, other].flatMap((p) => [p + "/dev", p + "/prod"]),
+    });
+    for (const p of [id, other]) {
+      for (const table of ["credentials", "environments", "audit"])
+        await db(`DELETE FROM ${table} WHERE projectId=?`, [p]);
+      await db("DELETE FROM projects WHERE id=?", [p]);
+    }
+    await db("DELETE FROM customers WHERE id=?", [customer]);
+    await db("DELETE FROM members WHERE email=?", [
+      "viewer-" + id + "@example.test",
+    ]);
+    report.resourcesCleaned = true;
+  } catch (error) {
+    report.cleanupError = String(error);
+    report.status = "FAIL";
+    process.exitCode = 1;
+  }
   report.finishedAt = new Date().toISOString();
   await mkdir("artifacts", { recursive: true });
   const path = `artifacts/platform-${id}.json`;

@@ -5,12 +5,15 @@ import {
   defineTable,
   createFunctions,
 } from "../../packages/sdk/src/server.js";
-import { reference } from "../../packages/sdk/src/protocol.js";
+import { FlaredError, reference } from "../../packages/sdk/src/protocol.js";
 const schema = defineSchema({
   tasks: defineTable(
     z.object({ title: z.string().min(1), done: z.boolean().default(false) }),
   ).index("by_done", ["done"]),
   notes: defineTable(z.object({ body: z.string() })),
+  privateNotes: defineTable(
+    z.object({ owner: z.string(), body: z.string() }),
+  ).index("by_owner", ["owner"]),
 });
 const { query, mutation, action } = createFunctions<typeof schema>();
 const empty = z.object({}),
@@ -93,6 +96,44 @@ export default defineApp({
         output: z.boolean(),
         handler: ({ jobs }) => {
           void jobs.schedule("jobs/add", { title: 1 });
+          return true;
+        },
+      }),
+    },
+    privateNotes: {
+      list: query({
+        auth: "required",
+        input: empty,
+        output: z.array(
+          z.object({
+            _id: z.string(),
+            _creationTime: z.number(),
+            owner: z.string(),
+            body: z.string(),
+          }),
+        ),
+        handler: ({ db, auth }) =>
+          db
+            .query("privateNotes")
+            .withIndex("by_owner", (q) => q.eq("owner", auth!.subject))
+            .take(100),
+      }),
+      add: mutation({
+        auth: "required",
+        input: z.object({ body: z.string() }),
+        output: z.string(),
+        handler: ({ db, auth }, args) =>
+          db.insert("privateNotes", { ...args, owner: auth!.subject }),
+      }),
+      edit: mutation({
+        auth: "required",
+        input: z.object({ id: z.string(), body: z.string() }),
+        output: z.boolean(),
+        handler: async ({ db, auth }, args) => {
+          const row = await db.get("privateNotes", args.id);
+          if (!row || row.owner !== auth!.subject)
+            throw new FlaredError("FORBIDDEN", "FORBIDDEN");
+          await db.patch("privateNotes", args.id, { body: args.body });
           return true;
         },
       }),
