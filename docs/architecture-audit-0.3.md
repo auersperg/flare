@@ -6,7 +6,7 @@
 
 Два основных Worker: Admin с онлайн Astro/shadcn dashboard и Runtime. D1 хранит каталог, права и аудит, но отсутствует в пути запросов приложения. На project/environment — supervisor DO и постоянный facet `app` с собственной SQLite. Файлы — R2, задания — Queues, расписания и восстановление — native Lifecycle/Scheduler alarms. Bun нужен для разработки, CLI и сборки; облачный runtime остаётся Cloudflare Workers.
 
-Один устанавливаемый пакет `flare`: SDK, React hooks и lazy CLI. В коде только `query`, `mutation`, `action`. Query одновременно доступна разовым HTTP-вызовом и подпиской; `useQuery`/`onUpdate` получают первый результат непосредственно через shared hibernating WebSocket, без дополнительного HTTP query или polling. `/v1/live` — транспорт, не четвёртый вид функции.
+Один устанавливаемый пакет `@auersperg/flare`: SDK, React hooks и lazy CLI. В коде только `query`, `mutation`, `action`. Query одновременно доступна разовым HTTP-вызовом и подпиской; `useQuery`/`onUpdate` получают первый результат непосредственно через shared hibernating WebSocket, без дополнительного HTTP query или polling. `/v1/live` — транспорт, не четвёртый вид функции.
 
 Документный SDK — небольшой адаптер над native SQLite: отдельные таблицы, JSON documents, expression indexes и SQL keyset pagination. Drizzle, отдельного SQL-сервера, Redis или собственного постоянно работающего backend нет. Мутация атомарно фиксирует данные, revision, outbox и валидированный результат. Удалять эти границы ради меньшего числа строк нельзя.
 

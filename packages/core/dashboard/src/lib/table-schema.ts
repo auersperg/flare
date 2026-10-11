@@ -13,9 +13,9 @@ export function schemaDraft(
     if (tables.some((t) => t.name.toLowerCase() === name))
       throw Error("This table already exists.");
     return {
-      definition: `import {defineSchema,defineTable,z} from "flare/server";\n\nexport default defineSchema({\n  ${name}: defineTable(z.object({title:z.string()})),\n});`,
+      definition: `import {defineSchema,defineTable,z} from "@auersperg/flare/server";\n\nexport default defineSchema({\n  ${name}: defineTable(z.object({title:z.string()})),\n});`,
       notes:
-        "No SQL migration needed. Edit flare/schema.ts and run bunx flare dev.",
+        "No SQL migration needed. Edit flare/schema.ts and run bunx --bun --package @auersperg/flare flare dev.",
     };
   }
   const selected = tables.find((t) => t.name === table);

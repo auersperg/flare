@@ -167,7 +167,7 @@ function SchemaForm({
           Build a new release so the schema and SDK stay versioned together.
         </li>
       </ol>
-      <pre className="code-block">{`bunx flare ${env === "prod" ? "deploy" : "dev"}`}</pre>
+      <pre className="code-block">{`bunx --bun --package @auersperg/flare flare ${env === "prod" ? "deploy" : "dev"}`}</pre>
       <p className="text-xs text-muted-foreground">
         Schema changes are versioned with code. Destructive table removal and
         arbitrary SQL execution are intentionally unavailable here.{" "}

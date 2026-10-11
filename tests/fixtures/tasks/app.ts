@@ -4,7 +4,7 @@ import {
   defineSchema,
   defineTable,
   createFunctions,
-} from "flare/server";
+} from "@auersperg/flare/server";
 const schema = defineSchema({
   tasks: defineTable(
     z.object({

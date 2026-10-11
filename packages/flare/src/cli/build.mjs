@@ -189,8 +189,8 @@ export async function buildApplication(options) {
 async function compileRole(role, entry, working) {
   const code =
     role === "facet"
-      ? `import app from ${JSON.stringify(entry)}; import {createFacet} from "flare/cloudflare"; export class AppFacet extends createFacet(app) {}`
-      : `import app from ${JSON.stringify(entry)}; import {createAction} from "flare/cloudflare"; export class Action extends createAction(app) {}`;
+      ? `import app from ${JSON.stringify(entry)}; import {createFacet} from "@auersperg/flare/cloudflare"; export class AppFacet extends createFacet(app) {}`
+      : `import app from ${JSON.stringify(entry)}; import {createAction} from "@auersperg/flare/cloudflare"; export class Action extends createAction(app) {}`;
   const virtualEntry = join(working, `${role}-entry.ts`);
   const result = await bundle({
     entrypoints: [virtualEntry],
@@ -215,7 +215,7 @@ async function compileRole(role, entry, working) {
 }
 
 export async function generateReferences(contract) {
-  let generated = 'import {reference} from "flare";\n';
+  let generated = 'import {reference} from "@auersperg/flare";\n';
   const refs = [];
   for (const [index, [path, fn]] of Object.entries(
     contract.functions,

@@ -11,7 +11,7 @@ const cli = fileURLToPath(
 );
 describe("Flare product consistency", () => {
   it.each([
-    ["flare", "flare"],
+    ["flare", "@auersperg/flare"],
     ["core", "@flare/platform"],
   ])(
     "names the %s package consistently and guards unpublished previews",
@@ -19,17 +19,17 @@ describe("Flare product consistency", () => {
       const pkg = JSON.parse(read(`packages/${folder}/package.json`));
       expect(pkg.name).toBe(name);
       expect(pkg.version).toBe(JSON.parse(read("package.json")).version);
-      expect(pkg.license).toBe("UNLICENSED");
-      expect(pkg.private).toBe(true);
+      expect(pkg.license).toBe(folder === "flare" ? "MIT" : "UNLICENSED");
+      expect(pkg.private).toBe(folder === "core" ? true : undefined);
     },
   );
   it("has exactly two top-level packages and one application dependency", () => {
     expect(existsSync(new URL("../packages/sdk", import.meta.url))).toBe(false);
     expect(existsSync(new URL("../packages/cli", import.meta.url))).toBe(false);
     const pkg = JSON.parse(read("packages/flare/package.json"));
-    expect(pkg.name).toBe("flare");
+    expect(pkg.name).toBe("@auersperg/flare");
     expect(pkg.bin).toEqual({ flare: "./dist/cli/flare.js" });
-    expect(pkg.files).toEqual(["dist", "README.md"]);
+    expect(pkg.files).toEqual(["dist", "README.md", "LICENSE"]);
     expect(pkg.sideEffects).toBe(false);
     expect(pkg.peerDependenciesMeta.react.optional).toBe(true);
     for (const name of Object.keys(pkg.dependencies))
@@ -57,10 +57,10 @@ describe("Flare product consistency", () => {
   });
   it("generates application imports exclusively through the public flare package", () => {
     const build = read("packages/flare/src/cli/build.mjs");
-    expect(build).toContain('import {reference} from "flare";');
-    expect(build).toContain('from "flare/cloudflare"; export class');
+    expect(build).toContain('import {reference} from "@auersperg/flare";');
+    expect(build).toContain('from "@auersperg/flare/cloudflare"; export class');
     expect(read("packages/flare/src/cli/project.mjs")).toContain(
-      'const source = `import {defineApp} from "flare/server";',
+      'const source = `import {defineApp} from "@auersperg/flare/server";',
     );
   });
   it("help advertises only the cloud dashboard without loading the compiler", () => {
@@ -281,8 +281,12 @@ describe("Production-only repository", () => {
     ]) {
       const pkg = JSON.parse(read(path));
       expect(pkg.repository.url).toBe("https://github.com/auersperg/flare.git");
-      expect(pkg.private).toBe(true);
-      expect(pkg.license).toBe("UNLICENSED");
+      expect(pkg.private).toBe(
+        path === "packages/flare/package.json" ? undefined : true,
+      );
+      expect(pkg.license).toBe(
+        path === "packages/flare/package.json" ? "MIT" : "UNLICENSED",
+      );
     }
   });
   it("commits portable examples rather than operator configuration", () => {

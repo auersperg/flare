@@ -22,7 +22,7 @@ import {
   type FunctionDefinition,
 } from "../lib/model";
 import { contractFields } from "../lib/presentation";
-import { createClient, reference, type FlareClient } from "flare";
+import { createClient, reference, type FlareClient } from "@auersperg/flare";
 import type { Scope } from "./dashboard";
 export default function FunctionsView(scope: Scope) {
   const r = useResource<Manifest>(

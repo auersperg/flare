@@ -18,7 +18,7 @@ export async function scaffold() {
   try {
     await writeFile(
       "flare/schema.ts",
-      'import {defineSchema} from "flare/server";\nexport default defineSchema({});\n',
+      'import {defineSchema} from "@auersperg/flare/server";\nexport default defineSchema({});\n',
       { flag: "wx" },
     );
   } catch (e) {
@@ -63,7 +63,7 @@ export async function prepare() {
   await mkdir("flare/_generated", { recursive: true });
   await writeFile(
     "flare/_generated/server.ts",
-    'import type schema from "../schema";\nimport {createFunctions} from "flare/server";\nexport const {query,mutation,action}=createFunctions<typeof schema>();\n',
+    'import type schema from "../schema";\nimport {createFunctions} from "@auersperg/flare/server";\nexport const {query,mutation,action}=createFunctions<typeof schema>();\n',
   );
   const files = await modules("flare");
   const schema = resolve("flare/schema.ts"),
@@ -71,7 +71,7 @@ export async function prepare() {
   const imports = files
     .map((file, i) => `import * as f${i} from ${JSON.stringify(file.path)};`)
     .join("\n");
-  const source = `import {defineApp} from "flare/server";
+  const source = `import {defineApp} from "@auersperg/flare/server";
 import schema from ${JSON.stringify(schema)};
 ${imports}
 const functions={};

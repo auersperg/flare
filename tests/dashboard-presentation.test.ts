@@ -336,6 +336,6 @@ describe("Document schema guidance", () => {
     );
     expect(source.replace(/\s+/g, " ")).toContain("not a database change");
     expect(source).not.toMatch(/\bapi\(/);
-    expect(source).toContain("bunx flare");
+    expect(source).toContain("bunx --bun --package @auersperg/flare flare");
   });
 });

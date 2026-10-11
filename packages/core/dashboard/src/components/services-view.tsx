@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { fileMetadata, uploadFile } from "flare";
+import { fileMetadata, uploadFile } from "@auersperg/flare";
 import { RefreshCw, Download, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";

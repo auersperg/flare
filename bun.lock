@@ -30,13 +30,13 @@
       "version": "0.3.1",
       "dependencies": {
         "@astrojs/react": "7.0.1",
+        "@auersperg/flare": "0.3.1",
         "@base-ui/react": "1.9.0",
         "@fontsource-variable/geist": "5.3.0",
         "@tailwindcss/vite": "4.3.3",
         "astro": "7.3.8",
         "class-variance-authority": "0.7.1",
         "cn": "0.4.0",
-        "flare": "0.3.1",
         "lucide-react": "1.55.0",
         "react": "19.3.0",
         "react-dom": "19.3.0",
@@ -50,7 +50,7 @@
       },
     },
     "packages/flare": {
-      "name": "flare",
+      "name": "@auersperg/flare",
       "version": "0.3.1",
       "bin": {
         "flare": "./dist/cli/flare.js",
@@ -116,6 +116,8 @@
     "@astrojs/telemetry": ["@astrojs/telemetry@3.3.3", "", { "dependencies": { "ci-info": "^4.4.0", "dset": "^3.1.4", "is-docker": "^4.0.0", "package-manager-detector": "^1.6.0" } }, "sha512-C1TLn5sPJr0x4vk56piHWKbnqlEB8BKyte5Y45V02U+D7BGO5eMqZDH5aPjnkXQWJggvmsTXxH03QMZ9NgWLzQ=="],
 
     "@astrojs/yaml2ts": ["@astrojs/yaml2ts@0.2.4", "", { "dependencies": { "yaml": "^2.8.3" } }, "sha512-8oddpOae35pJsXPQXhTkM0ypfKPskVsh2bCxRtbf7e+/Epw2nReakFYpLKjZMEr75CsoF203PMnCocpfz0s69A=="],
+
+    "@auersperg/flare": ["@auersperg/flare@workspace:packages/flare"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 
@@ -822,8 +824,6 @@
     "find-proc": ["find-proc@0.2.0", "", {}, "sha512-a6h2nTrgB3g5Wrn4au9Ux4kMk7IJtyF6oA8uGn+mk3weLZssUtc1cp6meHIzzuW2o1srrBAxzkmXLbqjRkgB6w=="],
 
     "find-up": ["find-up@3.0.0", "", { "dependencies": { "locate-path": "^3.0.0" } }, "sha512-1yD6RmLI1XBfxugvORwlck6f75tYL+iR0jqwsOrOxMZyGYqUuDhJ0l4AXdO1iX/FTs9cBAMEk1gWSEx1kSbylg=="],
-
-    "flare": ["flare@workspace:packages/flare"],
 
     "flattie": ["flattie@1.1.1", "", {}, "sha512-9UbaD6XdAL97+k/n+N7JwX46K/M6Zc6KcFYskrYL8wbBV/Uyk0CTAMY0VT+qiK5PM7AIc9aTWYtq65U7T+aCNQ=="],
 

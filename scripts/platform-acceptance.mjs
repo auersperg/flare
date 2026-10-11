@@ -197,7 +197,7 @@ try {
         name: "flare-cloud-proof",
         private: true,
         type: "module",
-        dependencies: { flare: `file:${archive}` },
+        dependencies: { "@auersperg/flare": `file:${archive}` },
       }),
     );
     const x = spawnSync(process.execPath, ["install", "--ignore-scripts"], {
@@ -208,7 +208,9 @@ try {
     assert.equal(x.status, 0, x.stderr);
     const { lstat } = await import("node:fs/promises");
     assert(
-      !(await lstat(join(directory, "node_modules/flare"))).isSymbolicLink(),
+      !(
+        await lstat(join(directory, "node_modules/@auersperg/flare"))
+      ).isSymbolicLink(),
     );
   });
   const source =
@@ -223,7 +225,10 @@ app.functions.tasks.schedule=mutation({input:z.object({}),output:z.string(),hand
 export default app;
 `;
   await writeFile(join(directory, "app.ts"), source);
-  const bin = join(directory, "node_modules/flare/dist/cli/flare.js");
+  const bin = join(
+    directory,
+    "node_modules/@auersperg/flare/dist/cli/flare.js",
+  );
   await test("Packaged CLI links and deploys native dev/prod without reinstalling core", async () => {
     run([bin, "build", "--entry", "app.ts", "--outdir", "release"]);
     run([bin, "link", "--platform", platform, "--project", id]);
@@ -245,7 +250,9 @@ export default app;
       id,
     ]);
     sdk = await import(
-      pathToFileURL(join(directory, "node_modules/flare/index.js")).href
+      pathToFileURL(
+        join(directory, "node_modules/@auersperg/flare/dist/sdk/client.js"),
+      ).href
     );
     client = sdk.createClient({ url: devUrl, getToken: () => devIdentity() });
     clients.push(client);

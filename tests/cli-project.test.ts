@@ -12,10 +12,10 @@ it("discovers schema/functions and generates typed API/server without SQL journa
  import {buildApplication} from ${JSON.stringify(resolve("packages/flare/src/cli/build.mjs"))};
  import {writeFile,readFile,mkdir,access} from 'node:fs/promises'; import assert from 'node:assert/strict';
  await writeFile('package.json','{"type":"module","private":true,"dependencies":{"astro":"7.3.8"}}');await mkdir('flare');
- await writeFile('flare/schema.ts','import {defineSchema,defineTable,z} from "flare/server";export default defineSchema({notes:defineTable(z.object({title:z.string()})).index("by_title",["title"])});');
- await writeFile('flare/notes.ts','import {query} from "./_generated/server";import {z} from "flare/server";export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(50)});');
- await writeFile('flare/queries.ts', 'import {query} from "./_generated/server";import {z} from "flare/server";export const only=query({input:z.object({}),output:z.string(),handler:()=>"QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME"});');
- await writeFile('flare/actions.ts', 'import {action} from "./_generated/server";import {z} from "flare/server";export const only=action({input:z.object({}),output:z.string(),handler:()=>"ACTION_HANDLER_IS_PRESENT"});');
+ await writeFile('flare/schema.ts','import {defineSchema,defineTable,z} from "@auersperg/flare/server";export default defineSchema({notes:defineTable(z.object({title:z.string()})).index("by_title",["title"])});');
+ await writeFile('flare/notes.ts','import {query} from "./_generated/server";import {z} from "@auersperg/flare/server";export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(50)});');
+ await writeFile('flare/queries.ts', 'import {query} from "./_generated/server";import {z} from "@auersperg/flare/server";export const only=query({input:z.object({}),output:z.string(),handler:()=>"QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME"});');
+ await writeFile('flare/actions.ts', 'import {action} from "./_generated/server";import {z} from "@auersperg/flare/server";export const only=action({input:z.object({}),output:z.string(),handler:()=>"ACTION_HANDLER_IS_PRESENT"});');
  const source=await prepare();await buildApplication({...source,outdir:'release1'});await generateApi('release1');
  const actionCode=await readFile('release1/action.js','utf8');assert(actionCode.includes('ACTION_HANDLER_IS_PRESENT'));assert(!actionCode.includes('QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME'));
  assert((await readFile('release1/facet.js','utf8')).includes('QUERY_HANDLER_SHOULD_NOT_ENTER_ACTION_RUNTIME'));

@@ -35,8 +35,16 @@ try {
   const archive = resolve("packages/flare", filename);
   const files = await new Bun.Archive(await Bun.file(archive).bytes()).files();
   const packed = JSON.parse(await files.get("package/package.json").text());
-  assert.equal(packed.name, "flare");
+  assert.equal(packed.name, "@auersperg/flare");
   assert.equal(packed.sideEffects, false);
+  assert.equal(packed.private, undefined);
+  assert.equal(packed.license, "MIT");
+  assert.equal(packed.publishConfig.access, "public");
+  assert.equal(packed.publishConfig.tag, "next");
+  assert.ok(files.has("package/LICENSE"));
+  assert.ok(
+    (await files.get("package/LICENSE").text()).includes("MIT License"),
+  );
   assert.ok(!files.has("package/index.js"), "Unexpected forwarding wrapper");
   for (const contract of Object.values(packed.exports)) {
     for (const entry of [contract.import, contract.types]) {
@@ -63,13 +71,15 @@ try {
       name: "fresh-flare-proof",
       private: true,
       type: "module",
-      dependencies: { flare: `file:${archive}` },
+      dependencies: { "@auersperg/flare": `file:${archive}` },
       devDependencies: { typescript: "6.0.2", "@types/node": "24.19.2" },
     }),
   );
   run(["install", "--ignore-scripts"], external);
   assert.equal(
-    (await lstat(join(external, "node_modules/flare"))).isSymbolicLink(),
+    (
+      await lstat(join(external, "node_modules/@auersperg/flare"))
+    ).isSymbolicLink(),
     false,
   );
   assert.equal(
@@ -118,7 +128,7 @@ try {
     }
   }
   await inspectDependencies(join(external, "node_modules"));
-  const help = run(["x", "--bun", "flare", "--help"], external);
+  const help = run(["--bun", "./node_modules/.bin/flare", "--help"], external);
   assert.ok(help.includes("Flare 0.3") && help.includes("Cloudflare-only"));
   // Portable JS remains usable without Bun or window, independently of CLI.
   const portable = spawnSync(
@@ -128,7 +138,7 @@ try {
       "-e",
       `
     import assert from 'node:assert/strict';
-    import {createClient, FlareError} from 'flare';
+    import {createClient, FlareError} from '@auersperg/flare';
     const client = createClient({url:'https://application.example/dev'});
     client.dispose();
     await assert.rejects(client.query({path:'test',kind:'query'},{}), FlareError);
@@ -139,16 +149,15 @@ try {
   assert.equal(portable.status, 0, portable.stderr);
   await writeFile(
     join(external, "app.ts"),
-    `import {defineApp,defineSchema,defineTable,createFunctions,z} from "flare/server";
+    `import {defineApp,defineSchema,defineTable,createFunctions,z} from "@auersperg/flare/server";
 const schema=defineSchema({counter:defineTable(z.object({value:z.number()}))});const {query,mutation,action}=createFunctions<typeof schema>();
 const get={auth:"public" as const,input:z.object({}),output:z.number(),handler:async({db}:any)=>(await db.query("counter").first())?.value ?? 0};
 export default defineApp({schema,functions:{get:query(get),increment:mutation({auth:"public",input:z.object({}),output:z.number(),handler:async({db})=>{const r=await db.query("counter").first();const value=(r?.value ?? 0)+1;if(r)await db.patch("counter",r._id,{value});else await db.insert("counter",{value});return value;}}),echo:action({auth:"public",input:z.object({value:z.number()}),output:z.number(),handler:(_ctx,a)=>a.value})}});`,
   );
   run(
     [
-      "x",
       "--bun",
-      "flare",
+      "./node_modules/.bin/flare",
       "build",
       "--entry",
       "app.ts",
@@ -205,9 +214,8 @@ export default defineApp({schema,functions:{get:query(get),increment:mutation({a
   // Same input => same content-addressed artifact; never overwrite a prior build.
   run(
     [
-      "x",
       "--bun",
-      "flare",
+      "./node_modules/.bin/flare",
       "build",
       "--entry",
       "app.ts",
@@ -249,7 +257,7 @@ import App from '../components/App';
   );
   await writeFile(
     join(external, "src/components/App.tsx"),
-    `import {createClient} from 'flare'; import {FlareProvider,useQuery} from 'flare/react'; import {api} from '../../release/api';
+    `import {createClient} from '@auersperg/flare'; import {FlareProvider,useQuery} from '@auersperg/flare/react'; import {api} from '../../release/api';
 const client = createClient({url: 'https://application.example/dev'});
 function Tasks() { const value = useQuery(api.get, {}); return <button onClick={() => client.query(api.get, {})}>{value ?? 'Loading'}</button>; }
 export default function App() { return <FlareProvider client={client}><Tasks /></FlareProvider>; }`,
@@ -268,13 +276,12 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
   // Empty apps are valid: production project creation must not seed test functions/data.
   await writeFile(
     join(external, "empty.ts"),
-    'import {defineApp} from "flare/server"; export default defineApp({schema:{}, functions:{}});\n',
+    'import {defineApp} from "@auersperg/flare/server"; export default defineApp({schema:{}, functions:{}});\n',
   );
   run(
     [
-      "x",
       "--bun",
-      "flare",
+      "./node_modules/.bin/flare",
       "build",
       "--entry",
       "empty.ts",
@@ -307,9 +314,8 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
   const failure = spawnSync(
     process.execPath,
     [
-      "x",
       "--bun",
-      "flare",
+      "./node_modules/.bin/flare",
       "build",
       "--entry",
       "invalid.ts",
@@ -327,11 +333,11 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
   await mkdir(join(external, "flare"));
   await writeFile(
     join(external, "flare/schema.ts"),
-    'import {defineSchema,defineTable,z} from "flare/server"; export default defineSchema({notes:defineTable(z.object({title:z.string()}))});\n',
+    'import {defineSchema,defineTable,z} from "@auersperg/flare/server"; export default defineSchema({notes:defineTable(z.object({title:z.string()}))});\n',
   );
   await writeFile(
     join(external, "flare/notes.ts"),
-    'import {z} from "flare/server"; import {query} from "./_generated/server"; export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(100)});\n',
+    'import {z} from "@auersperg/flare/server"; import {query} from "./_generated/server"; export const list=query({auth:"public",input:z.object({}),output:z.array(z.object({_id:z.string(),_creationTime:z.number(),title:z.string()})),handler:({db})=>db.query("notes").take(100)});\n',
   );
   const project = "00000000-0000-4000-8000-000000000001";
   await writeFile(
@@ -373,14 +379,14 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
     [
       "--preload",
       "./mock-control.mjs",
-      "./node_modules/flare/dist/cli/flare.js",
+      "./node_modules/@auersperg/flare/dist/cli/flare.js",
       "dev",
     ],
     external,
   );
   assert.match(
     await readFile(join(external, "flare/_generated/references.ts"), "utf8"),
-    /from "flare"/,
+    /from "@auersperg\/flare"/,
   );
   run(
     [

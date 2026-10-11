@@ -1,8 +1,7 @@
 {
-  "name": "flare",
+  "name": "@auersperg/flare",
   "version": "0.3.1",
-  "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "description": "Flare client, server declarations and development CLI",
   "bin": {
@@ -10,7 +9,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
@@ -55,5 +55,13 @@
     "react": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "next"
+  },
+  "scripts": {
+    "prepack": "bun run --cwd ../.. verify"
   }
 }

@@ -64,24 +64,24 @@
 
 | Пакет                      | Граница                                                                                   |
 | -------------------------- | ----------------------------------------------------------------------------------------- |
-| `flare`                    | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
+| `@auersperg/flare`         | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
 | `@flare/platform` (`core`) | Облачный runtime и онлайн-dashboard; не dependency приложения                             |
 
-Исполняемый файл — `flare`. Это локальные tarballs, не опубликованные пакеты. Scope не означает подтверждённого владения npm namespace. License пока UNLICENSED; open source требует явно выбранной лицензии и независимой установки в другом аккаунте.
+Исполняемый файл — `@auersperg/flare`. Это локальные tarballs, не опубликованные пакеты. Scope не означает подтверждённого владения npm namespace. License пока UNLICENSED; open source требует явно выбранной лицензии и независимой установки в другом аккаунте.
 
 **Основной реализованный flow:**
 
 ```sh
 # Сейчас — проверенный приватный tarball, не опубликованный npm пакет
-bun add /path/to/flare-0.3.1.tgz
-bunx flare dev
+bun add /path/to/auersperg-flare-0.3.1.tgz
+bunx --bun --package @auersperg/flare flare dev
 # Browser approval → выбор/создание проекта → cloud dev + typed API
 # Frontend запускается своим обычным dev server
-bunx flare deploy
+bunx --bun --package @auersperg/flare flare deploy
 # Сборка и prod-публикация с явным подтверждением проекта
 ```
 
-Единый пользовательский пакет `flare` содержит portable SDK и lazy Bun CLI. В исходниках Core/SDK/CLI остаются внутренними границами, не отдельными обязательными установками пользователя. Схему задают в `flare/schema.ts`, функции — в `flare/*.ts`. CLI генерирует `_generated/server.ts`, `_generated/api.ts`, facet/action bundles, schema/manifest/checksums и OpenAPI 3.1. Браузер не импортирует backend-код.
+Единый пользовательский пакет `@auersperg/flare` содержит portable SDK и lazy Bun CLI. В исходниках Core/SDK/CLI остаются внутренними границами, не отдельными обязательными установками пользователя. Схему задают в `flare/schema.ts`, функции — в `flare/*.ts`. CLI генерирует `_generated/server.ts`, `_generated/api.ts`, facet/action bundles, schema/manifest/checksums и OpenAPI 3.1. Браузер не импортирует backend-код.
 
 Advanced pipeline: `flare build --entry app.ts --outdir release`, `flare link --platform <runtime-url>/control --project <UUID>`, `flare dev --entry app.ts`, `flare deploy --env dev --release release`. General `platform init` остаётся незавершённым operator workflow; `db generate` не нужен и удалён. Локального dashboard нет. Local workerd в acceptance scripts — внутренний тест ядра, не зависимость установленного CLI и не основной developer flow. Сборка или тесты ничего не публикуют в облако.
 
@@ -113,7 +113,7 @@ Legacy SDK/CLI и обе демонстрации убраны из рабоче
 
 ### Application distribution
 
-`flare` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled directly from its own SDK/CLI source modules. There are no internal SDK/CLI registry dependencies. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
+`@auersperg/flare` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled directly from its own SDK/CLI source modules. There are no internal SDK/CLI registry dependencies. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
 
 ## 8. Native document API 0.3 — breaking rewrite
 

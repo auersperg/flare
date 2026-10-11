@@ -2,7 +2,7 @@
 
 ## Production-focused source tree
 
-Two top-level packages: `core` and `flare`. SDK and CLI live inside `flare/src/sdk` and `flare/src/cli`, with one package manifest and no forwarding wrappers. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
+Two top-level packages: `core` and `@auersperg/flare`. SDK and CLI live inside `flare/src/sdk` and `flare/src/cli`, with one package manifest and no forwarding wrappers. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
 
 Task/counter fixtures exist only under tests or in disposable acceptance workspaces. Normal platform builds must never compile them, seed their tables/functions or depend on their directories. Existing cloud projects keep their releases/data; an empty bootstrap applies only to newly created projects after deploying the updated Admin.
 
