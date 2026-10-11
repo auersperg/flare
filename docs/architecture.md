@@ -67,7 +67,7 @@
 | `@auersperg/flare`         | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
 | `@flare/platform` (`core`) | Облачный runtime и онлайн-dashboard; не dependency приложения                             |
 
-Исполняемый файл — `@auersperg/flare`. Это локальные tarballs, не опубликованные пакеты. Scope не означает подтверждённого владения npm namespace. License пока UNLICENSED; open source требует явно выбранной лицензии и независимой установки в другом аккаунте.
+npm-пакет — `@auersperg/flare`, исполняемый файл CLI — `flare`. Репозиторий, SDK/CLI, core и dashboard распространяются под MIT. Облачная приёмка в отдельном аккаунте остаётся отдельным критерием; открытая лицензия не означает, что все production-гарантии уже проверены.
 
 **Основной реализованный flow:**
 

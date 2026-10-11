@@ -19,7 +19,7 @@ describe("Flare product consistency", () => {
       const pkg = JSON.parse(read(`packages/${folder}/package.json`));
       expect(pkg.name).toBe(name);
       expect(pkg.version).toBe(JSON.parse(read("package.json")).version);
-      expect(pkg.license).toBe(folder === "flare" ? "MIT" : "UNLICENSED");
+      expect(pkg.license).toBe("MIT");
       expect(pkg.private).toBe(folder === "core" ? true : undefined);
     },
   );
@@ -284,9 +284,7 @@ describe("Production-only repository", () => {
       expect(pkg.private).toBe(
         path === "packages/flare/package.json" ? undefined : true,
       );
-      expect(pkg.license).toBe(
-        path === "packages/flare/package.json" ? "MIT" : "UNLICENSED",
-      );
+      expect(pkg.license).toBe("MIT");
     }
   });
   it("commits portable examples rather than operator configuration", () => {
@@ -338,6 +336,21 @@ describe("Production-only repository", () => {
     expect(workflow).not.toMatch(
       /secrets\.|wrangler deploy|npm publish|test:cloud/,
     );
+  });
+  it("publishes only by an approved main-branch OIDC workflow", () => {
+    const workflow = read(".github/workflows/publish.yml");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("environment: npm");
+    expect(workflow).toContain("id-token: write");
+    expect(workflow).toContain("persist-credentials: false");
+    expect(workflow).toContain("bun run verify");
+    expect(workflow).toContain("bun run test:kernel");
+    expect(workflow).toContain("--provenance");
+    expect(workflow).not.toMatch(
+      /secrets\.|NODE_AUTH_TOKEN|NPM_TOKEN|pull_request_target|wrangler deploy/,
+    );
+    expect(read("LICENSE")).toContain("MIT License");
   });
   it("has no demo workspaces or build-time demo dependencies", () => {
     const pkg = JSON.parse(read("package.json"));

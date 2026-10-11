@@ -1,0 +1,63 @@
+name: Publish npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version in packages/flare/package.json
+        required: true
+        type: string
+      tag:
+        description: npm distribution tag
+        type: choice
+        default: next
+        options: [next, latest]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'auersperg/flare' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CI: "true"
+      WRANGLER_SEND_METRICS: "false"
+      ASTRO_TELEMETRY_DISABLED: "1"
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.3"
+      - name: Check exact package and requested release
+        run: |
+          bun -e 'const p=await Bun.file("packages/flare/package.json").json();if(p.name!=="@auersperg/flare"||p.private||p.license!=="MIT"||p.version!==process.env.RELEASE_VERSION||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(p.version)||!["next","latest"].includes(process.env.RELEASE_TAG))throw Error("Invalid release request");'
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run verify
+      - run: bun run test:kernel
+      - run: bun audit --production --audit-level=high
+      - run: git diff --exit-code
+      - name: Pack verified SDK and CLI only
+        run: |
+          mkdir -p artifacts/packages/flare
+          bun pm pack --ignore-scripts --cwd packages/flare --destination "$PWD/artifacts/packages/flare"
+      - name: Install pinned OIDC-capable npm
+        run: npm install --global npm@12.1.0
+      - name: Publish through npm trusted publishing
+        run: npm publish "artifacts/packages/flare/auersperg-flare-${RELEASE_VERSION}.tgz" --access public --tag "$RELEASE_TAG" --provenance

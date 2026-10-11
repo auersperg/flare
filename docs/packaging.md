@@ -41,7 +41,7 @@ Studied the official [`convex-js/package.json`](https://github.com/get-convex/co
 ## npm release
 
 The SDK and CLI package is `@auersperg/flare`, under MIT. The repository and
-private core/dashboard retain their existing UNLICENSED status. Only
+core/dashboard use the same MIT license. Only
 `packages/flare` is publishable; the root and platform packages remain private.
 
 For an application:
@@ -71,5 +71,29 @@ The source package's `prepack` runs the full repository verification, including
 independent installation of an archive produced with lifecycle scripts disabled
 to avoid recursion. The first preview uses `next`, not `latest`. Publishing
 requires npm rights for the `auersperg` scope and the account's 2FA or configured
-trusted publishing. No npm credentials or automatic publication are added to CI.
-Public npm artifacts do not make the private GitHub repository public.
+trusted publishing. No npm credentials are stored in CI. A separate manually approved OIDC publication workflow is described below.
+The GitHub repository is public and MIT-licensed.
+
+## GitHub trusted publisher
+
+Release workflow: `.github/workflows/publish.yml`, manually started from `main`.
+It requires the exact manifest version and defaults to `next`. The protected
+GitHub environment `npm` requires owner approval. The publication job alone
+receives OIDC `id-token: write`; no permanent npm token is stored in GitHub.
+PRs and ordinary pushes never publish. Checks, native kernel tests, dependency
+audit and clean-source verification must pass before the archive is published
+with provenance. npm rejects an already published version; releases are immutable.
+
+npm trusted publisher settings:
+
+- Publisher: GitHub Actions
+- Organization/user: `auersperg`
+- Repository: `flare`
+- Workflow filename: `publish.yml`
+- Environment: `npm`
+- Allow `npm publish`: yes
+- Allow independent `npm dist-tag`: not needed
+
+A configured trust relationship is verified with `npm trust list @auersperg/flare`.
+Configuration alone does not prove a successful OIDC release; that is confirmed
+by the first approved publication run of a new version.

@@ -49,7 +49,7 @@ Cleaning local files makes no Cloudflare request and does not remove customer pr
 
 ## Repository workflow
 
-Canonical repository: `auersperg/flare`, private, default branch `main`, UNLICENSED. All packages remain private to prevent accidental npm publication. Git excludes credentials, live account configuration, generated files and installed dependencies.
+Canonical repository: `auersperg/flare`, public, default branch `main`, MIT. Core/dashboard and the workspace root remain npm-private to prevent accidental publication. The SDK/CLI package alone is publishable. Git excludes credentials, live account configuration, generated files and installed dependencies.
 
 Keep changes small and reviewable. Run `bun run verify` and `bun run test:kernel` before merging. Browser CLI login requires Admin migration 0003 and DASHBOARD_URL; it does not bypass Access or mint frontend user tokens. Application schema/functions must be committed; `_generated` and `.flare` stay ignored.
 

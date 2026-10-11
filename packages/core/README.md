@@ -8,4 +8,4 @@ Files stream through private R2 grants. Actions use narrow environment capabilit
 
 Native core/SDK integration runs against local workerd as part of `test:kernel`; Cloud acceptance on 11 October confirmed physical hibernation/resumption, data/live/upgrade/Queues and 1002-record pagination. A separate 30-minute / 100-client cloud soak passed; workload-specific billable usage still needs measurement. Activation crash checkpoints are verified locally and are not presented as cloud crash proof. Local build/test do not change deployed Workers, SQL data, Access, DNS or billing. Source entrypoints: `src/admin.ts`, `src/runtime.ts`. Dashboard: `dashboard/`. Test fixtures stay outside the production package.
 
-Private/unpublished, UNLICENSED. See the root README and architecture maps for the current contract, resource policy and remaining gates.
+MIT-licensed, not published to npm. See the root README and architecture maps for the current contract, resource policy and remaining gates.

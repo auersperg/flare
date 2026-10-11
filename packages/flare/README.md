@@ -24,7 +24,7 @@ Standard Schema / Standard JSON Schema validators define one contract for CLI, d
 
 0.3 is intentionally incompatible with the SQL/Drizzle API and release ABI 1–3. No compatibility adapters or historical app SQL journals remain. Use a fresh environment; local builds do not erase existing cloud data. Browser/server-JS clients remain portable; only CLI/build tooling requires Bun. No automatic retry of ambiguous mutations.
 
-Private, unpublished, UNLICENSED. See the root architecture and maintenance documents for cloud acceptance and remaining product gates.
+MIT-licensed; npm preview package `@auersperg/flare`. See the root architecture and maintenance documents for cloud acceptance and remaining product gates.
 
 Scheduling: mutation `jobs.schedule(path,args,{delaySeconds})` and `jobs.cancel(id)` share the transaction. Cancel only removes a not-yet-enqueued outbox entry; it never aborts a running action. `paginate` adapts record count to its byte budget; `take` fails instead of silently truncating bulky results.
 
@@ -120,5 +120,5 @@ Sessions are memory-only and expire after at most 12 hours. Reload requires logi
 ## License and distribution
 
 SDK and CLI are MIT-licensed; see LICENSE. npm name: `@auersperg/flare`.
-The `flare` binary remains unchanged. Version 0.3.1 is published under the `next` tag. Core/dashboard are separate private
+The `flare` binary remains unchanged. Version 0.3.1 is published under the `next` tag. Core/dashboard are separate non-published
 components and are not included in this package.

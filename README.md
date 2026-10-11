@@ -42,7 +42,7 @@ One Bun workspace and lockfile. Installed dependencies, generated output and cre
 
 ## Build and verify
 
-Bun **1.4.3+** for development, CLI and builds. Node **24.11+** is required only by the vendor Wrangler tooling. Clone the private repository with an authorised GitHub account:
+Bun **1.4.3+** for development, CLI and builds. Node **24.11+** is required only by the vendor Wrangler tooling. Clone the public MIT-licensed repository:
 
 ```sh
 git clone https://github.com/auersperg/flare.git
@@ -57,7 +57,7 @@ bun run clean
 
 `verify` checks source types, unit tests, production bundles/CSP/bootstrap and real single-package tarball installation in a disposable external workspace. The package proof builds an ephemeral independent Astro/React frontend; no persistent demo is copied into the repository. Its workspace is removed on success or failure.
 
-GitHub CI repeats verification, local native kernel checks and the production-dependency audit with Bun 1.4.3 on Linux (Node 24 for Wrangler only). It needs no Cloudflare credentials, creates no cloud resources and does not deploy or publish packages. A green CI run is not full production acceptance.
+GitHub CI repeats verification, local native kernel checks and the production-dependency audit with Bun 1.4.3 on Linux (Node 24 for Wrangler only). The CI workflow needs no Cloudflare credentials, creates no cloud resources and does not deploy or publish packages. npm publishing uses the separate, manually approved `publish.yml` workflow. A green CI run is not full production acceptance.
 
 Bun is the single local toolchain: `bun.lock`, native `bun test`, `Bun.build` for Worker/application bundles, `Bun.Transpiler` for portable SDK JavaScript, and `bun pm pack` for distribution checks. TypeScript still emits declarations; Astro keeps its supported Vite integration, executed under Bun. No parallel npm/Vitest/esbuild pipeline is maintained. SDK clients remain portable browser/server JavaScript; only the compiler/CLI require Bun. Worker bundles target Cloudflare, never Bun. Wrangler itself uses its supported Node runtime; a forced Bun Wrangler dev run hung during native acceptance, so this boundary is explicit rather than silently emulated.
 
@@ -116,7 +116,7 @@ Schema changes validate existing documents and update native SQLite expression i
 
 **Breaking change:** only runtime ABI 4 and the native document API are supported. Old `tables`, Drizzle SQL declarations, `--migrations` and ABI 1–3 have been removed. Use a fresh environment/installation for this preview; rebuilding does not reset the existing cloud deployment, catalogue or databases. Do not deploy 0.3 over a 0.2 installation assuming compatibility.
 
-`platform init` is not implemented; `init` / `db generate` are unnecessary for the application flow. General platform provisioning remains an operator workflow. The SDK/CLI is published as `@auersperg/flare@next`; core/dashboard are private components. Local builds perform no cloud deployment.
+`platform init` is not implemented; `init` / `db generate` are unnecessary for the application flow. General platform provisioning remains an operator workflow. The SDK/CLI is published as `@auersperg/flare@next`; core/dashboard are non-published workspace packages. Local builds perform no cloud deployment.
 
 ## Native data API
 
@@ -228,7 +228,7 @@ Explicit cloud acceptance commands can create test resources/projects and write 
 
 Dynamic Workers/Facets/Lifecycle depend on beta/experimental Cloudflare APIs. Supported scope is trusted applications/team members, not public untrusted multi-tenancy. Native scoped Secrets Store reads and a restricted action `globalOutbound` gateway are implemented but need operator bindings/policy and real-cloud acceptance. Dashboard secret provisioning, full analytics, unrestricted export/disaster recovery, complete release draining, portable installer and client-specific delegated membership remain unfinished. Protected functions accept enabled built-in password sessions or configured OIDC identities; application handlers enforce record permissions. Queues are at-least-once; ambiguous mutations are not automatically retried.
 
-No guarantee that $5 covers total usage or that Flare is cheaper/faster than Convex for every workload. The SDK/CLI package `@auersperg/flare` is MIT-licensed. The repository remains private; core and dashboard remain **UNLICENSED**. npm publication is a separate explicit release step.
+No guarantee that $5 covers total usage or that Flare is cheaper/faster than Convex for every workload. The SDK/CLI package `@auersperg/flare` is MIT-licensed. The entire repository, including core and dashboard, is MIT-licensed. npm publication is a separate explicit release step.
 
 ## Release status
 
@@ -258,7 +258,7 @@ Operator checklist: [production runbook](docs/production-runbook.md). Short acce
 
 ## Root layout
 
-The root keeps only `package.json`, `bun.lock`, `tsconfig.json`, `README.md`,
+The root keeps only `package.json`, `bun.lock`, `tsconfig.json`, `README.md`, `LICENSE`,
 `.gitignore` and `.prettierignore`. Formatting settings live in `package.json`.
 Wrangler examples belong to `packages/core`; your active installation files stay
 in ignored `.private/cloudflare`, separate from published sources.
