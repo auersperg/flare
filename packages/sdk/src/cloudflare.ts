@@ -1,6 +1,4 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
-import { drizzle } from "drizzle-orm/durable-sqlite";
-import { migrate } from "drizzle-orm/durable-sqlite/migrator";
 import {
   flatten,
   validate,
@@ -15,17 +13,17 @@ import {
   type FunctionKind,
   type Json,
 } from "./protocol.js";
-import { assertReadSql } from "./read-sql.js";
-import { getTableName } from "drizzle-orm";
-import type { SQLiteTable } from "drizzle-orm/sqlite-core";
+import { exportData, restoreData, emptyData } from "./backup.js";
+import { database } from "./database.js";
+import { applySchema, schemaContract, type Schema } from "./schema.js";
 import { boundedJson, LIMITS } from "./protocol.js";
 
-export type Migrations = Parameters<typeof migrate>[1];
 export interface Invocation {
   path: string;
   kind: FunctionKind;
   args: Json;
   auth: Auth | null;
+  internal?: boolean;
 }
 export interface OutboxJob {
   id: string;
@@ -34,28 +32,39 @@ export interface OutboxJob {
   args: Json;
   auth: Auth | null;
   dueAt: number;
+  internal?: boolean;
 }
 export interface FacetRpc {
-  snapshot(): Promise<{ revision: number }>;
-  execute(call: Invocation): Promise<{ result: Json; revision: number }>;
+  snapshot(): Promise<{ revision: number; changes: Record<string, number> }>;
+  execute(
+    call: Invocation,
+  ): Promise<{ result: Json; revision: number; tables: string[] }>;
   pendingJobs(limit?: number): Promise<OutboxJob[]>;
-  markJobSent(id: string): Promise<void>;
+  markJobsSent(ids: string[]): Promise<void>;
+  cancelJob(id: string): Promise<boolean>;
+  pendingJobReferences(): Promise<{
+    paths: string[];
+    releases: string[];
+    truncated: boolean;
+  }>;
+  enqueueJob(job: OutboxJob): Promise<void>;
+  validateJob(path: string, args: Json): Promise<void>;
   inspect(input: {
     table?: string;
-    cursor?: string | number;
+    cursor?: string | null;
     limit?: number;
   }): Promise<any>;
   edit(input: {
     table: string;
     operation: "insert" | "update" | "delete";
     values?: Record<string, Json>;
-    key?: string | number;
+    key?: string;
     expectedRevision: number;
   }): Promise<any>;
   invoke(
     call: Invocation,
   ): Promise<
-    | { ok: true; value: { result: Json; revision: number } }
+    | { ok: true; value: { result: Json; revision: number; tables: string[] } }
     | { ok: false; code: string }
   >;
   administrative(
@@ -83,10 +92,19 @@ export interface ScopedCapability {
   upload(
     body: ReadableStream<Uint8Array>,
     contentType: string,
+    options: { name: string; size: number },
   ): Promise<string>;
   download(id: string): Promise<Response>;
+  fileCommand(op: string, input: unknown): Promise<any>;
+  scheduleCommand(op: string, input: unknown): Promise<any>;
 }
-function authorize(mode: "required" | "public", auth: Auth | null) {
+function authorize(
+  mode: "required" | "public" | "internal",
+  auth: Auth | null,
+  internal = false,
+) {
+  if (mode === "internal" && !internal)
+    throw new FlaredError("UNAUTHORIZED", "Internal function");
   if (
     auth &&
     (!auth.subject ||
@@ -101,29 +119,32 @@ function authorize(mode: "required" | "public", auth: Auth | null) {
 
 /** Construct the class at build time. Parent supplies a verified identity and release ID,
  * never D1, R2, secrets or its own storage bindings. The parent must arm recovery first. */
-export function createFacet(
-  app: { functions: FunctionTree; tables?: Record<string, SQLiteTable> },
-  migrations: Migrations,
-): FacetConstructor {
+export function createFacet(app: {
+  functions: FunctionTree;
+  schema: Schema;
+}): FacetConstructor {
   const functions = flatten(app.functions);
-  const tables = new Set(Object.values(app.tables ?? {}).map(getTableName));
-  const quote = (name: string) => '"' + name.replace(/"/g, '""') + '"';
+  const contract = schemaContract(app.schema);
   return class AppFacet extends DurableObject<{ RELEASE_ID: string }> {
-    private readonly db;
     private tail: Promise<unknown> = Promise.resolve();
     constructor(ctx: DurableObjectState, env: { RELEASE_ID: string }) {
       super(ctx, env);
-      this.db = drizzle(ctx.storage);
       ctx.blockConcurrencyWhile(async () => {
-        await migrate(this.db, migrations);
+        await applySchema(ctx.storage, app.schema);
         ctx.storage.sql.exec(
-          "CREATE TABLE IF NOT EXISTS _reactive_revision (id INTEGER PRIMARY KEY CHECK(id=1), value INTEGER NOT NULL)",
+          "CREATE TABLE IF NOT EXISTS _flared_revision (id INTEGER PRIMARY KEY CHECK(id=1), value INTEGER NOT NULL)",
         );
         ctx.storage.sql.exec(
-          "INSERT OR IGNORE INTO _reactive_revision VALUES (1,0)",
+          "INSERT OR IGNORE INTO _flared_revision VALUES (1,0)",
         );
         ctx.storage.sql.exec(
-          "CREATE TABLE IF NOT EXISTS _reactive_outbox (id TEXT PRIMARY KEY, release TEXT NOT NULL, path TEXT NOT NULL, args TEXT NOT NULL, auth TEXT NOT NULL, dueAt INTEGER NOT NULL, sent INTEGER NOT NULL DEFAULT 0)",
+          "CREATE TABLE IF NOT EXISTS _flared_outbox (id TEXT PRIMARY KEY, release TEXT NOT NULL, path TEXT NOT NULL, args TEXT NOT NULL, auth TEXT NOT NULL, dueAt INTEGER NOT NULL,internal INTEGER NOT NULL DEFAULT 0)",
+        );
+        ctx.storage.sql.exec(
+          "CREATE TABLE IF NOT EXISTS _flared_changes (name TEXT PRIMARY KEY,revision INTEGER NOT NULL)",
+        );
+        ctx.storage.sql.exec(
+          "CREATE INDEX IF NOT EXISTS outbox_pending ON _flared_outbox(dueAt,id)",
         );
       });
     }
@@ -135,12 +156,20 @@ export function createFacet(
     private revision() {
       return Number(
         this.ctx.storage.sql
-          .exec("SELECT value FROM _reactive_revision WHERE id=1")
+          .exec("SELECT value FROM _flared_revision WHERE id=1")
           .one().value,
       );
     }
     snapshot() {
-      return this.serial(async () => ({ revision: this.revision() }));
+      return this.serial(async () => ({
+        revision: this.revision(),
+        changes: Object.fromEntries(
+          this.ctx.storage.sql
+            .exec("SELECT * FROM _flared_changes")
+            .toArray()
+            .map((row) => [String(row.name), Number(row.revision)]),
+        ),
+      }));
     }
     async invoke(call: Invocation) {
       try {
@@ -154,17 +183,29 @@ export function createFacet(
     }
     async administrative(operation: string, input: any) {
       try {
-        if (operation !== "inspect" && operation !== "edit")
+        const work: Record<string, () => Promise<any>> = {
+          inspect: () => this.inspect(input),
+          edit: () => this.edit(input),
+          "backup-export": () =>
+            this.serial(async () => exportData(this.ctx.storage, app.schema)),
+          "backup-empty": () =>
+            this.serial(async () => emptyData(this.ctx.storage, app.schema)),
+          "backup-restore": () =>
+            this.serial(() =>
+              restoreData(
+                this.ctx.storage,
+                app.schema,
+                input.id,
+                input.snapshot,
+              ),
+            ),
+        };
+        if (!Object.hasOwn(work, operation))
           throw new FlaredError(
             "INVALID_OPERATION",
             "Unknown administrative capability",
           );
-        return {
-          ok: true as const,
-          value: await (operation === "inspect"
-            ? this.inspect(input)
-            : this.edit(input)),
-        };
+        return { ok: true as const, value: await work[operation]() };
       } catch (error) {
         return {
           ok: false as const,
@@ -172,7 +213,9 @@ export function createFacet(
         };
       }
     }
-    execute(call: Invocation): Promise<{ result: Json; revision: number }> {
+    execute(
+      call: Invocation,
+    ): Promise<{ result: Json; revision: number; tables: string[] }> {
       return this.serial(async () => {
         const fn = functions[call.path];
         if (!fn || fn.kind !== call.kind || call.kind === "action")
@@ -180,92 +223,156 @@ export function createFacet(
             "FUNCTION_NOT_FOUND",
             "Data function not found",
           );
-        authorize(fn.auth, call.auth);
+        authorize(fn.auth, call.auth, call.internal);
         const args = await validate(fn.input, call.args);
-        if (call.kind === "query" || call.kind === "live") {
-          // DO SQLite rejects PRAGMA query_only. Never expose the write-capable
-          // native storage through Drizzle's publicly reachable session/client.
-          const storage = Object.freeze({
-            sql: Object.freeze({
-              exec: (sql: string, ...bindings: any[]) => {
-                assertReadSql(sql);
-                const cursor = this.ctx.storage.sql.exec(sql, ...bindings);
-                if (cursor.rowsWritten)
-                  throw new FlaredError(
-                    "READ_ONLY",
-                    "Query attempted to write data",
-                  );
-                return cursor;
-              },
-            }),
-          });
+        if (call.kind === "query") {
           return this.ctx.storage.transaction(async () => {
-            const read = drizzle(storage as DurableObjectStorage);
-            const db = Object.freeze({
-              select: read.select.bind(read),
-              selectDistinct: read.selectDistinct.bind(read),
-              $count: read.$count.bind(read),
-            });
-            const result = await validate(
-              fn.output,
-              await fn.handler({ db, auth: call.auth } as QueryContext, args),
-              true,
+            const tables = new Set<string>();
+            const capability = database(
+              this.ctx.storage.sql,
+              app.schema,
+              false,
+              tables,
             );
-            return { result, revision: this.revision() };
+            try {
+              const result = await validate(
+                fn.output,
+                await fn.handler(
+                  { db: capability.db, auth: call.auth } as QueryContext,
+                  args,
+                ),
+                true,
+              );
+              await capability.finish();
+              return { result, revision: this.revision(), tables: [...tables] };
+            } finally {
+              capability.revoke();
+            }
           });
         }
         let result: Json = null;
+        const changed = new Set<string>();
         await this.ctx.storage.transaction(async () => {
-          const jobs: MutationContext["jobs"] = {
-            schedule: async (path, jobArgs, options = {}) => {
-              const target = functions[path];
-              if (!target || target.kind !== "action")
-                throw new FlaredError(
-                  "FUNCTION_NOT_FOUND",
-                  "Scheduled action not found",
-                );
-              const delay = options.delaySeconds ?? 0;
-              if (!Number.isFinite(delay) || delay < 0 || delay > 31536000)
-                throw new FlaredError("INVALID_INPUT", "Invalid job delay");
-              const input = await validate(target.input, jobArgs);
-              const id = crypto.randomUUID();
-              this.ctx.storage.sql.exec(
-                "INSERT INTO _reactive_outbox (id,release,path,args,auth,dueAt) VALUES (?,?,?,?,?,?)",
-                id,
-                this.env.RELEASE_ID,
-                path,
-                JSON.stringify(input),
-                JSON.stringify(call.auth),
-                Date.now() + Math.ceil(delay * 1000),
-              );
-              return id;
+          let active = true;
+          const scheduled: Promise<unknown>[] = [];
+          const jobs: MutationContext["jobs"] = Object.freeze({
+            cancel: (id: string) => {
+              const pending = (async () => {
+                if (!active)
+                  throw new FlaredError(
+                    "CAPABILITY_EXPIRED",
+                    "Mutation invocation ended",
+                  );
+                if (scheduled.length >= 100)
+                  throw new FlaredError(
+                    "LIMIT_EXCEEDED",
+                    "Maximum 100 job operations per mutation",
+                  );
+                return this.cancelPending(id);
+              })();
+              scheduled.push(pending);
+              void pending.catch(() => undefined);
+              return pending;
             },
-          };
-          result = await validate(
-            fn.output,
-            await fn.handler(
-              { db: this.db, auth: call.auth, jobs } as MutationContext,
-              args,
-            ),
+            schedule: (path, jobArgs, options = {}) => {
+              const pending = (async () => {
+                if (!active)
+                  throw new FlaredError(
+                    "CAPABILITY_EXPIRED",
+                    "Mutation invocation ended",
+                  );
+                if (scheduled.length >= 100)
+                  throw new FlaredError(
+                    "LIMIT_EXCEEDED",
+                    "Maximum 100 jobs per mutation",
+                  );
+                const target = functions[path];
+                if (!target || target.kind !== "action")
+                  throw new FlaredError(
+                    "FUNCTION_NOT_FOUND",
+                    "Scheduled action not found",
+                  );
+                const delay = options.delaySeconds ?? 0;
+                if (!Number.isFinite(delay) || delay < 0 || delay > 31536000)
+                  throw new FlaredError("INVALID_INPUT", "Invalid job delay");
+                const input = await validate(target.input, jobArgs);
+                if (!active)
+                  throw new FlaredError(
+                    "CAPABILITY_EXPIRED",
+                    "Mutation invocation ended",
+                  );
+                const id = crypto.randomUUID();
+                this.ctx.storage.sql.exec(
+                  "INSERT INTO _flared_outbox (id,release,path,args,auth,dueAt) VALUES (?,?,?,?,?,?)",
+                  id,
+                  this.env.RELEASE_ID,
+                  path,
+                  JSON.stringify(input),
+                  JSON.stringify(call.auth),
+                  Date.now() + Math.ceil(delay * 1000),
+                );
+                if (target.auth === "internal")
+                  this.ctx.storage.sql.exec(
+                    "UPDATE _flared_outbox SET internal=1,auth='null' WHERE id=?",
+                    id,
+                  );
+                return id;
+              })();
+              scheduled.push(pending);
+              void pending.catch(() => undefined);
+              return pending;
+            },
+          });
+          const capability = database(
+            this.ctx.storage.sql,
+            app.schema,
             true,
+            new Set(),
+            changed,
           );
-          this.ctx.storage.sql.exec(
-            "UPDATE _reactive_revision SET value=value+1 WHERE id=1",
-          );
+          try {
+            result = await validate(
+              fn.output,
+              await fn.handler(
+                { db: capability.db, auth: call.auth, jobs } as MutationContext,
+                args,
+              ),
+              true,
+            );
+            await capability.finish();
+            const settled = await Promise.allSettled(scheduled);
+            const failed = settled.find(
+              (result) => result.status === "rejected",
+            );
+            if (failed?.status === "rejected") throw failed.reason;
+          } finally {
+            active = false;
+            capability.revoke();
+            await Promise.allSettled(scheduled);
+          }
+          this.commitRevision(changed);
         });
         await this.ctx.storage.sync();
-        return { result, revision: this.revision() };
+        return { result, revision: this.revision(), tables: [...changed] };
       });
+    }
+    private commitRevision(changed: Set<string>) {
+      this.ctx.storage.sql.exec(
+        "UPDATE _flared_revision SET value=value+1 WHERE id=1",
+      );
+      for (const name of changed)
+        this.ctx.storage.sql.exec(
+          "INSERT INTO _flared_changes VALUES (?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision",
+          name,
+          this.revision(),
+        );
     }
     pendingJobs(limit = 100): Promise<OutboxJob[]> {
       return this.serial(async () => {
         if (!Number.isInteger(limit) || limit < 1 || limit > 100)
           throw new FlaredError("INVALID_INPUT", "Invalid outbox page size");
         return this.ctx.storage.sql
-          .exec(
-            "SELECT * FROM _reactive_outbox WHERE sent=0 ORDER BY dueAt,id LIMIT ?",
-            limit,
-          )
+          .exec("SELECT * FROM _flared_outbox ORDER BY dueAt,id LIMIT ?", limit)
           .toArray()
           .map((row) => ({
             id: String(row.id),
@@ -274,160 +381,241 @@ export function createFacet(
             args: JSON.parse(String(row.args)),
             auth: JSON.parse(String(row.auth)),
             dueAt: Number(row.dueAt),
+            internal: Number(row.internal) === 1,
           }));
       });
     }
-    markJobSent(id: string): Promise<void> {
+    private cancelPending(id: string) {
+      if (typeof id !== "string" || !/^[a-z0-9_-]{1,128}$/.test(id))
+        throw new FlaredError("INVALID_INPUT", "Invalid job ID");
+      return (
+        this.ctx.storage.sql
+          .exec("DELETE FROM _flared_outbox WHERE id=? RETURNING id", id)
+          .toArray().length === 1
+      );
+    }
+    cancelJob(id: string) {
       return this.serial(async () => {
+        const cancelled = this.cancelPending(id);
+        await this.ctx.storage.sync();
+        return cancelled;
+      });
+    }
+    pendingJobReferences() {
+      return this.serial(async () => {
+        const paths = this.ctx.storage.sql
+          .exec(
+            "SELECT DISTINCT path FROM _flared_outbox ORDER BY path LIMIT 201",
+          )
+          .toArray()
+          .map((row) => String(row.path));
+        const releases = this.ctx.storage.sql
+          .exec(
+            "SELECT DISTINCT release FROM _flared_outbox ORDER BY release LIMIT 1001",
+          )
+          .toArray()
+          .map((row) => String(row.release));
+        return {
+          paths: paths.slice(0, 200),
+          releases: releases.slice(0, 1000),
+          truncated: paths.length > 200 || releases.length > 1000,
+        };
+      });
+    }
+    validateJob(path: string, args: Json): Promise<void> {
+      return this.serial(async () => {
+        const target = functions[path];
+        if (!target || target.kind !== "action")
+          throw new FlaredError(
+            "FUNCTION_NOT_FOUND",
+            "Scheduled action not found",
+          );
+        await validate(target.input, args);
+      });
+    }
+    enqueueJob(job: OutboxJob): Promise<void> {
+      return this.serial(async () => {
+        const target = functions[job.path];
+        if (!target || target.kind !== "action")
+          throw new FlaredError(
+            "FUNCTION_NOT_FOUND",
+            "Scheduled action not found",
+          );
+        const args = await validate(target.input, job.args);
         this.ctx.storage.sql.exec(
-          "UPDATE _reactive_outbox SET sent=1 WHERE id=?",
-          id,
+          "INSERT OR IGNORE INTO _flared_outbox (id,release,path,args,auth,dueAt,internal) VALUES (?,?,?,?,?,?,1)",
+          job.id,
+          this.env.RELEASE_ID,
+          job.path,
+          JSON.stringify(args),
+          "null",
+          job.dueAt,
         );
         await this.ctx.storage.sync();
       });
     }
-    // Native RPC only. The Supervisor's administrative capability owns authorization.
-    private table(name: string) {
-      if (!tables.has(name) || name.startsWith("_"))
-        throw new FlaredError("INVALID_TABLE", "Unknown application table");
-      return this.ctx.storage.sql
-        .exec(`PRAGMA table_info(${quote(name)})`)
-        .toArray();
+    markJobsSent(ids: string[]): Promise<void> {
+      return this.serial(async () => {
+        if (
+          !Array.isArray(ids) ||
+          ids.length > 100 ||
+          ids.some(
+            (id) => typeof id !== "string" || !/^[a-z0-9_-]{1,128}$/.test(id),
+          )
+        )
+          throw new FlaredError("INVALID_INPUT", "Invalid outbox IDs");
+        if (ids.length)
+          this.ctx.storage.transactionSync(() => {
+            this.ctx.storage.sql.exec(
+              `DELETE FROM _flared_outbox WHERE id IN (${ids.map(() => "?").join(",")})`,
+              ...ids,
+            );
+          });
+        await this.ctx.storage.sync();
+      });
     }
+    // Dashboard writes use exactly the same document validators and native CRUD as mutations.
     inspect(
-      input: { table?: string; cursor?: string | number; limit?: number } = {},
+      input: { table?: string; cursor?: string | null; limit?: number } = {},
     ) {
       return this.serial(async () => {
         if (!input.table)
           return {
             revision: this.revision(),
-            tables: [...tables]
-              .filter((name) => !name.startsWith("_"))
-              .map((name) => ({
-                name,
-                columns: this.table(name),
-                sql: this.ctx.storage.sql
-                  .exec(
-                    "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-                    name,
-                  )
-                  .one().sql,
-              })),
+            tables: Object.entries(contract).map(([name, definition]) => ({
+              name,
+              document: definition.document,
+              indexes: definition.indexes,
+              columns: this.columns(name),
+            })),
           };
-        const columns = this.table(input.table),
-          primary = columns.filter((c) => Number(c.pk) > 0);
-        if (primary.length !== 1)
-          throw new FlaredError(
-            "UNSUPPORTED",
-            "Data preview requires a single primary key",
-          );
-        const limit = input.limit ?? 50;
-        if (
-          !Number.isInteger(limit) ||
-          limit < 1 ||
-          limit > 100 ||
-          (input.cursor !== undefined &&
-            !["string", "number"].includes(typeof input.cursor))
-        )
-          throw new FlaredError("INVALID_INPUT", "Invalid page");
-        const key = String(primary[0].name);
-        const rows = this.ctx.storage.sql
-          .exec(
-            `SELECT * FROM ${quote(input.table)} ${input.cursor === undefined ? "" : `WHERE ${quote(key)} > ?`} ORDER BY ${quote(key)} LIMIT ?`,
-            ...(input.cursor === undefined ? [] : [input.cursor]),
-            limit + 1,
-          )
-          .toArray();
-        const more = rows.length > limit;
-        if (more) rows.pop();
-        const result = {
-          revision: this.revision(),
-          columns,
-          rows,
-          next: more ? rows.at(-1)?.[key] : null,
-        };
-        boundedJson(result, LIMITS.outputBytes);
-        return result;
+        const capability = database(this.ctx.storage.sql, app.schema, false);
+        try {
+          const result = await capability.db
+            .query(input.table)
+            .paginate({ limit: input.limit ?? 50, cursor: input.cursor });
+          await capability.finish();
+          return {
+            revision: this.revision(),
+            columns: this.columns(input.table),
+            rows: result.page,
+            next: result.continueCursor,
+          };
+        } finally {
+          capability.revoke();
+        }
       });
+    }
+    private columns(name: string) {
+      const definition = contract[name];
+      if (!definition) throw new FlaredError("INVALID_TABLE", "Unknown table");
+      return [
+        { name: "_id", type: "TEXT", pk: 1, notnull: 1, dflt_value: null },
+        {
+          name: "_creationTime",
+          type: "REAL",
+          pk: 0,
+          notnull: 1,
+          dflt_value: null,
+          readonly: true,
+        },
+        ...Object.entries(definition.document.properties).map(
+          ([field, value]: [string, any]) => ({
+            name: field,
+            type:
+              value.type === "boolean"
+                ? "BOOLEAN"
+                : ["integer", "number"].includes(value.type)
+                  ? "REAL"
+                  : value.type === "string"
+                    ? "TEXT"
+                    : "JSON",
+            pk: 0,
+            notnull: Number(
+              (definition.document.required ?? []).includes(field),
+            ),
+            dflt_value:
+              value.default === undefined
+                ? null
+                : JSON.stringify(value.default),
+            schema: value,
+          }),
+        ),
+      ];
     }
     edit(input: {
       table: string;
       operation: "insert" | "update" | "delete";
       values?: Record<string, Json>;
-      key?: string | number;
+      key?: string;
       expectedRevision: number;
     }) {
       return this.serial(async () => {
-        const columns = this.table(input.table),
-          primary = columns.filter((c) => Number(c.pk) > 0);
-        if (primary.length !== 1)
-          throw new FlaredError(
-            "UNSUPPORTED",
-            "Data edits require a single primary key",
-          );
         boundedJson(input, LIMITS.inputBytes);
-        if (input.expectedRevision !== this.revision())
-          throw new FlaredError(
-            "CONFLICT",
-            "Data changed; reload before editing",
-          );
-        const values = Object.entries(input.values ?? {}),
-          key = String(primary[0].name);
-        for (const [name, value] of values)
-          if (
-            !columns.some((c) => c.name === name) ||
-            (value !== null && !["string", "number"].includes(typeof value))
-          )
-            throw new FlaredError(
-              "INVALID_INPUT",
-              "Invalid column or SQL value",
-            );
-        let rows: Record<string, unknown>[] = [];
+        let rows: unknown[] = [];
+        const changed = new Set<string>();
         await this.ctx.storage.transaction(async () => {
-          if (input.operation === "insert" && values.length)
-            rows = this.ctx.storage.sql
-              .exec(
-                `INSERT INTO ${quote(input.table)} (${values.map(([k]) => quote(k)).join(",")}) VALUES (${values.map(() => "?").join(",")}) RETURNING *`,
-                ...values.map(([, v]) => v),
-              )
-              .toArray();
-          else if (
-            ["update", "delete"].includes(input.operation) &&
-            ["string", "number"].includes(typeof input.key)
-          ) {
-            if (input.operation === "update") {
-              if (!values.length || values.some(([k]) => k === key))
-                throw new FlaredError(
-                  "INVALID_INPUT",
-                  "Primary key is immutable",
-                );
-              rows = this.ctx.storage.sql
-                .exec(
-                  `UPDATE ${quote(input.table)} SET ${values.map(([k]) => `${quote(k)}=?`).join(",")} WHERE ${quote(key)}=? RETURNING *`,
-                  ...values.map(([, v]) => v),
-                  input.key!,
-                )
-                .toArray();
-            } else
-              rows = this.ctx.storage.sql
-                .exec(
-                  `DELETE FROM ${quote(input.table)} WHERE ${quote(key)}=? RETURNING *`,
-                  input.key!,
-                )
-                .toArray();
-            if (rows.length !== 1)
-              throw new FlaredError("NOT_FOUND", "Row not found");
-          } else throw new FlaredError("INVALID_INPUT", "Invalid operation");
-          boundedJson(rows, LIMITS.outputBytes);
-          this.ctx.storage.sql.exec(
-            "UPDATE _reactive_revision SET value=value+1 WHERE id=1",
+          if (input.expectedRevision !== this.revision())
+            throw new FlaredError(
+              "CONFLICT",
+              "Data changed; reload before editing",
+            );
+          const capability = database(
+            this.ctx.storage.sql,
+            app.schema,
+            true,
+            new Set(),
+            changed,
           );
+          try {
+            if (input.operation === "insert") {
+              const id = await capability.db.insert(
+                input.table,
+                input.values ?? {},
+              );
+              rows = [await capability.db.get(input.table, id)];
+            } else if (input.key && input.operation === "update") {
+              await capability.db.patch(
+                input.table,
+                input.key,
+                input.values ?? {},
+              );
+              rows = [await capability.db.get(input.table, input.key)];
+            } else if (input.key && input.operation === "delete") {
+              const row = await capability.db.get(input.table, input.key);
+              await capability.db.delete(input.table, input.key);
+              rows = [row];
+            } else throw new FlaredError("INVALID_INPUT", "Invalid edit");
+            await capability.finish();
+            boundedJson(rows, LIMITS.outputBytes);
+          } finally {
+            capability.revoke();
+          }
+          this.commitRevision(changed);
         });
         await this.ctx.storage.sync();
         return { rows, revision: this.revision() };
       });
     }
   };
+}
+
+// Native RPC adds Symbol.dispose to object results. JSON capabilities consume
+// that transport-owned handle here, not in user function validators.
+async function rpcData<T>(response: Promise<T>): Promise<T> {
+  const result = await response;
+  try {
+    const value = structuredClone(result);
+    boundedJson(value, LIMITS.outputBytes);
+    return value;
+  } finally {
+    if (result && typeof result === "object") {
+      const dispose = (result as { [Symbol.dispose]?: () => void })[
+        Symbol.dispose
+      ];
+      dispose?.call(result);
+    }
+  }
 }
 
 /** A separate Dynamic Worker role. Capabilities are scoped by the parent, not the app. */
@@ -452,25 +640,38 @@ export function createAction(app: {
       const fn = functions[call.path];
       if (!fn || fn.kind !== "action" || call.kind !== "action")
         throw new FlaredError("FUNCTION_NOT_FOUND", "Action not found");
-      authorize(fn.auth, call.auth);
+      authorize(fn.auth, call.auth, call.internal);
       const args = await validate(fn.input, call.args);
       const capability = this.env.CAPABILITY;
       const context: ActionContext = {
         auth: call.auth,
+        schedules: {
+          set: (input) => rpcData(capability.scheduleCommand("set", input)),
+          cancel: (name) =>
+            rpcData(capability.scheduleCommand("cancel", { name })),
+          list: () => rpcData(capability.scheduleCommand("list", {})),
+        },
         runQuery: (ref, input) => {
           if (ref.kind !== "query")
             throw new FlaredError("INVALID_KIND", "Expected query");
-          return capability.runQuery(ref.path, input, call.auth);
+          return rpcData(capability.runQuery(ref.path, input, call.auth));
         },
         runMutation: (ref, input) => {
           if (ref.kind !== "mutation")
             throw new FlaredError("INVALID_KIND", "Expected mutation");
-          return capability.runMutation(ref.path, input, call.auth);
+          return rpcData(capability.runMutation(ref.path, input, call.auth));
         },
         secrets: { get: (name) => capability.secret(name) },
         files: {
-          upload: (body, type) => capability.upload(body, type),
+          upload: (body, type, options) =>
+            capability.upload(body, type, options),
           download: (id) => capability.download(id),
+          generateUploadUrl: (input) =>
+            rpcData(capability.fileCommand("reserve", input)),
+          getDownloadUrl: (id) =>
+            rpcData(capability.fileCommand("download", { id })),
+          delete: (id) => rpcData(capability.fileCommand("delete", { id })),
+          list: (input = {}) => rpcData(capability.fileCommand("list", input)),
         },
       };
       return validate(fn.output, await fn.handler(context, args), true);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, writeFile, mkdir, mkdtemp, cp } from "node:fs/promises";
+import { readFile, writeFile, mkdir, mkdtemp, cp, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { randomUUID, createHash, createHmac } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -164,67 +164,55 @@ try {
     );
     const pack = (name) => {
       const x = spawnSync(
-        "npm",
+        process.execPath,
         [
+          "pm",
           "pack",
-          `./packages/${name}`,
-          "--pack-destination",
+          "--quiet",
+          "--ignore-scripts",
+          "--destination",
           directory,
-          "--json",
         ],
-        { cwd: resolve("."), encoding: "utf8" },
+        { cwd: resolve(`packages/${name}`), encoding: "utf8" },
       );
       assert.equal(x.status, 0, x.stderr);
-      const output = JSON.parse(x.stdout),
-        packed = Array.isArray(output) ? output[0] : Object.values(output)[0];
-      assert(packed?.filename);
-      return join(directory, packed.filename);
+      return resolve(`packages/${name}`, x.stdout.trim());
     };
-    const x = spawnSync(
-      "npm",
-      [
-        "install",
-        "--ignore-scripts",
-        pack("sdk"),
-        pack("cli"),
-        "drizzle-orm@0.45.4",
-        "zod@4.6.5",
-      ],
-      { cwd: directory, encoding: "utf8", timeout: 120000 },
+    const archive = pack("flared");
+    await writeFile(
+      join(directory, "package.json"),
+      JSON.stringify({
+        name: "flared-cloud-proof",
+        private: true,
+        type: "module",
+        dependencies: { flared: `file:${archive}` },
+      }),
     );
+    const x = spawnSync(process.execPath, ["install", "--ignore-scripts"], {
+      cwd: directory,
+      encoding: "utf8",
+      timeout: 120000,
+    });
     assert.equal(x.status, 0, x.stderr);
     const { lstat } = await import("node:fs/promises");
-    for (const name of ["sdk", "cli"])
-      assert(
-        !(
-          await lstat(join(directory, "node_modules/@flared", name))
-        ).isSymbolicLink(),
-      );
+    assert(
+      !(await lstat(join(directory, "node_modules/flared"))).isSymbolicLink(),
+    );
   });
-  await cp("tests/fixtures/tasks/app.ts", join(directory, "app.ts"));
-  await cp("tests/fixtures/tasks/drizzle", join(directory, "drizzle"), {
-    recursive: true,
-  });
-  let source = await readFile(join(directory, "app.ts"), "utf8");
-  source = source.replace(" echo:action(", " echo:action(");
-  // This test-only app adds explicit rollback and outbox fixtures; the production empty bootstrap remains unchanged.
-  source =
-    source.replace("export default defineApp(", "const app=defineApp(") +
-    `\nconst checkTable=sqliteTable('tasks',{id:text().primaryKey(),title:text().notNull(),done:integer({mode:'boolean'}).notNull().default(false),createdAt:integer().notNull()});\napp.functions.tasks.bulk=mutation({input:z.object({count:z.number().int().min(1).max(100)}),output:z.number(),handler:({db},a)=>{for(let i=0;i<a.count;i++)db.insert(checkTable).values({id:crypto.randomUUID(),title:'Seed '+i,createdAt:Date.now(),done:false}).run();return a.count;}});\napp.functions.tasks.rollback=mutation({input:z.object({}),output:z.boolean(),handler:async({db})=>{db.insert(checkTable).values({id:crypto.randomUUID(),title:'ROLLBACK_SENTINEL',createdAt:Date.now(),done:false}).run();await Promise.resolve();throw Error('TEST_PRIVATE_SENTINEL');}});\napp.functions.tasks.schedule=mutation({input:z.object({}),output:z.string(),handler:({jobs})=>jobs.schedule('tasks/echo',{message:'queued'})});\nexport default app;\n`;
-  // defineApp freezes its outer object, but the trusted function tree is editable at build-time.
+  const source =
+    (await readFile("tests/fixtures/tasks/app.ts", "utf8"))
+      .replace('"@flared/sdk/server"', '"flared/server"')
+      .replace("export default defineApp", "const app = defineApp") +
+    `
+app.functions.tasks.bulk=mutation({input:z.object({count:z.number().int().min(1).max(100)}),output:z.number(),handler:async({db},args)=>{for(let i=0;i<args.count;i++)await db.insert("tasks",{title:"Bulk "+i,done:false});return args.count;}});
+app.functions.tasks.rollback=mutation({input:z.object({}),output:z.boolean(),handler:async({db})=>{await db.insert("tasks",{title:"ROLLBACK_SENTINEL",done:false});await Promise.resolve();throw Error("ROLLBACK_SENTINEL");}});
+app.functions.tasks.schedule=mutation({input:z.object({}),output:z.string(),handler:({jobs})=>jobs.schedule("tasks/echo",{message:"queued"})});
+export default app;
+`;
   await writeFile(join(directory, "app.ts"), source);
-  const bin = join(directory, "node_modules/@flared/cli/bin/flared.mjs");
+  const bin = join(directory, "node_modules/flared/bin.mjs");
   await test("Packaged CLI links and deploys native dev/prod without reinstalling core", async () => {
-    run([
-      bin,
-      "build",
-      "--entry",
-      "app.ts",
-      "--migrations",
-      "drizzle",
-      "--outdir",
-      "release",
-    ]);
+    run([bin, "build", "--entry", "app.ts", "--outdir", "release"]);
     run([bin, "link", "--platform", platform, "--project", id]);
     for (const env of ["dev", "prod"])
       await command(`projects/${id}/${env}/settings`, {
@@ -244,14 +232,12 @@ try {
       id,
     ]);
     sdk = await import(
-      pathToFileURL(join(directory, "node_modules/@flared/sdk/dist/client.js"))
-        .href
+      pathToFileURL(join(directory, "node_modules/flared/index.js")).href
     );
     client = sdk.createClient({ url: devUrl, getToken: () => devIdentity() });
     clients.push(client);
     refs = {
       list: sdk.reference("tasks/list", "query"),
-      watch: sdk.reference("tasks/watch", "live"),
       create: sdk.reference("tasks/create", "mutation"),
     };
   });
@@ -264,8 +250,8 @@ try {
       const c = sdk.createClient({ url: devUrl, getToken });
       try {
         await assert.rejects(
-          c.call(refs.list, { limit: 50 }),
-          (e) => e.code === "HTTP_401",
+          c.query(refs.list, { limit: 50 }),
+          (e) => e.code === "UNAUTHORIZED",
         );
       } finally {
         c.dispose();
@@ -289,8 +275,8 @@ try {
     assert.equal(r.status, 403);
     assert.equal(r.headers.get("access-control-allow-origin"), null);
     await assert.rejects(
-      client.call(refs.create, { title: "" }),
-      (e) => e.code === "HTTP_400",
+      client.mutation(refs.create, { title: "" }),
+      (e) => e.code === "INVALID_INPUT",
     );
   });
   await test("CLI credentials stay project-scoped; viewer and revoked credentials are denied", async () => {
@@ -330,39 +316,39 @@ try {
   });
   await test("Action validation errors survive native RPC without disclosing handlers", async () => {
     await assert.rejects(
-      client.call(sdk.reference("tasks/echo", "action"), { message: 2 }),
-      (e) => e.code === "HTTP_400",
+      client.action(sdk.reference("tasks/echo", "action"), { message: 2 }),
+      (e) => e.code === "INVALID_INPUT",
     );
   });
   await test("Native live uses SDK snapshots and delivers mutations after commit", async () => {
-    client.subscribe(
-      refs.watch,
+    client.onUpdate(
+      refs.list,
       { limit: 50 },
-      {
-        next: (value) => frames.push({ at: performance.now(), value }),
-        error: (e) => console.log("Live status:", e.code),
-      },
+      (value) => frames.push({ at: performance.now(), value }),
+      (e) => console.log("Live status:", e.code),
     );
     await wait(() => frames.length > 0);
     const at = performance.now();
-    const created = await client.call(refs.create, {
+    const created = await client.mutation(refs.create, {
       title: "Cloud SDK works",
     });
-    await wait(() => frames.some((f) => f.value.some((t) => t.id === created)));
-    report.liveDeliveryMs = Math.round(
-      frames.find((f) => f.value.some((t) => t.id === created)).at - at,
+    await wait(() =>
+      frames.some((f) => f.value.some((t) => t._id === created)),
     );
-    assert.equal((await client.call(refs.list, { limit: 50 })).length, 1);
+    report.liveDeliveryMs = Math.round(
+      frames.find((f) => f.value.some((t) => t._id === created)).at - at,
+    );
+    assert.equal((await client.query(refs.list, { limit: 50 })).length, 1);
   });
   await test("Async failed mutations roll back without publishing live state", async () => {
     const before = await command(`projects/${id}/dev/schema`);
     await assert.rejects(
-      client.call(sdk.reference("tasks/rollback", "mutation"), {}),
-      (e) => e.code === "HTTP_500",
+      client.mutation(sdk.reference("tasks/rollback", "mutation"), {}),
+      (e) => e.code === "OPERATION_FAILED",
     );
     const after = await command(`projects/${id}/dev/schema`);
     assert.equal(after.revision, before.revision);
-    assert.equal((await client.call(refs.list, { limit: 50 })).length, 1);
+    assert.equal((await client.query(refs.list, { limit: 50 })).length, 1);
     assert(
       !frames.some((f) => f.value.some((t) => t.title === "ROLLBACK_SENTINEL")),
     );
@@ -373,7 +359,7 @@ try {
     await command(`projects/${id}/dev/edit`, {
       table: "tasks",
       operation: "update",
-      key: task.id,
+      key: task._id,
       values: { title: "Edited through dashboard API" },
       expectedRevision: before.revision,
     });
@@ -387,7 +373,7 @@ try {
         await admin(`projects/${id}/dev/edit`, {
           table: "tasks",
           operation: "delete",
-          key: task.id,
+          key: task._id,
           expectedRevision: before.revision,
         })
       ).status,
@@ -409,8 +395,8 @@ try {
     });
     try {
       await assert.rejects(
-        prod.call(refs.list, { limit: 50 }),
-        (e) => e.code === "HTTP_401",
+        prod.query(refs.list, { limit: 50 }),
+        (e) => e.code === "UNAUTHORIZED",
       );
     } finally {
       prod.dispose();
@@ -422,9 +408,7 @@ try {
           table: "tasks",
           operation: "insert",
           values: {
-            id: randomUUID(),
             title: "no confirmation",
-            createdAt: Date.now(),
           },
           expectedRevision: 0,
         })
@@ -434,12 +418,12 @@ try {
   });
   await test("Native action and transactional outbox reach Queues consumer", async () => {
     assert.equal(
-      await client.call(sdk.reference("tasks/echo", "action"), {
+      await client.action(sdk.reference("tasks/echo", "action"), {
         message: "native action",
       }),
       "native action",
     );
-    const job = await client.call(
+    const job = await client.mutation(
       sdk.reference("tasks/schedule", "mutation"),
       {},
     );
@@ -479,7 +463,7 @@ try {
       JSON.stringify({
         type: "subscribe",
         id: "expiry",
-        path: "tasks/watch",
+        path: "tasks/list",
         args: { limit: 50 },
       }),
     );
@@ -511,25 +495,25 @@ try {
         JSON.stringify({
           type: "subscribe",
           id: "slow",
-          path: "tasks/watch",
+          path: "tasks/list",
           args: { limit: 50 },
         }),
       );
       await wait(() => received.length === 1);
       const task = received[0].result[0];
-      await client.call(sdk.reference("tasks/toggle", "mutation"), {
-        id: task.id,
+      await client.mutation(sdk.reference("tasks/toggle", "mutation"), {
+        id: task._id,
         done: true,
       });
-      await client.call(sdk.reference("tasks/toggle", "mutation"), {
-        id: task.id,
+      await client.mutation(sdk.reference("tasks/toggle", "mutation"), {
+        id: task._id,
         done: false,
       });
       await sleep(300);
       assert.equal(received.length, 1);
       // Change a selected value again, then release the original snapshot ACK.
-      await client.call(sdk.reference("tasks/toggle", "mutation"), {
-        id: task.id,
+      await client.mutation(sdk.reference("tasks/toggle", "mutation"), {
+        id: task._id,
         done: true,
       });
       ws.send(
@@ -540,7 +524,10 @@ try {
         }),
       );
       await wait(() => received.length === 2);
-      assert.equal(received[1].result.find((x) => x.id === task.id).done, true);
+      assert.equal(
+        received[1].result.find((x) => x._id === task._id).done,
+        true,
+      );
       assert(received[1].revision > received[0].revision);
     } finally {
       ws.close();
@@ -554,36 +541,32 @@ try {
       join(directory, "app.ts"),
       source
         .replace("args.message", "'v2:'+args.message")
-        .replace("=>a.message", "=>'v2:'+a.message"),
+        .replace("=>a.message", "=>'v2:'+a.message")
+        .replace("=> a.message", "=> 'v2:' + a.message"),
     );
-    run([
-      bin,
-      "build",
-      "--entry",
-      "app.ts",
-      "--migrations",
-      "drizzle",
-      "--outdir",
-      "release-v2",
-    ]);
+    run([bin, "build", "--entry", "app.ts", "--outdir", "release-v2"]);
     const next = JSON.parse(
       await readFile(join(directory, "release-v2/release.json"), "utf8"),
     ).hash;
     assert.notEqual(old, next);
     run([bin, "deploy", "--env", "dev", "--release", "release-v2"]);
-    assert.equal((await client.call(refs.list, { limit: 50 })).length, 1);
+    assert.equal((await client.query(refs.list, { limit: 50 })).length, 1);
     assert.equal(
-      await client.call(sdk.reference("tasks/echo", "action"), {
+      await client.action(sdk.reference("tasks/echo", "action"), {
         message: "hello",
       }),
       "v2:hello",
     );
-    const created = await client.call(refs.create, { title: "After upgrade" });
-    await wait(() => frames.some((f) => f.value.some((t) => t.id === created)));
+    const created = await client.mutation(refs.create, {
+      title: "After upgrade",
+    });
+    await wait(() =>
+      frames.some((f) => f.value.some((t) => t._id === created)),
+    );
   });
   await test("Keyset data pagination covers 1000 actual records", async () => {
     for (let i = 0; i < 10; i++)
-      await client.call(sdk.reference("tasks/bulk", "mutation"), {
+      await client.mutation(sdk.reference("tasks/bulk", "mutation"), {
         count: 100,
       });
     let count = 0,
@@ -591,9 +574,7 @@ try {
     do {
       const page = await command(
         `projects/${id}/dev/data?table=tasks` +
-          (cursor === undefined
-            ? ""
-            : "&cursor=" + encodeURIComponent(JSON.stringify(cursor))),
+          (cursor === undefined ? "" : "&cursor=" + encodeURIComponent(cursor)),
       );
       count += page.rows.length;
       cursor = page.next;
@@ -614,12 +595,13 @@ try {
       assert.equal(after.connections, before.connections);
       const task = frames.at(-1).value[0],
         done = !task.done;
-      await client.call(sdk.reference("tasks/toggle", "mutation"), {
-        id: task.id,
+      await client.mutation(sdk.reference("tasks/toggle", "mutation"), {
+        id: task._id,
         done,
       });
       await wait(
-        () => frames.at(-1).value.find((x) => x.id === task.id)?.done === done,
+        () =>
+          frames.at(-1).value.find((x) => x._id === task._id)?.done === done,
       );
       report.hibernation = { before: before.bootId, after: after.bootId };
     });
@@ -637,15 +619,13 @@ try {
         });
         clients.push(c);
         watched.push(values);
-        c.subscribe(
-          refs.watch,
+        c.onUpdate(
+          refs.list,
           { limit: 50 },
-          {
-            next: (x) => {
-              values.splice(0, values.length, x);
-            },
-            error: () => {},
+          (x) => {
+            values.splice(0, values.length, x);
           },
+          () => {},
         );
         await sleep(30);
       }
@@ -654,21 +634,26 @@ try {
       const start = Date.now();
       while (Date.now() - start < loadMinutes * 60000) {
         await sleep(60000);
-        if (tokenExpires - Date.now() / 1000 < 90)
+        if (tokenExpires - Date.now() / 1000 < 90) {
           tokenExpires = Math.floor(Date.now() / 1000) + 900;
-        const c = clients[1];
-        c.refreshAuth();
+          for (const c of clients) c.refreshAuth();
+        } else {
+          // Reconnect one observer and refresh the primary identity. The test,
+          // not the runtime, is responsible for renewing its expiring JWTs.
+          clients[1].refreshAuth();
+          client.refreshAuth();
+        }
         const task = frames.at(-1).value[0],
           done = !task.done,
           at = performance.now();
-        await client.call(sdk.reference("tasks/toggle", "mutation"), {
-          id: task.id,
+        await client.mutation(sdk.reference("tasks/toggle", "mutation"), {
+          id: task._id,
           done,
         });
         await wait(
           () =>
             watched.every((x) =>
-              x.at(-1)?.some((t) => t.id === task.id && t.done === done),
+              x.at(-1)?.some((t) => t._id === task._id && t.done === done),
             ),
           15000,
         );
@@ -708,4 +693,5 @@ try {
     JSON.stringify(report, null, 2),
   );
   console.log("Report:", path);
+  await rm(directory, { recursive: true, force: true });
 }

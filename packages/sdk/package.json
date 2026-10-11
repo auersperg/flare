@@ -1,6 +1,6 @@
 {
   "name": "@flared/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Thin application SDK for the Cloudflare-hosted Flared platform (private minimum)",
   "type": "module",
@@ -34,14 +34,10 @@
     "@standard-schema/spec": "1.1.0"
   },
   "peerDependencies": {
-    "drizzle-orm": "0.45.4",
     "react": ">=19"
   },
   "peerDependenciesMeta": {
     "react": {
-      "optional": true
-    },
-    "drizzle-orm": {
       "optional": true
     }
   },

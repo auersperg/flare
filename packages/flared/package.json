@@ -1,0 +1,61 @@
+{
+  "name": "flared",
+  "version": "0.3.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Flared client, server declarations and development CLI",
+  "bin": {
+    "flared": "./bin.mjs"
+  },
+  "files": [
+    "bin.mjs",
+    "*.js",
+    "*.d.ts",
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./server": {
+      "types": "./server.d.ts",
+      "import": "./server.js"
+    },
+    "./react": {
+      "types": "./react.d.ts",
+      "import": "./react.js"
+    },
+    "./protocol": {
+      "types": "./protocol.d.ts",
+      "import": "./protocol.js"
+    },
+    "./cloudflare": {
+      "types": "./cloudflare.d.ts",
+      "import": "./cloudflare.js"
+    }
+  },
+  "dependencies": {
+    "@standard-schema/spec": "1.1.0",
+    "zod": "4.6.5",
+    "json-schema-to-typescript": "16.0.0"
+  },
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auersperg/flared.git",
+    "directory": "packages/flared"
+  },
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

@@ -23,7 +23,7 @@
   "cli": {
     "binary": "flared",
     "implementedCommands": ["build", "link", "dev", "deploy"],
-    "plannedCommands": ["platform init", "db generate"]
+    "plannedCommands": ["platform init"]
   },
   "release": {
     "status": "private-minimum",
@@ -31,8 +31,15 @@
     "openSourceLicenseSelected": false
   },
   "compatibility": {
-    "legacySdk": "@reactive-cloud/sdk@0.1.0",
-    "existingCloudResources": "preserved-not-renamed",
-    "existingSqlTablePrefix": "_reactive_"
+    "runtimeAbi": 4,
+    "legacySdkSupported": false,
+    "legacySqlSupported": false,
+    "existingCloudResources": "not-modified-by-local-build",
+    "systemTablePrefix": "_flared_"
+  },
+  "distribution": {
+    "applicationPackage": "flared",
+    "commands": ["dev", "deploy"],
+    "registryPublished": false
   }
 }

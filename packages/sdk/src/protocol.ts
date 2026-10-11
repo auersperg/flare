@@ -1,6 +1,6 @@
 export type Json =
   null | boolean | number | string | Json[] | { [key: string]: Json };
-export type FunctionKind = "query" | "live" | "mutation" | "action";
+export type FunctionKind = "query" | "mutation" | "action";
 export type Auth = {
   subject: string;
   issuer: string;
@@ -94,12 +94,12 @@ export function boundedJson(value: unknown, maxBytes: number): string {
 }
 export interface FunctionContract {
   kind: FunctionKind;
-  auth: "required" | "public";
+  auth: "required" | "public" | "internal";
   input: Record<string, unknown>;
   output: Record<string, unknown>;
 }
 export interface Manifest {
   protocol: 1;
-  runtimeAbi?: 1 | 2;
+  runtimeAbi: 4;
   functions: Record<string, FunctionContract>;
 }

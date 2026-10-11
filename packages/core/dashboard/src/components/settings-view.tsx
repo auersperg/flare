@@ -1,3 +1,4 @@
+import BackupsPanel from "./backups-panel";
 import { useState, type SubmitEvent } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -24,7 +25,10 @@ export default function SettingsView(scope: Scope) {
       </p>
       <Status {...r} />
       {r.data && (
-        <SettingsForm {...scope} settings={r.data} refresh={r.refresh} />
+        <>
+          <SettingsForm {...scope} settings={r.data} refresh={r.refresh} />
+          <BackupsPanel {...scope} />
+        </>
       )}
     </div>
   );

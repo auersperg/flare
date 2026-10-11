@@ -1,9 +1,11 @@
-# Flared platform 0.2 private minimum
+# Flared platform 0.3 — native-data preview
 
-Shared Cloudflare Admin + Static Assets and Runtime Workers, deployed once per installation, not per application. Online-only dashboard, native Worker Access, D1 administrative catalogue/audit, Dynamic Workers, supervisor Durable Objects and stable SQLite `app` facets, R2 releases, hibernating live subscriptions and Queues consumer.
+Shared Admin + Static Assets and Runtime Workers in the operator's own Cloudflare account, not Workers per application. Online-only Astro/shadcn dashboard, Access, D1 control catalogue/audit, Dynamic Workers, supervisor Durable Objects, persistent native SQLite `app` facets, hibernating live, R2 and Queues/Scheduler.
 
-Source entrypoints: `src/admin.ts`, `src/runtime.ts`. Dashboard: `dashboard/`. Native kernel acceptance fixtures live in workspace `tests/kernel/`, outside this package. Current installation configurations belong to the operator's account; portability and the public one-command installer remain unfinished.
+Application data uses validated documents and native SQLite expression indexes. Queries have no SQL/write capability; mutations, admin edits, revisions and jobs share a transactional path. No ORM, app SQL journal or legacy runtime ABI remains. Only ABI 4 is accepted; use a fresh environment/installation, not an assumed in-place 0.2 upgrade.
 
-Applications use the SDK, their own environment URL and user identity. The CLI's project credential goes only to the management API. Core/dashboard/Cloudflare capability dependencies must not enter browser or thin CLI bundles.
+Files stream through private R2 grants. Actions use narrow environment capabilities, optional operator-controlled `globalOutbound`, and native Secrets Store bindings. These optional capabilities require provisioning and real-cloud acceptance; no account credential is given to application code. Bounded logical backup/restore to an empty other environment is implemented and cloud-tested. Full analytics, unrestricted/off-account disaster recovery, delegated customer membership and a portable one-command installer remain unfinished.
 
-Files, Secrets Store, controlled external action egress, full analytics and export/restore are not implemented. See the workspace README for working features, tests and production limitations. Private local package, unpublished, UNLICENSED.
+Native core/SDK integration runs against local workerd as part of `test:kernel`; Cloud acceptance on 11 October confirmed physical hibernation/resumption, data/live/upgrade/Queues and 1002-record pagination. A separate 30-minute / 100-client cloud soak passed; workload-specific billable usage still needs measurement. Activation crash checkpoints are verified locally and are not presented as cloud crash proof. Local build/test do not change deployed Workers, SQL data, Access, DNS or billing. Source entrypoints: `src/admin.ts`, `src/runtime.ts`. Dashboard: `dashboard/`. Test fixtures stay outside the production package.
+
+Private/unpublished, UNLICENSED. See the root README and architecture maps for the current contract, resource policy and remaining gates.

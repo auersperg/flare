@@ -1,34 +1,34 @@
 {
   "name": "flared",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "workspaces": [
     "packages/*",
     "packages/core/dashboard"
   ],
   "scripts": {
-    "build": "node scripts/build-packages.mjs && node scripts/build-platform.mjs",
-    "check": "tsc --noEmit && npm run check --workspace @flared/dashboard",
-    "test": "vitest run",
-    "test:kernel": "node scripts/build-kernel.mjs && node scripts/kernel-acceptance.mjs",
-    "test:packages": "npm run build && node scripts/package-acceptance.mjs",
-    "test:cloud-kernel": "node scripts/build-kernel.mjs && node scripts/kernel-acceptance.mjs --cloud",
-    "test:cloud-sdk": "node scripts/sdk-cloud-acceptance.mjs",
-    "build:platform": "npm run build",
-    "test:platform:cloud": "node scripts/platform-acceptance.mjs",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "build:dashboard": "npm run build --workspace @flared/dashboard",
-    "deploy:dashboard": "npm run build && wrangler deploy --config admin.wrangler.json",
-    "test:build": "npm run build && node scripts/verify-build.mjs",
-    "verify": "npm run build && npm run check && npm test && npm run format:check && node scripts/verify-build.mjs && node scripts/package-acceptance.mjs",
-    "clean": "node scripts/clean.mjs"
+    "build": "bun scripts/build-packages.mjs && bun scripts/build-platform.mjs",
+    "check": "bun x --bun tsc --noEmit && bun run --bun --cwd packages/core/dashboard check",
+    "test": "bun test ./tests",
+    "test:kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs",
+    "test:packages": "bun run build && bun scripts/package-acceptance.mjs",
+    "test:cloud-kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs --cloud",
+    "test:cloud-sdk": "bun scripts/sdk-cloud-acceptance.mjs",
+    "build:platform": "bun run build",
+    "test:platform:cloud": "bun scripts/platform-acceptance.mjs",
+    "test:backup:cloud": "bun scripts/backup-acceptance.mjs",
+    "format": "bun x --bun prettier --write .",
+    "format:check": "bun x --bun prettier --check .",
+    "build:dashboard": "bun run --bun --cwd packages/core/dashboard build",
+    "deploy:dashboard": "bun run build && bun x --no-install wrangler deploy --config admin.wrangler.json",
+    "test:build": "bun run build && bun scripts/verify-build.mjs",
+    "verify": "bun run build && bun run check && bun run test && bun run format:check && bun scripts/verify-build.mjs && bun scripts/package-acceptance.mjs",
+    "clean": "bun scripts/clean.mjs"
   },
   "dependencies": {
     "@standard-schema/spec": "1.1.0",
     "agents": "0.28.0",
-    "drizzle-orm": "0.45.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.6.5"
@@ -38,25 +38,19 @@
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "drizzle-kit": "0.31.11",
-    "esbuild": "0.28.2",
     "json-schema-to-typescript": "16.0.0",
     "prettier": "3.9.10",
     "typescript": "6.0.2",
-    "vite": "8.3.4",
-    "vitest": "4.1.11",
     "wrangler": "4.149.0",
-    "prettier-plugin-astro": "1.1.0"
+    "prettier-plugin-astro": "1.1.0",
+    "@types/bun": "1.4.2"
   },
   "engines": {
-    "node": ">=24.11.0"
+    "bun": ">=1.4.3"
   },
   "overrides": {
     "@modelcontextprotocol/client": "2.2.0",
-    "@modelcontextprotocol/sdk": "1.31.0",
-    "@esbuild-kit/core-utils": {
-      "esbuild": "0.28.2"
-    }
+    "@modelcontextprotocol/sdk": "1.31.0"
   },
   "license": "UNLICENSED",
   "repository": {
@@ -64,5 +58,5 @@
     "url": "https://github.com/auersperg/flared.git"
   },
   "description": "Self-hosted Cloudflare-native reactive backend with live data, functions, SDK and an online dashboard",
-  "packageManager": "npm@12.1.0"
+  "packageManager": "bun@1.4.3"
 }

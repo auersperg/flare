@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { createClient, FlaredError } from "../packages/sdk/src/client.js";
 
 const read = (path: string) =>
@@ -37,7 +37,7 @@ describe("Flared product consistency", () => {
       const folder = name === "platform" ? "core" : name;
       const pkg = JSON.parse(read(`packages/${folder}/package.json`));
       expect(pkg.name).toBe(profile.packages[name]);
-      expect(pkg.version).toBe("0.2.0");
+      expect(pkg.version).toBe("0.3.0");
       expect(pkg.license).toBe("UNLICENSED");
       expect(pkg.private).toBe(true);
     },
@@ -45,19 +45,50 @@ describe("Flared product consistency", () => {
   it("ships only a flared CLI without core/emulator/dashboard dependencies", () => {
     const pkg = JSON.parse(read("packages/cli/package.json"));
     expect(pkg.bin).toEqual({ flared: "./bin/flared.mjs" });
-    expect(pkg.dependencies[profile.packages.sdk]).toBe("0.2.0");
+    expect(pkg.dependencies[profile.packages.sdk]).toBe("0.3.0");
     for (const name of Object.keys(pkg.dependencies))
       expect(name).not.toMatch(
         /agents|wrangler|workerd|vite|platform|dashboard/i,
       );
     expect(pkg.files).toEqual(["bin", "lib"]);
   });
+  it("distributes the application SDK and CLI as one self-contained package", () => {
+    const pkg = JSON.parse(read("packages/flared/package.json"));
+    expect(pkg.name).toBe(profile.distribution.applicationPackage);
+    expect(pkg.bin).toEqual({ flared: "./bin.mjs" });
+    expect(pkg.sideEffects).toBe(false);
+    expect(Object.keys(pkg.dependencies)).not.toContain("@flared/sdk");
+    expect(Object.keys(pkg.dependencies)).not.toContain("@flared/cli");
+    expect(pkg.peerDependenciesMeta.react.optional).toBe(true);
+    expect(read("packages/flared/bin.mjs")).toContain("./dist/cli/flared.js");
+    for (const entry of [
+      "index",
+      "server",
+      "react",
+      "protocol",
+      "cloudflare",
+    ]) {
+      expect(read(`packages/flared/${entry}.js`)).not.toContain("@flared/");
+      expect(read(`packages/flared/${entry}.d.ts`)).not.toContain("@flared/");
+    }
+    expect(read("packages/flared/index.js")).not.toMatch(
+      /\/(?:cli|server|cloudflare)(?:\/|\.)/,
+    );
+  });
+  it("generates application imports exclusively through the public flared package", () => {
+    const build = read("packages/cli/lib/build.mjs");
+    expect(build).toContain('import {reference} from "flared";');
+    expect(build).toContain('from "flared/cloudflare"; export class');
+    expect(read("packages/cli/lib/project.mjs")).toContain(
+      'const source = `import {defineApp} from "flared/server";',
+    );
+  });
   it("help advertises only the cloud dashboard without loading the compiler", () => {
     const output = spawnSync(process.execPath, [cli, "--help"], {
       encoding: "utf8",
     });
     expect(output.status).toBe(0);
-    expect(output.stdout).toContain("Flared 0.2");
+    expect(output.stdout).toContain("Flared 0.3");
     expect(output.stdout).toContain("Cloudflare-only");
     expect(output.stdout).toContain("flared build");
     expect(read("packages/cli/bin/flared.mjs")).not.toMatch(
@@ -71,7 +102,9 @@ describe("Flared product consistency", () => {
     ["platform", "init"],
   ])(
     "does not start local tooling or pretend an unimplemented flow works: %s",
-    (...args) => {
+    (...parameters) => {
+      const args: string[] = [];
+      for (const arg of parameters) if (typeof arg === "string") args.push(arg);
       const output = spawnSync(process.execPath, [cli, ...args], {
         encoding: "utf8",
       });
@@ -88,7 +121,7 @@ describe("Flared product consistency", () => {
     const client = createClient({ url: "https://example.test" });
     client.dispose();
     await expect(
-      client.call({ path: "test", kind: "query" }, {}),
+      client.query({ path: "test", kind: "query" }, {}),
     ).rejects.toBeInstanceOf(FlaredError);
   });
   it("the authoritative docs do not offer a second/local dashboard", () => {
@@ -150,13 +183,14 @@ describe("Astro/shadcn dashboard", () => {
     ).toMatch(/lazy\(\(\) => import\(["']\.\/data-view["']\)\)/);
     expect(read("scripts/build-platform.mjs")).toContain("build:dashboard");
   });
-  it("keeps unavailable storage honest, real jobs and no polling", () => {
-    expect(
-      read("packages/core/dashboard/src/components/overview.tsx"),
-    ).toContain("File storage is not enabled");
-    expect(read("packages/core/dashboard/src/components/overview.tsx")).toMatch(
-      /\+ ["']\/jobs["']/,
+  it("uses real storage, real jobs and no polling", () => {
+    const services = read(
+      "packages/core/dashboard/src/components/services-view.tsx",
     );
+    expect(services).toContain("/file-upload");
+    expect(services).toContain("/file-delete");
+    expect(services).not.toContain("setInterval");
+    expect(services).toMatch(/\+ ["']\/jobs["']/);
     expect(
       read("packages/core/dashboard/src/components/common.tsx"),
     ).not.toContain("setInterval");
@@ -167,9 +201,7 @@ describe("Astro/shadcn dashboard", () => {
   it("retains production/viewer guards and request scoping", () => {
     expect(
       read("packages/core/dashboard/src/components/functions-view.tsx"),
-    ).toMatch(
-      /env === ["']dev["'] && role !== ["']viewer["'] && kind !== ["']live["']/,
-    );
+    ).toMatch(/env === ["']dev["']\s*&&\s*role !== ["']viewer["']/);
     expect(
       read("packages/core/dashboard/src/components/data-view.tsx"),
     ).toMatch(/expectedRevision:\s*page.revision/);
@@ -243,8 +275,8 @@ describe("Production-only repository", () => {
   it("runs local checks in CI without automatic cloud deployments", () => {
     const workflow = read(".github/workflows/ci.yml");
     expect(workflow).toContain("contents: read");
-    expect(workflow).toContain("npm run verify");
-    expect(workflow).toContain("npm run test:kernel");
+    expect(workflow).toContain("bun run verify");
+    expect(workflow).toContain("bun run test:kernel");
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).not.toMatch(
       /secrets\.|wrangler deploy|npm publish|test:cloud/,
@@ -263,12 +295,8 @@ describe("Production-only repository", () => {
   });
   it("new project bootstrap has no demonstration schema or functions", () => {
     expect(read("packages/core/bootstrap/app.ts")).toContain(
-      "defineApp({ tables: {}, functions: {} })",
+      "defineApp({ schema: {}, functions: {} })",
     );
-    expect(
-      JSON.parse(read("packages/core/bootstrap/drizzle/meta/_journal.json"))
-        .entries,
-    ).toEqual([]);
     expect(read("packages/core/src/admin.ts")).toContain(
       '"https://assets.internal/bootstrap/"',
     );

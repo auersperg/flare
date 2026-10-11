@@ -29,30 +29,28 @@ import {
   type Row,
   type Column,
 } from "../lib/model";
-import type { Field } from "../lib/presentation";
+import { contractFields, type Field } from "../lib/presentation";
 import type { Scope } from "./dashboard";
 export function columnFields(columns: Column[], row?: Row): Field[] {
-  const pk = columns.find((c) => c.pk === 1)?.name;
   return columns
-    .filter((c) => !row || c.name !== pk)
-    .map((c) => ({
-      name: c.name,
-      type: /INT/i.test(c.type)
-        ? "integer"
-        : /REAL|NUM|FLOAT|DOUBLE/i.test(c.type)
-          ? "number"
-          : "string",
-      required: !!c.notnull || !!c.pk,
-      nullable: !c.notnull && !c.pk,
-      defaultMode:
-        !row && (c.dflt_value !== null || (!!c.pk && /INT/i.test(c.type))),
-      value: row
-        ? row[c.name]
-        : c.pk && !/INT/i.test(c.type)
-          ? crypto.randomUUID()
-          : undefined,
-    }));
+    .filter((c) => c.name !== "_id" && c.name !== "_creationTime")
+    .map((c) => {
+      const f = contractFields({
+        properties: {
+          [c.name]: c.schema ?? {
+            type: /INT|REAL/i.test(c.type) ? "number" : "string",
+          },
+        },
+        required: c.notnull ? [c.name] : [],
+      })[0];
+      return {
+        ...f,
+        defaultMode: !row && c.dflt_value !== null,
+        value: row ? row[c.name] : f.value,
+      };
+    });
 }
+
 export default function DataView(scope: Scope) {
   const path = scopePath(scope.project, scope.env),
     schema = useResource<Schema>(path + "/schema");
@@ -61,8 +59,11 @@ export default function DataView(scope: Scope) {
   const tables = schema.data?.tables ?? [],
     active = tables.find((t) => t.name === table)?.name ?? tables[0]?.name;
   return (
-    <div className="flex min-h-full">
-      <section className="explorer-sidebar" aria-label="Application tables">
+    <div className="flex h-full min-h-0">
+      <section
+        className="explorer-sidebar overflow-y-auto"
+        aria-label="Application tables"
+      >
         <div className="space-y-4 p-4">
           <div className="flex items-center justify-between">
             <h1 className="page-title">Data</h1>
@@ -106,7 +107,7 @@ export default function DataView(scope: Scope) {
           Tables are defined in code.
         </p>
       </section>
-      <section className="min-w-0 flex-1">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Status {...schema} />
         {active ? (
           <DataTable key={active} {...scope} table={active} tables={tables} />
@@ -124,16 +125,14 @@ function DataTable({
   table,
   tables,
 }: Scope & { table: string; tables: Schema["tables"] }) {
-  const [cursor, setCursor] = useState<unknown>(undefined),
+  const [cursor, setCursor] = useState<string | undefined>(undefined),
     [modal, setModal] = useState<Modal>();
   const path = scopePath(project, env),
     r = useResource<Page>(
       path +
         "/data?table=" +
         encodeURIComponent(table) +
-        (cursor === undefined
-          ? ""
-          : "&cursor=" + encodeURIComponent(JSON.stringify(cursor))),
+        (cursor === undefined ? "" : "&cursor=" + encodeURIComponent(cursor)),
     );
   const page = r.data,
     pk = page?.columns.find((c) => c.pk === 1)?.name,
@@ -209,71 +208,78 @@ function DataTable({
       <Status {...r} />
       {page && (
         <>
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-background">
-              <TableRow>
-                {page.columns.map((c) => (
-                  <TableHead key={c.name}>
-                    <span>{c.name}</span>
-                    <small className="block font-normal text-muted-foreground">
-                      {c.type.toLowerCase()}
-                      {c.pk ? " · primary" : ""}
-                    </small>
-                  </TableHead>
-                ))}
-                {write && <TableHead>Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {page.rows.map((row, i) => (
-                <TableRow key={pk ? String(row[pk]) : i}>
+          <div
+            className="min-h-0 flex-1 overflow-auto"
+            aria-label="Table rows"
+            role="region"
+            tabIndex={0}
+          >
+            <Table containerClassName="overflow-visible">
+              <TableHeader className="sticky top-0 z-10 bg-background">
+                <TableRow>
                   {page.columns.map((c) => (
-                    <TableCell
-                      className="max-w-sm truncate font-mono"
-                      key={c.name}
-                      title={scalar(row[c.name])}
-                    >
-                      {scalar(row[c.name])}
-                    </TableCell>
+                    <TableHead key={c.name}>
+                      <span>{c.name}</span>
+                      <small className="block font-normal text-muted-foreground">
+                        {c.type.toLowerCase()}
+                        {c.pk ? " · primary" : ""}
+                      </small>
+                    </TableHead>
                   ))}
-                  {write && (
-                    <TableCell>
-                      {pk ? (
-                        <div className="flex gap-1">
-                          <Button
-                            size="xs"
-                            variant="ghost"
-                            onClick={() => edit("update", row)}
-                            disabled={r.loading}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="destructive"
-                            onClick={() => edit("delete", row)}
-                            disabled={r.loading}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      ) : (
-                        "Read only"
-                      )}
-                    </TableCell>
-                  )}
+                  {write && <TableHead>Actions</TableHead>}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {!page.rows.length && (
-            <Empty title="No rows yet">
-              Add a row or call a mutation from your app.
-            </Empty>
-          )}
-          <footer className="flex items-center justify-between gap-4 border-t p-4">
+              </TableHeader>
+              <TableBody>
+                {page.rows.map((row, i) => (
+                  <TableRow key={pk ? String(row[pk]) : i}>
+                    {page.columns.map((c) => (
+                      <TableCell
+                        className="max-w-sm truncate font-mono"
+                        key={c.name}
+                        title={scalar(row[c.name])}
+                      >
+                        {scalar(row[c.name])}
+                      </TableCell>
+                    ))}
+                    {write && (
+                      <TableCell>
+                        {pk ? (
+                          <div className="flex gap-1">
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => edit("update", row)}
+                              disabled={r.loading}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="destructive"
+                              onClick={() => edit("delete", row)}
+                              disabled={r.loading}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        ) : (
+                          "Read only"
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {!page.rows.length && (
+              <Empty title="No rows yet">
+                Add a row or call a mutation from your app.
+              </Empty>
+            )}
+          </div>
+          <footer className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t p-4">
             <span className="text-xs text-muted-foreground">
-              50 rows per page · changes are audited
+              Up to 50 rows per page · changes are audited
             </span>
             <div className="flex gap-2">
               <Button
@@ -286,7 +292,7 @@ function DataTable({
               <Button
                 variant="outline"
                 disabled={page.next === null || r.loading}
-                onClick={() => setCursor(page.next)}
+                onClick={() => setCursor(page.next ?? undefined)}
               >
                 Next page
                 <ChevronRight />

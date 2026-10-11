@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, jest } from "bun:test";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
@@ -15,10 +15,10 @@ function bucket() {
   const blobs = new Map<string, string>();
   return {
     blobs,
-    get: vi.fn(async (key: string) =>
+    get: jest.fn(async (key: string) =>
       blobs.has(key) ? { text: async () => blobs.get(key)! } : null,
     ),
-    put: vi.fn(async (key: string, value: string, options: any) => {
+    put: jest.fn(async (key: string, value: string, options: any) => {
       expect(options).toEqual({ onlyIf: { etagDoesNotMatch: "*" } });
       if (blobs.has(key)) return null;
       blobs.set(key, value);
@@ -51,7 +51,7 @@ describe("Permanent project URLs", () => {
     expect(() => projectAlias(alias)).toThrow(),
   );
   it("keeps the existing UUID scope and dev/prod paths", () => {
-    for (const env of ["dev", "prod"])
+    for (const env of ["dev", "prod"] as const)
       for (const operation of ["call", "live", "live/ticket"]) {
         expect(applicationRoute(`/p/${a}/${env}/v1/${operation}`)).toEqual({
           id: a,

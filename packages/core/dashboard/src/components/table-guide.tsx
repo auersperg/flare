@@ -13,7 +13,7 @@ import {
   DialogDescription,
 } from "./ui/dialog";
 import { Choice, ErrorNotice } from "./common";
-import { migrationDraft } from "../lib/table-migration";
+import { schemaDraft } from "../lib/table-schema";
 import type { Schema, Environment, Session } from "../lib/model";
 
 export function TableGuide({
@@ -40,21 +40,19 @@ export function TableGuide({
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-auto">
         <DialogHeader>
-          <DialogTitle>Prepare a table migration</DialogTitle>
+          <DialogTitle>Define a table</DialogTitle>
           <DialogDescription>
             Schema lives in application code. This prepares a draft, not a
             database change. Nothing is applied until you review and deploy a
             release.
           </DialogDescription>
         </DialogHeader>
-        {open && (
-          <MigrationForm tables={tables} env={env} initialTable={table} />
-        )}
+        {open && <SchemaForm tables={tables} env={env} initialTable={table} />}
       </DialogContent>
     </Dialog>
   );
 }
-function MigrationForm({
+function SchemaForm({
   tables,
   env,
   initialTable,
@@ -69,21 +67,21 @@ function MigrationForm({
   const [name, setName] = useState(initialTable ? "description" : "notes");
   const [table, setTable] = useState(initialTable ?? tables[0]?.name ?? "");
   const id = useId();
-  let draft: ReturnType<typeof migrationDraft> | undefined;
+  let draft: ReturnType<typeof schemaDraft> | undefined;
   let error: string | undefined;
   try {
-    draft = migrationDraft(operation, name, tables, table);
+    draft = schemaDraft(operation, name, tables, table);
   } catch (e) {
-    error = e instanceof Error ? e.message : "Invalid migration";
+    error = e instanceof Error ? e.message : "Invalid schema";
   }
   const download = () => {
     if (!draft) return;
     const url = URL.createObjectURL(
-      new Blob([draft.sql + "\n"], { type: "text/plain" }),
+      new Blob([draft.definition + "\n"], { type: "text/plain" }),
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${operation === "create" ? "create" : "alter"}_${operation === "create" ? name : "table"}.sql`;
+    link.download = `${operation === "create" ? "create" : "alter"}_${operation === "create" ? name : "table"}.ts`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
@@ -99,7 +97,7 @@ function MigrationForm({
         <TabsList>
           <TabsTrigger value="create">New table</TabsTrigger>
           <TabsTrigger value="add-column" disabled={!tables.length}>
-            Add column
+            Add field
           </TabsTrigger>
         </TabsList>
         <TabsContent value={operation}>
@@ -118,7 +116,7 @@ function MigrationForm({
             )}
             <Field>
               <FieldLabel htmlFor={id}>
-                {operation === "create" ? "Table name" : "Column name"}
+                {operation === "create" ? "Table name" : "Field name"}
               </FieldLabel>
               <Input
                 id={id}
@@ -128,8 +126,8 @@ function MigrationForm({
               />
               <FieldDescription>
                 {operation === "create"
-                  ? "Starts with a text primary key. Extend its fields in your repository before deploying."
-                  : "Adds nullable text without deleting or rewriting existing rows."}
+                  ? "Document IDs and creation timestamps are automatic. Define fields before deploying."
+                  : "Adds an optional text field; existing documents remain valid."}
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -140,13 +138,13 @@ function MigrationForm({
       ) : (
         draft && (
           <>
-            <Tabs defaultValue="sql">
+            <Tabs defaultValue="definition">
               <TabsList>
-                <TabsTrigger value="sql">Migration SQL · draft</TabsTrigger>
-                <TabsTrigger value="definition">Drizzle definition</TabsTrigger>
+                <TabsTrigger value="notes">Activation</TabsTrigger>
+                <TabsTrigger value="definition">Document schema</TabsTrigger>
               </TabsList>
-              <TabsContent value="sql">
-                <pre className="code-block">{draft.sql}</pre>
+              <TabsContent value="notes">
+                <pre className="code-block">{draft.notes}</pre>
               </TabsContent>
               <TabsContent value="definition">
                 <pre className="code-block">{draft.definition}</pre>
@@ -154,27 +152,27 @@ function MigrationForm({
             </Tabs>
             <Button variant="outline" onClick={download}>
               <Download />
-              Download SQL draft
+              Download schema draft
             </Button>
           </>
         )
       )}
       <ol className="list-inside list-decimal space-y-2 text-xs text-muted-foreground">
-        <li>Update your Drizzle schema and the app's declared tables.</li>
+        <li>Update flared/schema.ts with the document validator.</li>
         <li>
-          Register the reviewed SQL in the ordered Drizzle migration journal.
-          Never overwrite applied migrations.
+          Cloudflare validates existing documents and updates declared SQLite
+          indexes atomically.
         </li>
         <li>
           Build a new release so the schema and SDK stay versioned together.
         </li>
       </ol>
-      <pre className="code-block">{`flared build --entry app.ts --migrations drizzle --outdir release-next\nflared deploy --env ${env} --release release-next${env === "prod" ? " --confirm <project-UUID>" : ""}`}</pre>
+      <pre className="code-block">{`bunx flared ${env === "prod" ? "deploy" : "dev"}`}</pre>
       <p className="text-xs text-muted-foreground">
-        Use a new output directory for each release. Schema drop/rename and
+        Schema changes are versioned with code. Destructive table removal and
         arbitrary SQL execution are intentionally unavailable here.{" "}
         {env === "prod"
-          ? "Test the migration in dev first; production deployment requires explicit confirmation."
+          ? "Test the schema in dev first; production deployment requires explicit confirmation."
           : "Refresh Data or Schema after the cloud release activates."}
       </p>
     </div>

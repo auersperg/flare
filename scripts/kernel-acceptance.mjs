@@ -100,7 +100,7 @@ async function start() {
     mode: 0o600,
   });
   const child = spawn(
-    process.execPath,
+    "node",
     [
       "node_modules/wrangler/bin/wrangler.js",
       "dev",
@@ -123,7 +123,9 @@ async function start() {
     if (child.exitCode !== null) throw new Error("Local kernel exited: " + log);
     if (log.includes("Ready on ")) {
       try {
-        const result = await fetch(`${base}/health`);
+        const result = await fetch(`${base}/health`, {
+          signal: AbortSignal.timeout(2000),
+        });
         if (result.ok) return;
       } catch {}
     }
@@ -155,6 +157,28 @@ async function waitFrame(predicate, timeout = 10000) {
 }
 try {
   if (!remote) await start();
+  await test("Native R2 upload without Content-Length still enforces exact byte size", async () => {
+    for (const wrong of [0, 1, -1]) {
+      const response = await fetch(
+        `${base}/file-stream-proof?scope=${encodeURIComponent(scope)}&wrong=${wrong}`,
+        { method: "POST", headers: { authorization: `Bearer ${token}` } },
+      );
+      assert.equal(response.status, wrong ? 400 : 200);
+      if (!wrong) assert.equal((await response.json()).text, "stream proof");
+    }
+  });
+  await test("Committed R2 bytes survive uncertain metadata acknowledgement; deleted scopes do not", async () => {
+    for (const ack of ["lost", "deleted"]) {
+      const response = await fetch(
+        `${base}/file-stream-proof?scope=${encodeURIComponent(scope)}&ack=${ack}`,
+        { method: "POST", headers: { authorization: `Bearer ${token}` } },
+      );
+      assert.equal(response.status, 400);
+      const value = await response.json();
+      assert.equal(value.preserved, ack === "lost");
+      assert.equal(value.removed, ack === "deleted");
+    }
+  });
   await test("Unauthenticated operations are denied", async () => {
     const response = await fetch(
       `${base}/call?scope=${encodeURIComponent(scope)}`,
@@ -301,7 +325,7 @@ try {
     assert.equal(receipt.release, 2);
     assert.equal((await call({ op: "snapshot" })).value.value, before + 2);
   });
-  await test("Failed candidate Drizzle migration rolls back SQL and restores old release", async () => {
+  await test("Failed candidate native migration rolls back SQL and restores old release", async () => {
     const before = await call({ op: "snapshot" });
     await assert.rejects(() => activate(3));
     const after = await call({ op: "snapshot" });
@@ -344,6 +368,48 @@ try {
       assert.notEqual(after.parentBoot, before.parentBoot);
     });
   }
+  if (!remote)
+    await test("Packaged SDK facet executes against native workerd SQLite", async () => {
+      const child = spawn(
+        process.execPath,
+        ["scripts/sdk-cloud-acceptance.mjs", "--local"],
+        {
+          env: { ...process.env, FLARED_KERNEL_URL: base },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let output = "";
+      child.stdout.on("data", (x) => (output += x));
+      child.stderr.on("data", (x) => (output += x));
+      await new Promise((done, fail) => {
+        child.once("error", fail);
+        child.once("exit", (code) =>
+          code === 0 ? done() : fail(Error(output)),
+        );
+      });
+      console.log(output);
+    });
+  if (!remote)
+    await test("Real core Runtime/SDK integration: data, live, releases, jobs and files", async () => {
+      const child = spawn(
+        process.execPath,
+        ["scripts/native-runtime-acceptance.mjs"],
+        {
+          env: { ...process.env, FLARED_KERNEL_URL: base },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let output = "";
+      child.stdout.on("data", (x) => (output += x));
+      child.stderr.on("data", (x) => (output += x));
+      await new Promise((done, fail) => {
+        child.once("error", fail);
+        child.once("exit", (code) =>
+          code === 0 ? done() : fail(Error(output)),
+        );
+      });
+      console.log(output);
+    });
   report.status = "PASS";
 } catch (error) {
   report.status = "FAIL";

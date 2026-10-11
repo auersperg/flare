@@ -1,62 +1,53 @@
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
-import { defineApp, query, live, mutation, action } from "@flared/sdk/server";
-const tasks = sqliteTable("tasks", {
-  id: text().primaryKey(),
-  title: text().notNull(),
-  done: integer({ mode: "boolean" }).notNull().default(false),
-  createdAt: integer().notNull(),
+import {
+  defineApp,
+  defineSchema,
+  defineTable,
+  createFunctions,
+} from "@flared/sdk/server";
+const schema = defineSchema({
+  tasks: defineTable(
+    z.object({
+      title: z.string().min(1).max(200),
+      done: z.boolean().default(false),
+    }),
+  ).index("by_done", ["done"]),
 });
+const { query, mutation, action } = createFunctions<typeof schema>();
 const input = z.object({ limit: z.number().int().min(1).max(100).default(50) });
 const output = z.array(
   z.object({
-    id: z.string(),
+    _id: z.string(),
+    _creationTime: z.number(),
     title: z.string(),
     done: z.boolean(),
-    createdAt: z.number(),
   }),
 );
-const list = ({ db }: any, args: any) =>
-  db
-    .select()
-    .from(tasks)
-    .orderBy(tasks.createdAt, tasks.id)
-    .limit(args.limit)
-    .all();
+const list = ({ db }: any, args: any) => db.query("tasks").take(args.limit);
 export default defineApp({
-  tables: { tasks },
+  schema,
   functions: {
     tasks: {
       list: query({ input, output, handler: list }),
-      watch: live({ input, output, handler: list }),
       create: mutation({
         input: z.object({ title: z.string().trim().min(1).max(200) }),
         output: z.string(),
-        handler: ({ db }, a) => {
-          const id = crypto.randomUUID();
-          db.insert(tasks)
-            .values({ id, title: a.title, createdAt: Date.now(), done: false })
-            .run();
-          return id;
-        },
+        handler: ({ db }, a) =>
+          db.insert("tasks", { title: a.title, done: false }),
       }),
       toggle: mutation({
         input: z.object({ id: z.string().uuid(), done: z.boolean() }),
         output: z.boolean(),
-        handler: ({ db }, a) => {
-          db.update(tasks)
-            .set({ done: a.done })
-            .where(eq(tasks.id, a.id))
-            .run();
+        handler: async ({ db }, a) => {
+          await db.patch("tasks", a.id, { done: a.done });
           return a.done;
         },
       }),
       remove: mutation({
         input: z.object({ id: z.string().uuid() }),
         output: z.boolean(),
-        handler: ({ db }, a) => {
-          db.delete(tasks).where(eq(tasks.id, a.id)).run();
+        handler: async ({ db }, a) => {
+          await db.delete("tasks", a.id);
           return true;
         },
       }),

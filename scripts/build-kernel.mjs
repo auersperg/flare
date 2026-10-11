@@ -1,28 +1,26 @@
-import { build } from "esbuild";
+import { bundle } from "../packages/cli/lib/bundle.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 await mkdir("artifacts", { recursive: true });
 for (const version of [1, 2, 3]) {
-  const result = await build({
-    entryPoints: ["tests/kernel/kernel-facet.ts"],
-    bundle: true,
-    write: false,
+  const result = await bundle({
+    entrypoints: ["tests/kernel/kernel-facet.ts"],
     format: "esm",
-    target: "es2022",
+    target: "browser",
     external: ["cloudflare:workers"],
     define: { RELEASE: String(version) },
     metafile: true,
   });
   await writeFile(
     `artifacts/kernel-v${version}.js`,
-    result.outputFiles[0].contents,
+    new Uint8Array(await result.outputs[0].arrayBuffer()),
   );
 }
-await build({
-  entryPoints: ["tests/kernel/kernel.ts"],
-  bundle: true,
-  outfile: "artifacts/kernel.js",
+await bundle({
+  entrypoints: ["tests/kernel/kernel.ts"],
+  outdir: "artifacts",
+  naming: { entry: "kernel.js" },
   format: "esm",
-  target: "es2022",
+  target: "browser",
   external: ["cloudflare:workers", "node:*"],
   metafile: true,
 }).then(async (result) => {

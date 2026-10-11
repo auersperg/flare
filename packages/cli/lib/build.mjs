@@ -1,6 +1,6 @@
-import { build } from "esbuild";
+import { bundle } from "./bundle.mjs";
 import { compile } from "json-schema-to-typescript";
-import { manifest } from "@flared/sdk/server";
+import { manifest, schemaContract } from "@flared/sdk/server";
 import { stableJson } from "@flared/sdk/protocol";
 import { createHash } from "node:crypto";
 import {
@@ -29,55 +29,34 @@ export async function buildApplication(options) {
     if (error.code !== "ENOENT") throw error;
   }
   await access(entry);
-  const dir = resolve(options.migrations);
-  const journal = JSON.parse(
-    await readFile(join(dir, "meta/_journal.json"), "utf8"),
-  );
-  if (!Array.isArray(journal.entries))
-    throw new Error("Invalid Drizzle migration journal");
-  const migrations = {};
-  let previous = -1;
-  for (const [index, item] of journal.entries.entries()) {
-    if (
-      item.idx !== index ||
-      !Number.isSafeInteger(item.when) ||
-      item.when <= previous ||
-      typeof item.tag !== "string" ||
-      !/^[a-zA-Z0-9_-]+$/.test(item.tag)
-    )
-      throw new Error("Invalid or non-monotonic Drizzle migrations");
-    migrations[`m${String(item.idx).padStart(4, "0")}`] = await readFile(
-      join(dir, `${item.tag}.sql`),
-      "utf8",
-    );
-    previous = item.when;
-  }
-  const migrationConfig = { journal: { entries: journal.entries }, migrations };
   await mkdir(join(working, ".flared/tmp"), { recursive: true });
   const temporary = await mkdtemp(join(working, ".flared/tmp/build-"));
   try {
     // Metadata evaluation executes only trusted application modules locally, never in a request.
     const metadataPath = join(temporary, "metadata.mjs");
-    await build({
-      entryPoints: [entry],
-      outfile: metadataPath,
-      bundle: true,
+    await bundle({
+      entrypoints: [entry],
+      outdir: temporary,
+      naming: { entry: "metadata.mjs" },
       packages: "external",
-      platform: "node",
+      target: "bun",
       format: "esm",
-      target: "es2022",
-      logLevel: "silent",
     });
     const module = await import(pathToFileURL(metadataPath).href);
     if (!module.default)
       throw new Error("Application entry must default-export defineApp(...)");
     const contract = manifest(module.default);
-    const facet = await compileRole("facet", entry, working, migrationConfig);
-    const action = await compileRole("action", entry, working, migrationConfig);
+    const schema = schemaContract(module.default.schema);
+    const facet = await compileRole("facet", entry, working);
+    const action = await compileRole(
+      "action",
+      options.actionEntry ? resolve(options.actionEntry) : entry,
+      working,
+    );
     const checksums = {
       facet: digest(facet),
       action: digest(action),
-      migrations: digest(stableJson(migrationConfig)),
+      schema: digest(stableJson(schema)),
       manifest: digest(stableJson(contract)),
     };
     const artifact = {
@@ -95,32 +74,19 @@ export async function buildApplication(options) {
       JSON.stringify(contract, null, 2),
     );
     await writeFile(
-      join(staging, "migrations.json"),
-      JSON.stringify(migrationConfig, null, 2),
+      join(staging, "schema.json"),
+      JSON.stringify(schema, null, 2),
     );
     await writeFile(
       join(staging, "release.json"),
       JSON.stringify({ ...artifact, hash }, null, 2),
     );
-    let generated = 'import {reference} from "@flared/sdk";\n';
-    const refs = [];
-    for (const [index, [path, fn]] of Object.entries(
-      contract.functions,
-    ).entries()) {
-      generated += await compile(fn.input, `Input${index}`, {
-        bannerComment: "",
-      });
-      generated += await compile(fn.output, `Output${index}`, {
-        bannerComment: "",
-      });
-      refs.push(
-        `${JSON.stringify(path)}: reference<Input${index}, Output${index}>(${JSON.stringify(path)}, ${JSON.stringify(fn.kind)})`,
-      );
-    }
-    generated += `\nexport const api = {\n${refs.join(",\n")}\n} as const;\n`;
-    await writeFile(join(staging, "api.ts"), generated);
+    await writeFile(
+      join(staging, "api.ts"),
+      await generateReferences(contract),
+    );
     const calls = Object.entries(contract.functions).filter(
-      ([, fn]) => fn.kind !== "live",
+      ([, fn]) => fn.auth !== "internal",
     );
     const schemas = Object.create(null);
     const refSchema = (schema, name) => {
@@ -220,25 +186,17 @@ export async function buildApplication(options) {
     await rm(temporary, { recursive: true, force: true });
   }
 }
-async function compileRole(role, entry, working, migrations) {
+async function compileRole(role, entry, working) {
   const code =
     role === "facet"
-      ? `import app from ${JSON.stringify(entry)}; import {createFacet} from "@flared/sdk/cloudflare"; export class AppFacet extends createFacet(app, ${JSON.stringify(migrations)}) {}`
-      : `import app from ${JSON.stringify(entry)}; import {createAction} from "@flared/sdk/cloudflare"; export class Action extends createAction(app) {}`;
-  const result = await build({
-    stdin: {
-      contents: code,
-      resolveDir: working,
-      sourcefile: `${role}-entry.ts`,
-      loader: "ts",
-    },
-    bundle: true,
-    write: false,
-    format: "esm",
-    target: "es2022",
+      ? `import app from ${JSON.stringify(entry)}; import {createFacet} from "flared/cloudflare"; export class AppFacet extends createFacet(app) {}`
+      : `import app from ${JSON.stringify(entry)}; import {createAction} from "flared/cloudflare"; export class Action extends createAction(app) {}`;
+  const virtualEntry = join(working, `${role}-entry.ts`);
+  const result = await bundle({
+    entrypoints: [virtualEntry],
+    files: { [virtualEntry]: code },
     external: ["cloudflare:workers"],
     metafile: true,
-    logLevel: "silent",
   });
   if (
     Object.keys(result.metafile.inputs).some((path) =>
@@ -246,8 +204,32 @@ async function compileRole(role, entry, working, migrations) {
     )
   )
     throw new Error("Full Agents/MCP code entered application bundle");
-  const output = result.outputFiles[0].text;
+  if (result.outputs.length !== 1 || result.outputs[0].kind !== "entry-point")
+    throw new Error(
+      "Application runtime must compile to one JavaScript module",
+    );
+  const output = await result.outputs[0].text();
   if (Buffer.byteLength(output) > 1048576)
     throw new Error("Application bundle exceeds the preview 1 MiB limit");
   return output;
+}
+
+export async function generateReferences(contract) {
+  let generated = 'import {reference} from "flared";\n';
+  const refs = [];
+  for (const [index, [path, fn]] of Object.entries(
+    contract.functions,
+  ).entries()) {
+    generated += await compile(fn.input, `Input${index}`, {
+      bannerComment: "",
+    });
+    generated += await compile(fn.output, `Output${index}`, {
+      bannerComment: "",
+    });
+    refs.push(
+      `${JSON.stringify(path)}: reference<Input${index}, Output${index}>(${JSON.stringify(path)}, ${JSON.stringify(fn.kind)})`,
+    );
+  }
+  generated += `\nexport const api = {\n${refs.join(",\n")}\n} as const;\n`;
+  return generated;
 }

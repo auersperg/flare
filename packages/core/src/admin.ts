@@ -1,3 +1,5 @@
+import { collectCatalog } from "./retention.js";
+import { publicLogin, loginInfo, approveLogin } from "./cli-login.js";
 declare const FLARED_DASHBOARD_CSP_HASHES: {
   scripts: string[];
   styles: string[];
@@ -28,6 +30,7 @@ type RuntimeApi = {
   deploy(
     scope: string,
     bundle: ReleaseUpload,
+    expected?: string,
   ): Promise<{ hash: string; unchanged: boolean }>;
   admin(scope: string, op: string, input: any): Promise<any>;
   devIdentity(scope: string, subject: string): Promise<string>;
@@ -38,6 +41,7 @@ interface Env {
   RUNTIME: { command(op: string, args: any[]): Promise<RpcResult<any>> };
   ASSETS: Fetcher;
   RUNTIME_URL: string;
+  DASHBOARD_URL: string;
   ACCESS_ISSUER: string;
   ACCESS_AUD: string;
 }
@@ -108,6 +112,12 @@ async function audit(
   operation: string,
   work: () => Promise<unknown>,
 ) {
+  await collectCatalog(env.CATALOG).catch((error) =>
+    console.warn({
+      source: "flared-catalog-retention",
+      code: status(error).code,
+    }),
+  );
   const id = crypto.randomUUID();
   await env.CATALOG.prepare("INSERT INTO audit VALUES (?,?,?,?,?,?,?,?)")
     .bind(id, Date.now(), a.email, projectId, which, operation, "pending", "{}")
@@ -116,14 +126,26 @@ async function audit(
     const result = await work();
     await env.CATALOG.prepare("UPDATE audit SET status='ok' WHERE id=?")
       .bind(id)
-      .run();
+      .run()
+      .catch((error) =>
+        console.warn({
+          source: "flared-audit-finalize",
+          code: status(error).code,
+        }),
+      );
     return result;
   } catch (e) {
     await env.CATALOG.prepare(
       "UPDATE audit SET status='error',detail=? WHERE id=?",
     )
       .bind(JSON.stringify({ code: status(e).code }), id)
-      .run();
+      .run()
+      .catch((error) =>
+        console.warn({
+          source: "flared-audit-finalize",
+          code: status(error).code,
+        }),
+      );
     throw e;
   }
 }
@@ -137,7 +159,7 @@ async function bootstrap(env: Env): Promise<ReleaseUpload> {
   return {
     release: JSON.parse(await get("release.json")),
     manifest: JSON.parse(await get("manifest.json")),
-    migrations: JSON.parse(await get("migrations.json")),
+    schema: JSON.parse(await get("schema.json")),
     facet: await get("facet.js"),
     action: await get("action.js"),
   };
@@ -168,13 +190,39 @@ async function publishAlias(env: Env, id: string, alias: string) {
 async function api(request: Request, env: Env, a: Actor): Promise<Response> {
   const url = new URL(request.url),
     path = url.pathname;
+  if (path === "/api/cli/approval") {
+    if (a.projectId || a.role !== "owner") fail("FORBIDDEN");
+    if (request.method === "GET")
+      return json(await loginInfo(env, url.searchParams.get("id") ?? ""));
+    if (request.method !== "POST")
+      return json({ error: "METHOD_NOT_ALLOWED" }, 405);
+    const input = await jsonBody(request);
+    const selected = uuid(input.project);
+    if (
+      !(await env.CATALOG.prepare("SELECT id FROM projects WHERE id=?")
+        .bind(selected)
+        .first())
+    )
+      fail("NOT_FOUND");
+    return json(
+      await audit(env, a, selected, "dev", "cli.login", () =>
+        approveLogin(
+          env,
+          input.id,
+          selected,
+          a.email,
+          env.RUNTIME_URL + "/control",
+        ),
+      ),
+    );
+  }
   if (path === "/api/session" && request.method === "GET")
     return json({
       email: a.email,
       role: a.role,
       projectId: a.projectId,
       runtime: env.RUNTIME_URL,
-      version: "0.2.0",
+      version: "0.3.0",
       stage: "private-minimum",
     });
   if (path === "/api/projects" && request.method === "GET") {
@@ -302,6 +350,18 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     scope = `${projectId}/${which}`,
     op = match[3] ?? "health";
   if (request.method === "GET") {
+    if (["release", "release-bundle"].includes(op)) {
+      const hash = url.searchParams.get("hash");
+      if (!hash || !/^[a-f0-9]{64}$/.test(hash)) fail("INVALID_INPUT");
+      if (op === "release-bundle" && a.role === "viewer") fail("FORBIDDEN");
+      return json(
+        await runtime(env).admin(
+          scope,
+          op === "release" ? "release-details" : "release-export",
+          { hash },
+        ),
+      );
+    }
     if (op === "settings") {
       const row = await env.CATALOG.prepare(
         "SELECT * FROM environments WHERE projectId=? AND env=?",
@@ -316,6 +376,12 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
         alias: project.alias,
       });
     }
+    if (op === "file-download")
+      return json(
+        await runtime(env).admin(scope, "file-download", {
+          id: url.searchParams.get("id"),
+        }),
+      );
     if (op === "audit")
       return json(
         (
@@ -326,17 +392,42 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
             .all()
         ).results,
       );
+    if (
+      ![
+        "health",
+        "schema",
+        "data",
+        "functions",
+        "logs",
+        "history",
+        "jobs",
+        "files",
+        "crons",
+        "backups",
+        "backup-status",
+      ].includes(op)
+    )
+      fail("INVALID_OPERATION");
     const input: any = {};
     if (url.searchParams.has("table"))
       input.table = url.searchParams.get("table");
     if (url.searchParams.has("cursor")) {
-      try {
-        input.cursor = JSON.parse(url.searchParams.get("cursor")!);
-      } catch {
-        fail("INVALID_INPUT");
-      }
+      input.cursor = url.searchParams.get("cursor");
+      if (!input.cursor || input.cursor.length > 8192) fail("INVALID_CURSOR");
     }
-    return json(await runtime(env).admin(scope, op, input));
+    if (url.searchParams.has("limit")) {
+      const value = url.searchParams.get("limit")!;
+      if (!/^\d{1,3}$/.test(value) || Number(value) < 1 || Number(value) > 100)
+        fail("INVALID_INPUT");
+      input.limit = Number(value);
+    }
+    return json(
+      await runtime(env).admin(
+        scope,
+        op === "backups" ? "backup-list" : op,
+        input,
+      ),
+    );
   }
   if (request.method !== "POST")
     return json({ error: "METHOD_NOT_ALLOWED" }, 405);
@@ -345,18 +436,58 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
   if (which === "prod" && input.confirm !== projectId)
     fail("INVALID_CONFIRMATION");
   if (op === "deploy") {
+    if (input.expected !== undefined && !/^[a-f0-9]{64}$/.test(input.expected))
+      fail("INVALID_INPUT");
     const result = await audit(env, a, projectId, which, "release.deploy", () =>
-      runtime(env).deploy(scope, input.bundle),
+      runtime(env).deploy(scope, input.bundle, input.expected),
     );
     return json({
       ...(result as object),
       url: applicationUrl(env.RUNTIME_URL, projectId, which, project.alias),
     });
   }
+  if (["release-promote", "release-rollback"].includes(op)) {
+    if (
+      !/^[a-f0-9]{64}$/.test(input.hash ?? "") ||
+      !/^[a-f0-9]{64}$/.test(input.expected ?? "")
+    )
+      fail("INVALID_INPUT");
+    if (op === "release-promote" && which !== "prod") fail("FORBIDDEN");
+    return json(
+      await audit(env, a, projectId, which, op, () =>
+        runtime(env).admin(scope, op, input),
+      ),
+    );
+  }
+  if (["backup-create", "backup-delete", "backup-restore"].includes(op)) {
+    if (a.role !== "owner") fail("FORBIDDEN");
+    uuid(input.id);
+    if (op === "backup-restore")
+      input.source = `${projectId}/${environment(input.sourceEnv)}`;
+    return json(
+      await audit(env, a, projectId, which, op, () =>
+        runtime(env).admin(scope, op, input),
+      ),
+    );
+  }
   if (op === "edit")
     return json(
       await audit(env, a, projectId, which, "data." + input.operation, () =>
         runtime(env).admin(scope, "edit", input),
+      ),
+    );
+  if (
+    [
+      "file-upload",
+      "file-delete",
+      "job-cancel",
+      "cron-set",
+      "cron-cancel",
+    ].includes(op)
+  )
+    return json(
+      await audit(env, a, projectId, which, op, () =>
+        runtime(env).admin(scope, op, input),
       ),
     );
   if (op === "settings") {
@@ -426,6 +557,12 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
 export class AdminControl extends WorkerEntrypoint<Env> {
   async request(request: Request) {
     try {
+      if (
+        ["/api/cli/start", "/api/cli/poll"].includes(
+          new URL(request.url).pathname,
+        )
+      )
+        return await publicLogin(request, this.env);
       return await api(request, this.env, await actor(request, this.env, true));
     } catch (e) {
       const out = status(e);

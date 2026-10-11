@@ -300,7 +300,7 @@ function FieldInput({ field: f, index: i }: { field: Field; index: number }) {
                     ]
               }
             />
-          ) : ["object", "array"].includes(f.type) ? (
+          ) : ["object", "array", "json"].includes(f.type) ? (
             <Textarea
               id={id}
               name={`v${i}`}
@@ -308,7 +308,13 @@ function FieldInput({ field: f, index: i }: { field: Field; index: number }) {
               defaultValue={
                 f.value === undefined ? "" : JSON.stringify(f.value, null, 2)
               }
-              placeholder={f.type === "array" ? "[]" : "{}"}
+              placeholder={
+                f.type === "json"
+                  ? "JSON value"
+                  : f.type === "array"
+                    ? "[]"
+                    : "{}"
+              }
             />
           ) : (
             <Input

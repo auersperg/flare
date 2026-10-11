@@ -9,6 +9,104 @@ import {
 export { reference, FlaredError } from "./protocol.js";
 export type { FunctionRef, Json } from "./protocol.js";
 
+/** Unknown formats are stored as binary and always downloaded as attachments. */
+export function fileMetadata(file: Blob & { name: string }) {
+  if (file.size > LIMITS.fileBytes)
+    throw new FlaredError("TOO_LARGE", "Maximum file size: 10 MiB");
+  if (
+    !file.name ||
+    file.name.length > 120 ||
+    /[\x00-\x1f\x7f/\\]/.test(file.name)
+  )
+    throw new FlaredError(
+      "INVALID_INPUT",
+      "File name must be 1–120 characters, without path separators",
+    );
+  const safeTypes = [
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "application/pdf",
+  ];
+  return {
+    name: file.name,
+    size: file.size,
+    type: safeTypes.includes(file.type)
+      ? file.type
+      : "application/octet-stream",
+  };
+}
+
+/** A grant is single-use. Never retry automatically after an ambiguous failure. */
+export async function uploadFile(
+  grant: { url: string },
+  file: Blob,
+  options: {
+    fetch?: (input: string, init: RequestInit) => Promise<Response>;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  } = {},
+): Promise<{ id: string }> {
+  if (file.size > LIMITS.fileBytes)
+    throw new FlaredError("TOO_LARGE", "Maximum file size: 10 MiB");
+  const url = new URL(grant.url);
+  if (
+    url.username ||
+    url.password ||
+    (url.protocol !== "https:" &&
+      !(
+        url.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+      ))
+  )
+    throw new FlaredError("INVALID_URL", "Expected secure upload URL");
+  let response: Response;
+  try {
+    response = await (options.fetch ?? globalThis.fetch)(url.href, {
+      method: "POST",
+      body: file,
+      redirect: "error",
+      credentials: "omit",
+      signal:
+        options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 120000),
+    });
+  } catch {
+    throw new FlaredError(
+      "UPLOAD_UNKNOWN",
+      "Connection interrupted or upload timed out; refresh the file list before trying again",
+      true,
+    );
+  }
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const code =
+      result &&
+      typeof result === "object" &&
+      "error" in result &&
+      typeof result.error === "string"
+        ? result.error
+        : `HTTP_${response.status}`;
+    throw new FlaredError(
+      code,
+      `Upload failed: ${code}`,
+      response.status >= 500,
+    );
+  }
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !("id" in result) ||
+    typeof result.id !== "string"
+  )
+    throw new FlaredError(
+      "INVALID_RESPONSE",
+      "Upload outcome is unknown; refresh the file list before uploading again",
+      true,
+    );
+  return { id: result.id };
+}
+
 export interface Socket {
   readonly readyState: number;
   send(data: string): void;
@@ -19,7 +117,7 @@ export interface Socket {
 export interface ClientOptions {
   url: string;
   getToken?: () => string | null | Promise<string | null>;
-  fetch?: typeof globalThis.fetch;
+  fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   createWebSocket?: (url: string) => Socket;
   requestTimeoutMs?: number;
 }
@@ -118,12 +216,6 @@ export function createClient(options: ClientOptions) {
         signal: controller.signal,
         redirect: "error",
       });
-      if (!response.ok)
-        throw new FlaredError(
-          `HTTP_${response.status}`,
-          "Backend request failed",
-          write && response.status >= 500,
-        );
       // Limit decoding before parsing, including servers that omit Content-Length.
       if (!response.body)
         throw new FlaredError(
@@ -156,9 +248,34 @@ export function createClient(options: ClientOptions) {
         combined.set(chunk, offset);
         offset += chunk.byteLength;
       }
-      const data = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(combined),
-      );
+      let data: unknown;
+      try {
+        data = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true }).decode(combined),
+        );
+      } catch (error) {
+        if (response.ok) throw error;
+        throw new FlaredError(
+          `HTTP_${response.status}`,
+          "Backend request failed",
+          write && response.status >= 500,
+        );
+      }
+      if (!response.ok) {
+        const code =
+          data &&
+          typeof data === "object" &&
+          "error" in data &&
+          typeof data.error === "string" &&
+          /^[A-Z][A-Z0-9_]{0,63}$/.test(data.error)
+            ? data.error
+            : `HTTP_${response.status}`;
+        throw new FlaredError(
+          code,
+          "Backend request failed",
+          write && response.status >= 500,
+        );
+      }
       if (!data || typeof data !== "object" || !("result" in data))
         throw new FlaredError(
           "INVALID_RESPONSE",
@@ -343,29 +460,34 @@ export function createClient(options: ClientOptions) {
         reconnect();
     }
   }
-  return {
-    async call<I, O>(ref: FunctionRef<I, O>, args: I): Promise<O> {
+  function invoke(kind: FunctionRef["kind"]) {
+    return async <I, O>(ref: FunctionRef<I, O>, args: I): Promise<O> => {
       assertPath(ref.path);
-      if (ref.kind === "live")
-        throw new FlaredError(
-          "INVALID_KIND",
-          "Use subscribe for live functions",
-        );
+      if (ref.kind !== kind)
+        throw new FlaredError("INVALID_KIND", `Expected a ${kind} function`);
       return request(
         "/v1/call",
         { path: ref.path, kind: ref.kind, args },
         ref.kind === "mutation" || ref.kind === "action",
       );
-    },
-    subscribe<I, O>(
+    };
+  }
+  return {
+    query: invoke("query"),
+    mutation: invoke("mutation"),
+    action: invoke("action"),
+    /** One subscription delivers the initial snapshot and subsequent updates. */
+    onUpdate<I, O>(
       ref: FunctionRef<I, O>,
       args: I,
-      observer: Observer<O>,
+      next: (value: O) => void,
+      error?: (error: FlaredError) => void,
     ): () => void {
+      const observer = { next, error };
       ensureOpen();
       assertPath(ref.path);
-      if (ref.kind !== "live")
-        throw new FlaredError("INVALID_KIND", "Expected a live function");
+      if (ref.kind !== "query")
+        throw new FlaredError("INVALID_KIND", "Only queries are subscribable");
       boundedJson(
         {
           type: "subscribe",

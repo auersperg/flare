@@ -59,8 +59,9 @@ const dbName = "flared-catalog",
 let database = (await cf("d1/database")).find((x) => x.name === dbName);
 if (!database) database = await cf("d1/database", { name: dbName });
 const buckets = await cf("r2/buckets");
-if (!buckets.buckets.some((x) => x.name === bucket))
-  await cf("r2/buckets", { name: bucket });
+for (const name of [bucket, "flared-files"])
+  if (!buckets.buckets.some((x) => x.name === name))
+    await cf("r2/buckets", { name });
 const queues = await cf("queues");
 for (const name of [queue, dlq])
   if (!queues.some((x) => x.queue_name === name))
@@ -142,16 +143,22 @@ const runtime = {
   main: "packages/core/dist/runtime.js",
   worker_loaders: [{ binding: "LOADER" }],
   durable_objects: {
-    bindings: [{ name: "SUPERVISORS", class_name: "AppSupervisor" }],
+    bindings: [{ name: "SUPERVISORS", class_name: "EnvironmentSupervisor" }],
   },
-  migrations: [{ tag: "v1", new_sqlite_classes: ["AppSupervisor"] }],
-  r2_buckets: [{ binding: "BUNDLES", bucket_name: bucket }],
+  exports: {
+    EnvironmentSupervisor: { type: "durable-object", storage: "sqlite" },
+  },
+  r2_buckets: [
+    { binding: "BUNDLES", bucket_name: bucket },
+    { binding: "FILES", bucket_name: "flared-files" },
+  ],
   queues: {
     producers: [{ binding: "JOBS", queue }],
     consumers: [
       {
         queue,
-        max_batch_size: 1,
+        max_batch_size: 10,
+        max_concurrency: 4,
         max_batch_timeout: 1,
         max_retries: 3,
         dead_letter_queue: dlq,
@@ -167,6 +174,7 @@ const runtime = {
   ],
   vars: {
     RUNTIME_URL: runtimeUrl,
+    DASHBOARD_URL: adminUrl,
     DEV_TOKEN_ISSUER:
       savedRuntime.vars?.DEV_TOKEN_ISSUER ??
       savedRuntime.vars?.RUNTIME_URL ??
@@ -190,7 +198,7 @@ const admin = {
   assets: {
     directory: "packages/core/dist/dashboard",
     binding: "ASSETS",
-    run_worker_first: true,
+    run_worker_first: ["/*", "!/_astro/*"],
   },
   d1_databases: [
     {
@@ -209,6 +217,7 @@ const admin = {
   ],
   vars: {
     RUNTIME_URL: runtimeUrl,
+    DASHBOARD_URL: adminUrl,
     ACCESS_ISSUER: previous?.issuer ?? "",
     ACCESS_AUD: app.aud,
   },
@@ -230,7 +239,7 @@ await writeFile(
 const run = (args, stdin) =>
   new Promise((done, reject) => {
     const child = spawn(
-      process.execPath,
+      "node",
       ["node_modules/wrangler/bin/wrangler.js", ...args],
       {
         stdio: [stdin === undefined ? "ignore" : "pipe", "inherit", "inherit"],

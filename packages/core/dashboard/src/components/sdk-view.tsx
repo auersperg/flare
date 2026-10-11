@@ -48,7 +48,7 @@ export default function SdkView({ project, env, session }: Scope) {
             <CardTitle>Connect your application</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <pre className="code-block">{`import { createClient } from '@flared/sdk';\nimport { api } from './release/api';\n\nconst client = createClient({\n  url: '${r.data.url}',\n  getToken: () => yourUserAccessToken,\n});\n\n// Use your generated query / live / mutation / action references.\n// Example: replace this path with your own live function:\nconst stop = client.subscribe(api['tasks/watch'], { limit: 50 },\n  { next: tasks => console.log(tasks) });\n\n// On logout: client.refreshAuth().\n// On teardown: stop(); client.dispose();`}</pre>
+            <pre className="code-block">{`import { createClient } from 'flared';\nimport { api } from './flared/_generated/api';\n\nconst client = createClient({\n  url: '${r.data.url}',\n  getToken: () => yourUserAccessToken,\n});\n\n// Use your generated query / mutation / action references.\n// Example: replace this path with your own query:\nconst stop = client.onUpdate(api.tasks.list, { limit: 50 },\n  tasks => console.log(tasks));\n\n// On logout: client.refreshAuth().\n// On teardown: stop(); client.dispose();`}</pre>
             <p className="text-muted-foreground">
               The task function is an illustrative name, not a requirement for
               other projects. Run your app locally to test live updates; this

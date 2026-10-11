@@ -1,8 +1,14 @@
 import {
   boundedJson,
   stableJson,
+  assertPath,
   type Manifest,
 } from "../../sdk/src/protocol.js";
+import {
+  assertSchemaContract,
+  type SchemaContract,
+} from "../../sdk/src/schema.js";
+import { scopeForDeletion } from "./maintenance.js";
 import { digest, fail } from "./security.js";
 export type ReleaseUpload = {
   release: {
@@ -12,10 +18,7 @@ export type ReleaseUpload = {
     checksums: Record<string, string>;
   };
   manifest: Manifest;
-  migrations: {
-    journal: { entries: { idx: number; when: number; tag: string }[] };
-    migrations: Record<string, string>;
-  };
+  schema: SchemaContract;
   facet: string;
   action: string;
 };
@@ -24,15 +27,46 @@ export async function validateRelease(bundle: ReleaseUpload) {
     !bundle ||
     bundle.release?.protocol !== 1 ||
     bundle.release.compatibilityDate !== "2026-10-10" ||
-    !bundle.manifest ||
-    bundle.manifest.protocol !== 1 ||
+    bundle.manifest?.protocol !== 1 ||
+    bundle.manifest.runtimeAbi !== 4 ||
     !bundle.manifest.functions ||
-    !bundle.migrations?.journal?.entries
+    !bundle.schema
   )
     fail("INVALID_RELEASE");
+  try {
+    assertSchemaContract(bundle.schema);
+  } catch {
+    fail("INVALID_SCHEMA");
+  }
   if (
-    bundle.manifest.runtimeAbi !== undefined &&
-    ![1, 2].includes(bundle.manifest.runtimeAbi)
+    Array.isArray(bundle.manifest.functions) ||
+    typeof bundle.manifest.functions !== "object" ||
+    Object.keys(bundle.manifest.functions).length > 200
+  )
+    fail("INVALID_RELEASE");
+  for (const [path, fn] of Object.entries(bundle.manifest.functions)) {
+    try {
+      assertPath(path);
+    } catch {
+      fail("INVALID_RELEASE");
+    }
+    if (
+      !fn ||
+      !["query", "mutation", "action"].includes(fn.kind) ||
+      !["public", "required", "internal"].includes(fn.auth) ||
+      !fn.input ||
+      Array.isArray(fn.input) ||
+      typeof fn.input !== "object" ||
+      !fn.output ||
+      Array.isArray(fn.output) ||
+      typeof fn.output !== "object"
+    )
+      fail("INVALID_RELEASE");
+  }
+  if (
+    !bundle.release.checksums ||
+    Object.keys(bundle.release.checksums).sort().join() !==
+      "action,facet,manifest,schema"
   )
     fail("INVALID_RELEASE");
   for (const role of ["facet", "action"] as const) {
@@ -43,7 +77,7 @@ export async function validateRelease(bundle: ReleaseUpload) {
     )
       fail("INVALID_RELEASE");
   }
-  for (const field of ["manifest", "migrations"] as const) {
+  for (const field of ["manifest", "schema"] as const) {
     boundedJson(bundle[field], 1048576);
     if (
       (await digest(stableJson(bundle[field]))) !==
@@ -61,54 +95,31 @@ export async function validateRelease(bundle: ReleaseUpload) {
     )) !== bundle.release.hash
   )
     fail("INVALID_RELEASE");
-  let previous = -1;
-  for (const [idx, m] of bundle.migrations.journal.entries.entries()) {
-    if (
-      m.idx !== idx ||
-      !Number.isSafeInteger(m.when) ||
-      m.when <= previous ||
-      !/^\w+$/.test(m.tag) ||
-      typeof bundle.migrations.migrations[
-        `m${String(idx).padStart(4, "0")}`
-      ] !== "string"
-    )
-      fail("INVALID_RELEASE");
-    previous = m.when;
-  }
   return bundle;
 }
-export function compatibleMigration(
+export function compatibleSchema(
   old: ReleaseUpload | null,
   next: ReleaseUpload,
-  production: boolean,
 ) {
-  const entries = old?.migrations.journal.entries ?? [];
-  if (next.migrations.journal.entries.length < entries.length)
-    fail("INVALID_MIGRATION");
-  for (const [i, e] of entries.entries()) {
-    const k = `m${String(i).padStart(4, "0")}`;
-    if (
-      stableJson(e) !== stableJson(next.migrations.journal.entries[i]) ||
-      old!.migrations.migrations[k] !== next.migrations.migrations[k]
-    )
-      fail("INVALID_MIGRATION");
+  // Facet activation validates stored documents atomically. There is no historical SQL or legacy ABI.
+  if (next.manifest.runtimeAbi !== 4 || (old && old.manifest.runtimeAbi !== 4))
+    fail("INVALID_RELEASE");
+  try {
+    assertSchemaContract(next.schema);
+  } catch {
+    fail("INVALID_SCHEMA");
   }
-  if (production)
-    for (const e of next.migrations.journal.entries.slice(entries.length)) {
-      const sql =
-        next.migrations.migrations[`m${String(e.idx).padStart(4, "0")}`];
-      // Deliberately conservative: production preview accepts only schema additions.
-      for (const statement of sql
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/--[^\n]*/g, "")
-        .split(";")
-        .map((x) => x.trim())
-        .filter(Boolean))
-        if (
-          !/^(CREATE\s+(TABLE|(?:UNIQUE\s+)?INDEX)\b|ALTER\s+TABLE\s+(?:"[^"]+"|`[^`]+`|\w+)\s+ADD\s+(?:COLUMN\s+)?)/i.test(
-            statement,
-          )
-        )
-          fail("INVALID_MIGRATION");
-    }
+}
+
+/** Per-environment immutable builds avoid a shared cross-project GC registry. */
+export function buildPrefix(scope: string) {
+  return `releases/${scopeForDeletion(scope)}/`;
+}
+export function buildKey(
+  scope: string,
+  hash: string,
+  role: "facet" | "action",
+) {
+  if (!/^[a-f0-9]{64}$/.test(hash)) fail("INVALID_RELEASE");
+  return `${buildPrefix(scope)}${hash}/${role}.js`;
 }

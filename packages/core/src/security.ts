@@ -73,8 +73,44 @@ const encoder = new TextEncoder();
 export type Oidc = { issuer: string; audience: string; jwks: string };
 const jwksCache = new Map<
   string,
-  { until: number; keys: (JsonWebKey & { kid?: string; alg?: string })[] }
+  {
+    until: number;
+    refreshAfter: number;
+    keys: (JsonWebKey & { kid?: string; alg?: string })[];
+    imported: Map<string, Promise<CryptoKey>>;
+  }
 >();
+const jwksPending = new Map<
+  string,
+  Promise<NonNullable<ReturnType<typeof jwksCache.get>>>
+>();
+function loadJwks(url: string, rotation: boolean) {
+  const existing = jwksPending.get(url);
+  if (existing) return existing;
+  const pending = (async () => {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) fail("AUTH_UNAVAILABLE");
+    const raw = await jsonBody(response, 65536);
+    if (!Array.isArray(raw.keys) || raw.keys.length > 16)
+      fail("AUTH_UNAVAILABLE");
+    const cached = {
+      until: Date.now() + 300000,
+      refreshAfter: rotation ? Date.now() + 60000 : 0,
+      keys: raw.keys,
+      imported: new Map<string, Promise<CryptoKey>>(),
+    };
+    if (jwksCache.size >= 32 && !jwksCache.has(url))
+      jwksCache.delete(jwksCache.keys().next().value!);
+    jwksCache.set(url, cached);
+    return cached;
+  })();
+  jwksPending.set(url, pending);
+  void pending.finally(() => jwksPending.delete(url)).catch(() => undefined);
+  return pending;
+}
 export function validateOidc(value: Oidc): Oidc {
   if (
     !value ||
@@ -139,35 +175,35 @@ export async function verifyJwt(token: string, config: Oidc): Promise<Auth> {
     if (header.alg !== "RS256" || typeof header.kid !== "string" || header.crit)
       fail("UNAUTHORIZED");
     let cached = jwksCache.get(config.jwks);
-    if (!cached || cached.until < Date.now()) {
-      const r = await fetch(config.jwks, {
-        redirect: "manual",
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!r.ok) fail("AUTH_UNAVAILABLE");
-      const raw = await jsonBody(r, 65536);
-      if (!Array.isArray(raw.keys) || raw.keys.length > 16)
-        fail("AUTH_UNAVAILABLE");
-      cached = { until: Date.now() + 300000, keys: raw.keys };
-      if (jwksCache.size >= 32)
-        jwksCache.delete(jwksCache.keys().next().value!);
-      jwksCache.set(config.jwks, cached);
+    if (!cached || cached.until < Date.now())
+      cached = await loadJwks(config.jwks, false);
+    const match = () =>
+      cached!.keys.find(
+        (k) =>
+          k.kid === header.kid &&
+          k.kty === "RSA" &&
+          (!k.alg || k.alg === "RS256") &&
+          (!k.use || k.use === "sig"),
+      );
+    let jwk = match();
+    if (!jwk && cached.refreshAfter <= Date.now()) {
+      cached.refreshAfter = Date.now() + 60000;
+      cached = await loadJwks(config.jwks, true);
+      jwk = match();
     }
-    const jwk = cached.keys.find(
-      (k) =>
-        k.kid === header.kid &&
-        k.kty === "RSA" &&
-        (!k.alg || k.alg === "RS256") &&
-        (!k.use || k.use === "sig"),
-    );
     if (!jwk) fail("UNAUTHORIZED");
-    const key = await crypto.subtle.importKey(
-      "jwk",
-      jwk,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
+    let imported = cached.imported.get(header.kid);
+    if (!imported) {
+      imported = crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+      cached.imported.set(header.kid, imported);
+    }
+    const key = await imported;
     if (
       !(await crypto.subtle.verify(
         "RSASSA-PKCS1-v1_5",
@@ -286,13 +322,17 @@ export function status(error: unknown) {
           ? 403
           : code === "NOT_FOUND" || code === "FUNCTION_NOT_FOUND"
             ? 404
-            : code === "TOO_LARGE"
+            : ["TOO_LARGE", "BACKUP_TOO_LARGE"].includes(code)
               ? 413
-              : code === "CONFLICT"
+              : ["CONFLICT", "BACKUP_BUSY", "RESTORE_NOT_EMPTY"].includes(code)
                 ? 409
                 : code.startsWith("INVALID") || code === "READ_ONLY"
                   ? 400
-                  : code === "NOT_READY" || code === "UNSUPPORTED"
+                  : [
+                        "NOT_READY",
+                        "UNSUPPORTED",
+                        "RESTORE_IN_PROGRESS",
+                      ].includes(code)
                     ? 503
                     : 500,
   };

@@ -14,6 +14,10 @@
       {
         "name": "SUPERVISORS",
         "class_name": "KernelSupervisor"
+      },
+      {
+        "name": "APP_SUPERVISORS",
+        "class_name": "AppSupervisor"
       }
     ]
   },
@@ -21,12 +25,20 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["KernelSupervisor"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["AppSupervisor"]
     }
   ],
   "r2_buckets": [
     {
       "binding": "BUNDLES",
       "bucket_name": "flared-kernel-test"
+    },
+    {
+      "binding": "FILES",
+      "bucket_name": "flared-kernel-files"
     }
   ],
   "queues": {
@@ -39,7 +51,8 @@
     "consumers": [
       {
         "queue": "flared-kernel-test-jobs",
-        "max_batch_size": 1,
+        "max_batch_size": 10,
+        "max_concurrency": 4,
         "max_batch_timeout": 1,
         "max_retries": 3,
         "dead_letter_queue": "flared-kernel-test-dlq"
@@ -49,5 +62,19 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
-  }
+  },
+  "vars": {
+    "RUNTIME_URL": "http://127.0.0.1:8799",
+    "DASHBOARD_URL": "http://127.0.0.1:8799"
+  },
+  "ratelimits": [
+    {
+      "name": "RATE_LIMITER",
+      "namespace_id": "17916202",
+      "simple": {
+        "limit": 600,
+        "period": 60
+      }
+    }
+  ]
 }

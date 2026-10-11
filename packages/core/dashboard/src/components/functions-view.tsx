@@ -107,7 +107,11 @@ export default function FunctionsView(scope: Scope) {
   );
 }
 export function canRun(env: string, role: string, kind: string) {
-  return env === "dev" && role !== "viewer" && kind !== "live";
+  return (
+    env === "dev" &&
+    role !== "viewer" &&
+    ["query", "mutation", "action"].includes(kind)
+  );
 }
 function Runner({
   project,
@@ -117,7 +121,7 @@ function Runner({
   fn,
 }: Scope & { path: string; fn: FunctionDefinition }) {
   const fields = contractFields(fn.input),
-    allowed = canRun(env, session.role, fn.kind);
+    allowed = canRun(env, session.role, fn.kind) && fn.auth !== "internal";
   const [busy, setBusy] = useState(false),
     [failure, setFailure] = useState(""),
     [result, setResult] = useState<unknown>(),
@@ -152,7 +156,7 @@ function Runner({
         getToken: () => info.token,
       });
       const started = performance.now(),
-        value = await client.current.call(reference(path, fn.kind), input);
+        value = await client.current[fn.kind](reference(path, fn.kind), input);
       if (alive.current) {
         setResult(value);
         setExecuted(true);
@@ -200,7 +204,8 @@ function Runner({
               <p className="text-xs text-muted-foreground">
                 Development execution only. Mutations and actions can change
                 data. Live subscriptions use the SDK. Writes are not
-                automatically retried.
+                automatically retried. Internal functions are called only by
+                server capabilities or scheduled jobs, not this HTTP runner.
               </p>
             </section>
             <section className="space-y-4 p-4">

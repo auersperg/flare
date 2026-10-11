@@ -56,12 +56,14 @@ export function values(
       if (raw !== "true" && raw !== "false")
         throw Error(`Invalid boolean: ${f.name}`);
       value = raw === "true";
-    } else if (f.type === "object" || f.type === "array") {
+    } else if (["object", "array", "json"].includes(f.type)) {
       value = JSON.parse(raw);
       if (
-        f.type === "array"
-          ? !Array.isArray(value)
-          : !value || typeof value !== "object" || Array.isArray(value)
+        f.type === "json"
+          ? false
+          : f.type === "array"
+            ? !Array.isArray(value)
+            : !value || typeof value !== "object" || Array.isArray(value)
       )
         throw Error(`Invalid ${f.type}: ${f.name}`);
     }
@@ -76,25 +78,42 @@ export function values(
 }
 export function contractFields(schema: any): Field[] {
   return Object.entries(schema?.properties ?? {}).map(
-    ([name, p]: [string, any]) => ({
-      name,
-      type:
-        typeof p.type === "string"
-          ? p.type
-          : Array.isArray(p.type)
-            ? (p.type.find((t: string) => t !== "null") ?? "object")
-            : "object",
-      ...(Array.isArray(p.type) && p.type.includes("null")
-        ? { nullable: true }
-        : {}),
-      ...(typeof p.description === "string"
-        ? { description: p.description }
-        : {}),
-      required: schema.required?.includes(name),
-      value: p.default,
-      choices: p.enum,
-      minimum: p.minimum,
-      maximum: p.maximum,
-    }),
+    ([name, original]: [string, any]) => {
+      const alternatives =
+        original.anyOf ??
+        (Array.isArray(original.type)
+          ? original.type.map((type: string) => ({ type }))
+          : [original]);
+      const p = {
+        ...original,
+        ...alternatives.find((v: any) => v.type !== "null"),
+      };
+      const nullable = alternatives.some(
+        (v: any) => v.type === "null" || v.const === null,
+      );
+      const types = new Set(
+        alternatives
+          .filter((v: any) => v.type !== "null")
+          .map((v: any) => v.type),
+      );
+      const choices =
+        original.enum ??
+        (alternatives.every((v: any) => Object.hasOwn(v, "const"))
+          ? alternatives.map((v: any) => v.const)
+          : p.enum);
+      return {
+        name,
+        type: types.size === 1 && typeof p.type === "string" ? p.type : "json",
+        ...(nullable ? { nullable: true } : {}),
+        ...(typeof p.description === "string"
+          ? { description: p.description }
+          : {}),
+        required: schema.required?.includes(name),
+        value: p.default,
+        choices,
+        minimum: p.minimum,
+        maximum: p.maximum,
+      };
+    },
   );
 }

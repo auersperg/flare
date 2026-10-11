@@ -21,20 +21,18 @@
     "bindings": [
       {
         "name": "SUPERVISORS",
-        "class_name": "AppSupervisor"
+        "class_name": "EnvironmentSupervisor"
       }
     ]
   },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["AppSupervisor"]
-    }
-  ],
   "r2_buckets": [
     {
       "binding": "BUNDLES",
       "bucket_name": "flared-builds"
+    },
+    {
+      "binding": "FILES",
+      "bucket_name": "flared-files"
     }
   ],
   "queues": {
@@ -47,7 +45,8 @@
     "consumers": [
       {
         "queue": "flared-jobs",
-        "max_batch_size": 1,
+        "max_batch_size": 10,
+        "max_concurrency": 4,
         "max_batch_timeout": 1,
         "max_retries": 3,
         "dead_letter_queue": "flared-jobs-dlq"
@@ -66,7 +65,8 @@
   ],
   "vars": {
     "RUNTIME_URL": "https://api.example.com",
-    "DEV_TOKEN_ISSUER": "https://api.example.com"
+    "DEV_TOKEN_ISSUER": "https://api.example.com",
+    "DASHBOARD_URL": "https://dashboard.example.com"
   },
   "services": [
     {
@@ -74,5 +74,11 @@
       "service": "flared-admin",
       "entrypoint": "AdminControl"
     }
-  ]
+  ],
+  "exports": {
+    "EnvironmentSupervisor": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, jest, afterEach, type Mock } from "bun:test";
 import {
   verifyJwt,
   devToken,
@@ -14,7 +14,7 @@ import {
   accessAssertion,
 } from "../packages/core/src/security.js";
 import {
-  compatibleMigration,
+  compatibleSchema,
   validateRelease,
 } from "../packages/core/src/release.js";
 const base = {
@@ -38,10 +38,11 @@ async function jwt(patch: any = {}, header: any = {}) {
   const kid = crypto.randomUUID(),
     jwk = await crypto.subtle.exportKey("jwk", pair.publicKey),
     url = "https://identity.example/" + kid;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => Response.json({ keys: [{ ...jwk, kid, alg: "RS256" }] })),
-  );
+  const response = Response.json({ keys: [{ ...jwk, kid, alg: "RS256" }] });
+  const mock = Object.assign(async () => response.clone(), {
+    preconnect: fetch.preconnect,
+  });
+  jest.spyOn(globalThis, "fetch").mockImplementation(mock);
   const h = encode({ alg: "RS256", kid, ...header }),
     p = encode({
       iss: base.issuer,
@@ -59,13 +60,35 @@ async function jwt(patch: any = {}, header: any = {}) {
     ).toString("base64url");
   return { token: h + "." + p + "." + s, config: { ...base, jwks: url } };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => jest.restoreAllMocks());
 describe("Flared security boundary", () => {
   it("verifies native RS256 and caches configured JWKS", async () => {
     const { token, config } = await jwt();
     expect((await verifyJwt(token, config)).subject).toBe("owner");
     await verifyJwt(token, config);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("refreshes JWKS on key rotation without waiting for normal cache expiry", async () => {
+    const first = await jwt();
+    await verifyJwt(first.token, first.config);
+    const second = await jwt();
+    expect((await verifyJwt(second.token, first.config)).subject).toBe("owner");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("single-flights concurrent JWKS fetches", async () => {
+    const x = await jwt();
+    await Promise.all(
+      Array.from({ length: 5 }, () => verifyJwt(x.token, x.config)),
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("bounds unknown-kid refresh attempts", async () => {
+    const x = await jwt({}, { kid: "unknown" });
+    for (let i = 0; i < 5; i++)
+      await expect(verifyJwt(x.token, x.config)).rejects.toMatchObject({
+        code: "UNAUTHORIZED",
+      });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
   it.each([
     { iss: "https://wrong.example" },
@@ -99,8 +122,12 @@ describe("Flared security boundary", () => {
   it("does not follow token-controlled keys or redirects", async () => {
     const x = await jwt({}, { jku: "https://attacker.example" });
     await verifyJwt(x.token, x.config);
-    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(x.config.jwks);
-    expect(vi.mocked(fetch).mock.calls[0][1]?.redirect).toBe("manual");
+    expect((fetch as unknown as Mock<typeof fetch>).mock.calls[0][0]).toBe(
+      x.config.jwks,
+    );
+    expect(
+      (fetch as unknown as Mock<typeof fetch>).mock.calls[0][1]?.redirect,
+    ).toBe("manual");
   });
   it("developer identity is bound to dev, issuer and project", async () => {
     const token = await devToken(
@@ -151,25 +178,34 @@ describe("Flared security boundary", () => {
 });
 describe("release compatibility", () => {
   const next: any = {
-    migrations: {
-      journal: { entries: [{ idx: 0, when: 1, tag: "first" }] },
-      migrations: { m0000: "CREATE TABLE tasks(id TEXT PRIMARY KEY);" },
+    schema: {
+      tasks: {
+        document: {
+          type: "object",
+          properties: { title: { type: "string" } },
+          additionalProperties: false,
+        },
+        indexes: {},
+      },
     },
-    manifest: { functions: {} },
+    manifest: { runtimeAbi: 4, functions: {} },
     release: { hash: "a" },
   };
-  it("rejects modified historical migrations", () => {
-    const other = structuredClone(next);
-    other.migrations.migrations.m0000 = "CREATE TABLE different(id INTEGER);";
-    expect(() => compatibleMigration(next, other, false)).toThrow();
-  });
-  it("rejects destructive production migrations", () => {
-    const x = structuredClone(next);
-    x.migrations.migrations.m0000 = "DROP TABLE tasks;";
-    expect(() => compatibleMigration(null, x, true)).toThrow();
-  });
-  it("permits additive production schemas", () =>
-    expect(() => compatibleMigration(null, next, true)).not.toThrow());
+  it("rejects legacy ABI instead of maintaining compatibility", () =>
+    expect(() =>
+      compatibleSchema(null, { ...next, manifest: { runtimeAbi: 3 } }),
+    ).toThrow());
+  it("rejects unbounded/undeclared schema indexes", () =>
+    expect(() =>
+      compatibleSchema(null, {
+        ...next,
+        schema: {
+          tasks: { ...next.schema.tasks, indexes: { bad: ["missing"] } },
+        },
+      }),
+    ).toThrow());
+  it("accepts native document schema", () =>
+    expect(() => compatibleSchema(null, next)).not.toThrow());
   it("rejects unverified bundles before activation", async () =>
     await expect(validateRelease({} as any)).rejects.toMatchObject({
       code: "INVALID_RELEASE",
@@ -198,7 +234,7 @@ describe("native RPC errors", () => {
 
 describe("native Worker Access", () => {
   it("accepts only the expected platform-verified Access app", async () => {
-    const getIdentity = vi.fn(async () => ({ email: "Adam@auer.wien" }));
+    const getIdentity = jest.fn(async () => ({ email: "Adam@auer.wien" }));
     expect(
       await accessEmail({ aud: "flared", getIdentity } as any, "flared"),
     ).toBe("adam@auer.wien");
@@ -208,7 +244,7 @@ describe("native Worker Access", () => {
     await expect(accessEmail(undefined, "flared")).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
-    const getIdentity = vi.fn();
+    const getIdentity = jest.fn();
     await expect(
       accessEmail({ aud: "other-app", getIdentity } as any, "flared"),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -270,18 +306,16 @@ describe("Access assertion transport behind Static Assets", () => {
 
 it("fails closed on JWKS redirect without following it", async () => {
   const x = await jwt();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(null, {
-          status: 302,
-          headers: { location: "https://attacker.example/keys" },
-        }),
-    ),
+  jest.spyOn(globalThis, "fetch").mockResolvedValue(
+    new Response(null, {
+      status: 302,
+      headers: { location: "https://attacker.example/keys" },
+    }),
   );
   await expect(verifyJwt(x.token, x.config)).rejects.toMatchObject({
     code: "AUTH_UNAVAILABLE",
   });
-  expect(vi.mocked(fetch).mock.calls[0][1]?.redirect).toBe("manual");
+  expect(
+    (fetch as unknown as Mock<typeof fetch>).mock.calls[0][1]?.redirect,
+  ).toBe("manual");
 });

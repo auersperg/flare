@@ -1,3 +1,82 @@
+import coreRuntime, {
+  EnvironmentSupervisor as NativeSupervisor,
+  AppCapability as NativeCapability,
+  RuntimeControl as NativeControl,
+  DynamicTail,
+  AppOutbound,
+} from "../../packages/core/src/runtime.js";
+export { DynamicTail, AppOutbound };
+// Private test harness supplies native core bindings without changing the production implementation.
+function coreEnv(env: any) {
+  return {
+    ...env,
+    SUPERVISORS: env.APP_SUPERVISORS,
+    DEV_SIGNING_KEY: env.KERNEL_TOKEN,
+  };
+}
+export class AppSupervisor extends NativeSupervisor {
+  constructor(ctx: DurableObjectState, env: any) {
+    super(ctx, coreEnv(env));
+  }
+  async admin(op: string, input: any) {
+    try {
+      return await super.admin(op, input);
+    } catch (error) {
+      console.error({
+        source: "core-admin-test",
+        op,
+        error: String(error),
+        stack: error instanceof Error ? error.stack : null,
+      });
+      throw error;
+    }
+  }
+  // Fault injection exists only in this private harness, never in core builds.
+  async kernelCrashRelease(bundle: any, afterFacet: boolean) {
+    await this.lifecycle.start();
+    const { validateRelease, buildKey } =
+      await import("../../packages/core/src/release.js");
+    await validateRelease(bundle);
+    const scope = (this as any).config().scope;
+    for (const role of ["facet", "action"] as const)
+      await this.env.BUNDLES.put(
+        buildKey(scope, bundle.release.hash, role),
+        bundle[role],
+      );
+    const original = (this as any).finishActivation.bind(this);
+    (this as any).finishActivation = async () => {
+      const candidate = this.ctx.storage.sql
+        .exec("SELECT candidate FROM activation WHERE id=1")
+        .toArray()[0]?.candidate;
+      if (!candidate) return original();
+      if (afterFacet) await (this as any).facet().snapshot();
+      await this.ctx.storage.sync();
+      this.ctx.abort("Controlled release activation crash");
+    };
+    const { facet, action, ...metadata } = bundle;
+    return super.activate(metadata);
+  }
+  kernelAbort() {
+    this.ctx.abort("Controlled restore crash proof");
+  }
+  async kernelState() {
+    await this.lifecycle.start();
+    return {
+      alarm: await this.ctx.storage.getAlarm(),
+      jobs: this.lifecycle.jobs.list(),
+    };
+  }
+}
+export class AppCapability extends NativeCapability {
+  constructor(ctx: ExecutionContext, env: any) {
+    super(ctx, coreEnv(env));
+  }
+}
+export class RuntimeControl extends NativeControl {
+  constructor(ctx: ExecutionContext, env: any) {
+    super(ctx, coreEnv(env));
+  }
+}
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import {
   Lifecycle,
@@ -6,6 +85,8 @@ import {
 } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import { Scheduler } from "agents/schedules";
+import { receiveUpload } from "../../packages/core/src/files.js";
+import { fail } from "../../packages/core/src/security.js";
 import type {
   FacetRpc,
   Invocation,
@@ -14,6 +95,7 @@ import type {
 interface Env {
   LOADER: WorkerLoader;
   SUPERVISORS: DurableObjectNamespace<KernelSupervisor>;
+  APP_SUPERVISORS: DurableObjectNamespace;
   BUNDLES: R2Bucket;
   JOBS: Queue;
   KERNEL_TOKEN: string;
@@ -358,10 +440,77 @@ export class KernelSupervisor extends DurableObject<Env> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/p/"))
+      return coreRuntime.fetch(request, coreEnv(env));
     if (url.pathname === "/health")
-      return Response.json({ status: "kernel-only", version: "0.2.0" });
+      return Response.json({ status: "kernel-only", version: "0.3.0" });
+    if (url.pathname === "/core" && request.method === "POST") {
+      if (
+        !env.KERNEL_TOKEN ||
+        request.headers.get("Authorization") !== `Bearer ${env.KERNEL_TOKEN}`
+      )
+        return new Response("Unauthorized", { status: 401 });
+      const input = await request.json<{ op: string; args: any[] }>();
+      if (input.op === "backupBytes") {
+        const [scope, id, file, bytes] = input.args;
+        if (
+          !/^[0-9a-f-]{36}\/(dev|prod)$/.test(scope) ||
+          !/^[0-9a-f-]{36}$/.test(id) ||
+          !/^[0-9a-f-]{36}$/.test(file) ||
+          typeof bytes !== "string" ||
+          bytes.length > 100
+        )
+          return new Response("Invalid", { status: 400 });
+        await env.BUNDLES.put(`backups/${scope}/${id}/files/${file}`, bytes);
+        return Response.json({ ok: true, value: null });
+      }
+      if (input.op === "kernelCrashRelease") {
+        const [scope, bundle, afterFacet] = input.args;
+        if (
+          !/^[0-9a-f-]{36}\/(dev|prod)$/.test(scope) ||
+          typeof afterFacet !== "boolean"
+        )
+          return new Response("Invalid", { status: 400 });
+        let crashed = false;
+        try {
+          await (
+            env.APP_SUPERVISORS.getByName(scope) as any
+          ).kernelCrashRelease(bundle, afterFacet);
+        } catch {
+          crashed = true;
+        }
+        return Response.json({ ok: true, value: { crashed } });
+      }
+      if (input.op === "kernelAbort") {
+        await (env.APP_SUPERVISORS.getByName(input.args[0]) as any)
+          .kernelAbort()
+          .catch(() => {});
+        return Response.json({ ok: true, value: null });
+      }
+      if (input.op === "kernelState")
+        return Response.json({
+          ok: true,
+          value: await (
+            env.APP_SUPERVISORS.getByName(input.args[0]) as any
+          ).kernelState(),
+        });
+      try {
+        return Response.json(
+          await (ctx.exports as any)
+            .RuntimeControl({})
+            .command(input.op, input.args),
+        );
+      } catch (error) {
+        console.error({ source: "native-core-harness", error: String(error) });
+        return Response.json({ error: "CORE_HARNESS_FAILED" }, { status: 500 });
+      }
+    }
     const scope = url.searchParams.get("scope");
     if (!scope || !/^[a-z0-9-]{1,64}\/(dev|prod)$/.test(scope))
       return new Response("Invalid scope", { status: 400 });
@@ -381,6 +530,53 @@ export default {
       return new Response("Unauthorized", { status: 401 });
     if (Number(request.headers.get("content-length") ?? 0) > 1024 * 1024)
       return new Response("Too large", { status: 413 });
+    if (url.pathname === "/file-stream-proof" && request.method === "POST") {
+      const key = `kernel-file-proof/${scope}/${crypto.randomUUID()}`;
+      let removed = false;
+      try {
+        const bytes = new TextEncoder().encode("stream proof");
+        const size = bytes.length + Number(url.searchParams.get("wrong") ?? 0);
+        const upload = new Request("https://proof.invalid", {
+          method: "POST",
+          body: new ReadableStream({
+            start(c) {
+              c.enqueue(bytes);
+              c.close();
+            },
+          }),
+        });
+        await receiveUpload(
+          upload,
+          env.BUNDLES,
+          key,
+          {
+            size,
+            type: "text/plain",
+          },
+          async () => {
+            if (url.searchParams.get("ack") === "lost") throw Error("ACK_LOST");
+            if (url.searchParams.get("ack") === "deleted") fail("NOT_FOUND");
+          },
+          async () => {
+            removed = true;
+          },
+        );
+        return Response.json({
+          text: await (await env.BUNDLES.get(key))!.text(),
+        });
+      } catch {
+        return Response.json(
+          {
+            error: "UPLOAD_FAILED",
+            preserved: !!(await env.BUNDLES.head(key)),
+            removed,
+          },
+          { status: 400 },
+        );
+      } finally {
+        await env.BUNDLES.delete(key);
+      }
+    }
     if (url.pathname === "/bundle" && request.method === "PUT") {
       const code = await request.text();
       if (code.length > 1024 * 1024)
@@ -413,7 +609,9 @@ export default {
       );
     }
   },
-  async queue(batch: MessageBatch<Job>, env: Env) {
+  async queue(batch: MessageBatch<Job>, env: Env, ctx: ExecutionContext) {
+    if (batch.messages.some((message) => (message.body as any).job))
+      return coreRuntime.queue(batch as any, coreEnv(env));
     // Sequential handling obeys Dynamic Worker per-invocation concurrency limits.
     for (const message of batch.messages) {
       try {

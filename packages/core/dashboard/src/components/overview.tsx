@@ -1,8 +1,8 @@
+import ReleasesPanel from "./releases-panel";
 import { RefreshCw, Activity, ShieldCheck } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { TableGuide } from "./table-guide";
 import { FunctionBadge } from "./function-badge";
 import { scalar, type FunctionDefinition } from "../lib/model";
@@ -18,6 +18,7 @@ import type { Scope } from "./dashboard";
 export function HealthView({
   project,
   env,
+  session,
   connect,
 }: Scope & { connect: () => void }) {
   const h = useResource<Health>(scopePath(project, env) + "/health"),
@@ -90,6 +91,12 @@ export function HealthView({
               </CardContent>
             </Card>
           </div>
+          <ReleasesPanel
+            project={project}
+            env={env}
+            session={session}
+            refresh={h.refresh}
+          />
           <h2 className="section-title">Insights</h2>
           <Card>
             <CardContent className="flex flex-col items-start gap-4">
@@ -141,8 +148,8 @@ export function SchemaView({ project, env, session }: Scope) {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Defined in code and applied through checked migrations. System tables
-        are hidden.
+        Defined in code; validated documents and indexes activate atomically.
+        System tables are hidden.
       </p>
       <Status {...r} />
       {r.data?.tables.map((t) => (
@@ -169,11 +176,20 @@ export function SchemaView({ project, env, session }: Scope) {
               }))}
               columns={["Field", "Type", "Required", "Primary", "Default"]}
             />
+            <Grid
+              rows={Object.entries(t.indexes).map(([name, fields]) => ({
+                Index: name,
+                Fields: fields.join(", "),
+              }))}
+              columns={["Index", "Fields"]}
+            />
             <details>
               <summary className="cursor-pointer text-muted-foreground">
-                Migration SQL
+                Document contract
               </summary>
-              <pre className="code-block mt-3">{t.sql}</pre>
+              <pre className="code-block mt-3">
+                {JSON.stringify(t.document, null, 2)}
+              </pre>
             </details>
           </CardContent>
         </Card>
@@ -181,81 +197,6 @@ export function SchemaView({ project, env, session }: Scope) {
       {r.data && !r.data.tables.length && (
         <Empty title="No application tables" />
       )}
-    </div>
-  );
-}
-export function FilesView() {
-  return (
-    <div className="p-4">
-      <h1 className="page-title">Files</h1>
-      <Empty title="File storage is not enabled">
-        File upload and browsing are not part of this minimal release.
-      </Empty>
-    </div>
-  );
-}
-export function SchedulesView({ project, env }: Scope) {
-  const r = useResource<{ pending: Row[]; receipts: Row[] }>(
-    scopePath(project, env) + "/jobs",
-  );
-  return (
-    <div className="space-y-4 p-4">
-      <h1 className="page-title">Schedules</h1>
-      <Status {...r} />
-      <Tabs defaultValue="scheduled">
-        <TabsList variant="line">
-          <TabsTrigger value="scheduled">Scheduled Functions</TabsTrigger>
-          <TabsTrigger value="cron" disabled>
-            Cron Jobs · not enabled
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="scheduled" className="space-y-4 pt-4">
-          {r.data && (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Pending jobs</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {r.data.pending.length ? (
-                    <Grid
-                      rows={r.data.pending}
-                      columns={["id", "path", "dueAt", "release"]}
-                      labels={{
-                        id: "Job ID",
-                        path: "Function",
-                        dueAt: "Scheduled for",
-                        release: "Release",
-                      }}
-                    />
-                  ) : (
-                    <Empty title="No pending scheduled functions" />
-                  )}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent deliveries</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {r.data.receipts.length ? (
-                    <Grid
-                      rows={r.data.receipts}
-                      columns={["id", "at"]}
-                      labels={{ id: "Job ID", at: "Delivered at" }}
-                    />
-                  ) : (
-                    <Empty title="No deliveries yet" />
-                  )}
-                </CardContent>
-              </Card>
-              <p className="text-xs text-muted-foreground">
-                At-least-once delivery. This view is read-only.
-              </p>
-            </>
-          )}
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
@@ -271,8 +212,9 @@ export function LogsView({ project, env }: Scope) {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Last 100 invocation summaries. Not Cloudflare Tail logs or billing
-        analytics.
+        Last 100 invocation summaries. Successful queries are held in memory and
+        disappear on hibernation/restart; writes and failures are persisted. Not
+        Cloudflare Tail logs or billing analytics.
       </p>
       <Status {...r} />
       {r.data &&
@@ -281,9 +223,7 @@ export function LogsView({ project, env }: Scope) {
             rows={r.data}
             renderCell={(column, value) =>
               column === "kind" &&
-              ["query", "live", "mutation", "action"].includes(
-                String(value),
-              ) ? (
+              ["query", "mutation", "action"].includes(String(value)) ? (
                 <FunctionBadge kind={value as FunctionDefinition["kind"]} />
               ) : column === "at" && typeof value === "number" ? (
                 new Date(value).toLocaleString()

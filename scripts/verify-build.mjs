@@ -6,6 +6,28 @@ import { gzipSync } from "node:zlib";
 const dashboard = "packages/core/dist/dashboard";
 const html = await readFile(`${dashboard}/index.html`, "utf8");
 const admin = await readFile("packages/core/dist/admin.js", "utf8");
+for (const name of ["admin", "runtime"]) {
+  const code = await readFile(`packages/core/dist/${name}.js`, "utf8");
+  assert(
+    !/\bBun\s*\.|(?:from|import)\s*["']bun(?::[^"']*)?["']/.test(code),
+    `Bun runtime API entered Cloudflare ${name}`,
+  );
+}
+for (const name of [
+  "client",
+  "server",
+  "react",
+  "protocol",
+  "cloudflare",
+  "schema",
+  "database",
+]) {
+  const code = await readFile(`packages/sdk/dist/${name}.js`, "utf8");
+  assert(
+    !/\bBun\s*\.|(?:from|import)\s*["']bun(?::[^"']*)?["']/.test(code),
+    `Bun runtime API entered portable SDK ${name}`,
+  );
+}
 const csp = html.match(
   /http-equiv="content-security-policy" content="([^"]+)"/i,
 )?.[1];
@@ -32,14 +54,7 @@ const scripts = [];
 for (const name of await readdir(`${dashboard}/_astro`)) {
   if (!name.endsWith(".js")) continue;
   const bytes = await readFile(`${dashboard}/_astro/${name}`);
-  // The offline migration guide displays this exact import as example text.
-  // Exempt only that literal, never another Drizzle reference or module import.
-  const code = bytes
-    .toString()
-    .replace(
-      "import { sqliteTable, text } from 'drizzle-orm/sqlite-core';",
-      "offline-schema-example",
-    );
+  const code = bytes.toString();
   assert(
     !/DEV_SIGNING_KEY|cloudflare:workers|drizzle-orm|modelcontextprotocol/.test(
       code,
@@ -71,20 +86,15 @@ for (const name of ["platform", "src", "apps", "examples"]) {
 const manifest = JSON.parse(
   await readFile(`${dashboard}/bootstrap/manifest.json`, "utf8"),
 );
-const migrations = JSON.parse(
-  await readFile(`${dashboard}/bootstrap/migrations.json`, "utf8"),
+const schema = JSON.parse(
+  await readFile(`${dashboard}/bootstrap/schema.json`, "utf8"),
 );
 assert.deepEqual(
   manifest.functions,
   {},
   "New projects must not include demo functions",
 );
-assert.deepEqual(
-  migrations.journal.entries,
-  [],
-  "New projects must not include demo tables",
-);
-assert.deepEqual(migrations.migrations, {});
+assert.deepEqual(schema, {}, "Bootstrap has no app tables");
 assert.equal(
   await access(`${dashboard}/starter`)
     .then(() => true)
@@ -103,6 +113,7 @@ const report = {
   },
   checks: [
     "Exact Astro bootstrap hashes included in strict Admin CSP",
+    "Cloudflare Workers and portable SDK exclude Bun runtime APIs",
     "Frontend excludes backend bindings and platform credentials",
     "Secondary view chunks are separate",
     "Legacy root source and nested platform removed",

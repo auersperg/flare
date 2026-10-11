@@ -8,6 +8,7 @@ for (const path of [
   "artifacts",
   ".wrangler",
   "packages/sdk/dist",
+  "packages/flared/dist",
   "packages/core/dist",
   "packages/core/dashboard/.astro",
   "packages/core/dashboard/.wrangler",

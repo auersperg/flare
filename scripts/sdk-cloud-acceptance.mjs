@@ -1,9 +1,15 @@
-import { build } from "esbuild";
+import { bundle } from "../packages/cli/lib/bundle.mjs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 await mkdir("artifacts", { recursive: true });
 const base = process.env.FLARED_KERNEL_URL;
-if (!base?.startsWith("https://"))
+const local = process.argv.includes("--local");
+if (
+  !base ||
+  (local
+    ? !/^http:\/\/127\.0\.0\.1:\d+$/.test(base)
+    : !base.startsWith("https://"))
+)
   throw new Error("Provide FLARED_KERNEL_URL for the private kernel");
 const token = (await readFile(".private/kernel-token", "utf8")).trim();
 const scope = `sdk-${crypto.randomUUID().slice(0, 8)}/dev`;
@@ -12,26 +18,24 @@ const headers = {
   "Content-Type": "application/json",
 };
 const report = {
-  runtime: "cloud",
+  runtime: local ? "local-workerd" : "cloud",
   scope,
   tests: [],
   startedAt: new Date().toISOString(),
 };
-const result = await build({
-  entryPoints: ["tests/fixtures/sdk-facet.ts"],
-  bundle: true,
-  write: false,
+const result = await bundle({
+  entrypoints: ["tests/fixtures/sdk-facet.ts"],
   format: "esm",
-  target: "es2022",
+  target: "browser",
   external: ["cloudflare:workers"],
 });
-const bundle = await fetch(`${base}/bundle?scope=${scope}`, {
+const upload = await fetch(`${base}/bundle?scope=${scope}`, {
   method: "PUT",
   headers,
-  body: result.outputFiles[0].text,
+  body: await result.outputs[0].text(),
 });
-assert.equal(bundle.status, 200);
-const artifact = await bundle.json();
+assert.equal(upload.status, 200);
+const artifact = await upload.json();
 async function request(body) {
   const response = await fetch(`${base}/?scope=${scope}`, {
     method: "POST",
@@ -55,7 +59,7 @@ async function test(name, fn) {
   }
 }
 try {
-  await test("SDK facet initializes with native Drizzle migration", async () => {
+  await test("SDK facet initializes with native SQLite document schema", async () => {
     assert.equal(
       (await request({ op: "release", ...artifact, version: 1 })).status,
       200,
@@ -133,7 +137,7 @@ try {
       1,
     );
   });
-  await test("Read-only capability forbids writes through escaped ORM internals", async () => {
+  await test("Read-only capability forbids writes through the public native data API", async () => {
     assert.equal((await invoke("badQuery", "query")).status, 500);
     assert.equal((await invoke("get", "query")).result, 1);
     assert.equal((await invoke("increment", "mutation")).result, 2);
@@ -161,7 +165,7 @@ try {
 } finally {
   report.finishedAt = new Date().toISOString();
   await writeFile(
-    "artifacts/sdk-cloud-acceptance.json",
+    `artifacts/sdk-${local ? "local" : "cloud"}-acceptance.json`,
     JSON.stringify(report, null, 2),
   );
 }

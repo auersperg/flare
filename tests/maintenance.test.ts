@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, jest } from "bun:test";
 import {
   scopeForDeletion,
   eraseEnvironment,
@@ -24,20 +24,22 @@ describe("trusted environment cleanup", () => {
   it("erases facet, alarm and supervisor storage before writing only a tombstone", async () => {
     const calls: string[] = [];
     const ctx = {
-      facets: { delete: vi.fn((name: string) => calls.push("facet:" + name)) },
+      facets: {
+        delete: jest.fn((name: string) => calls.push("facet:" + name)),
+      },
       storage: {
-        deleteAlarm: vi.fn(async () => {
+        deleteAlarm: jest.fn(async () => {
           calls.push("alarm");
         }),
-        deleteAll: vi.fn(async () => {
+        deleteAll: jest.fn(async () => {
           calls.push("storage");
         }),
         sql: {
-          exec: vi.fn((sql: string) => {
+          exec: jest.fn((sql: string) => {
             calls.push(sql);
           }),
         },
-        sync: vi.fn(async () => {
+        sync: jest.fn(async () => {
           calls.push("sync");
         }),
       },
@@ -53,16 +55,16 @@ describe("trusted environment cleanup", () => {
     ]);
   });
   it("does not report success or write tombstone if physical deletion fails", async () => {
-    const exec = vi.fn();
+    const exec = jest.fn();
     const ctx = {
-      facets: { delete: vi.fn() },
+      facets: { delete: jest.fn() },
       storage: {
-        deleteAlarm: vi.fn(async () => {}),
-        deleteAll: vi.fn(async () => {
+        deleteAlarm: jest.fn(async () => {}),
+        deleteAll: jest.fn(async () => {
           throw Error("storage failure");
         }),
         sql: { exec },
-        sync: vi.fn(),
+        sync: jest.fn(),
       },
     };
     await expect(eraseEnvironment(ctx as any)).rejects.toThrow(
@@ -71,4 +73,18 @@ describe("trusted environment cleanup", () => {
     expect(exec).not.toHaveBeenCalled();
     expect(ctx.storage.sync).not.toHaveBeenCalled();
   });
+});
+
+import { buildKey, buildPrefix } from "../packages/core/src/release";
+it("scopes immutable build storage and deletion to one environment", () => {
+  const scope = `${id}/dev`,
+    hash = "a".repeat(64);
+  expect(buildKey(scope, hash, "facet")).toBe(
+    `${buildPrefix(scope)}${hash}/facet.js`,
+  );
+  expect(buildKey(`${id}/prod`, hash, "facet")).not.toBe(
+    buildKey(scope, hash, "facet"),
+  );
+  expect(() => buildKey("../../dev", hash, "action")).toThrow();
+  expect(() => buildKey(scope, "../../old", "facet")).toThrow();
 });

@@ -7,7 +7,7 @@ if (!config)
   );
 const token = (await readFile(".private/kernel-token", "utf8")).trim();
 const child = spawn(
-  process.execPath,
+  "node",
   [
     "node_modules/wrangler/bin/wrangler.js",
     "secret",

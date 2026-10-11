@@ -16,15 +16,21 @@ export type Column = {
   notnull: number;
   pk: number;
   dflt_value: unknown;
+  schema?: Record<string, unknown>;
 };
 export type Schema = {
-  tables: { name: string; columns: Column[]; sql: string }[];
+  tables: {
+    name: string;
+    columns: Column[];
+    document: Record<string, unknown>;
+    indexes: Record<string, string[]>;
+  }[];
 };
 export type Row = Record<string, unknown>;
 export type Page = {
   rows: Row[];
   columns: Column[];
-  next: unknown;
+  next: string | null;
   revision: number;
 };
 export type Settings = {
@@ -40,7 +46,7 @@ export type Health = {
   subscriptions: number;
 };
 export type FunctionDefinition = {
-  kind: "query" | "live" | "mutation" | "action";
+  kind: "query" | "mutation" | "action";
   auth: string;
   input: unknown;
   output: unknown;

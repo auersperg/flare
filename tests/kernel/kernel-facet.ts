@@ -1,46 +1,33 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
-import { drizzle } from "drizzle-orm/durable-sqlite";
-import { migrate } from "drizzle-orm/durable-sqlite/migrator";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-
-const counterV1 = sqliteTable("counter", {
-  id: integer().primaryKey(),
-  value: integer().notNull(),
-  revision: integer().notNull(),
-});
-const counterV2 = sqliteTable("counter", {
-  id: integer().primaryKey(),
-  value: integer().notNull(),
-  revision: integer().notNull(),
-  label: text().notNull(),
-});
-const migrations = {
-  m0000:
-    "CREATE TABLE counter (id INTEGER PRIMARY KEY, value INTEGER NOT NULL, revision INTEGER NOT NULL);\n--> statement-breakpoint\nCREATE TABLE outbox (id TEXT PRIMARY KEY, release INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0);\n--> statement-breakpoint\nCREATE TABLE applied_jobs (id TEXT PRIMARY KEY);",
-  m0001:
-    "ALTER TABLE counter ADD COLUMN label TEXT NOT NULL DEFAULT 'preserved';",
-  m0002:
-    "UPDATE counter SET value=value+100;\n--> statement-breakpoint\nALTER TABLE counter ADD COLUMN label TEXT NOT NULL;",
-};
-
 declare const RELEASE: number;
 export class AppFacet extends DurableObject<Record<string, never>> {
   readonly boot = crypto.randomUUID();
-  readonly db;
   constructor(ctx: DurableObjectState, env: Record<string, never>) {
     super(ctx, env);
-    this.db = drizzle(ctx.storage);
     ctx.blockConcurrencyWhile(async () => {
-      await migrate(this.db, {
-        journal: {
-          entries: Array.from({ length: RELEASE }, (_, idx) => ({
-            idx,
-            when: 1000 + idx,
-            tag: `kernel-${idx}`,
-            breakpoints: true,
-          })),
-        },
-        migrations,
+      await ctx.storage.transaction(async () => {
+        ctx.storage.sql.exec(
+          "CREATE TABLE IF NOT EXISTS counter (id INTEGER PRIMARY KEY, value INTEGER NOT NULL, revision INTEGER NOT NULL)",
+        );
+        ctx.storage.sql.exec(
+          "CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, release INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0)",
+        );
+        ctx.storage.sql.exec(
+          "CREATE TABLE IF NOT EXISTS applied_jobs (id TEXT PRIMARY KEY)",
+        );
+        const hasLabel = ctx.storage.sql
+          .exec("PRAGMA table_info(counter)")
+          .toArray()
+          .some((c) => c.name === "label");
+        if (RELEASE === 3) {
+          ctx.storage.sql.exec("UPDATE counter SET value=value+100");
+          ctx.storage.sql.exec(
+            "ALTER TABLE counter ADD COLUMN label TEXT NOT NULL",
+          );
+        } else if (RELEASE >= 2 && !hasLabel)
+          ctx.storage.sql.exec(
+            "ALTER TABLE counter ADD COLUMN label TEXT NOT NULL DEFAULT 'preserved'",
+          );
       });
       ctx.storage.sql.exec(
         "INSERT OR IGNORE INTO counter (id,value,revision) VALUES (1,0,0)",
@@ -49,10 +36,7 @@ export class AppFacet extends DurableObject<Record<string, never>> {
   }
   snapshot() {
     return {
-      ...this.db
-        .select()
-        .from(RELEASE >= 2 ? counterV2 : counterV1)
-        .get(),
+      ...this.ctx.storage.sql.exec("SELECT * FROM counter WHERE id=1").one(),
       release: RELEASE,
       boot: this.boot,
     };

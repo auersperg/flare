@@ -4,8 +4,8 @@ import {
   FunctionBadge,
   functionColors,
 } from "../packages/core/dashboard/src/components/function-badge";
-import { migrationDraft } from "../packages/core/dashboard/src/lib/table-migration";
-import { describe, it, expect } from "vitest";
+import { schemaDraft } from "../packages/core/dashboard/src/lib/table-schema";
+import { describe, it, expect } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -122,7 +122,7 @@ describe("Dashboard presentation", () => {
 });
 
 describe("Dashboard standardization", () => {
-  it.each(["query", "mutation", "action", "live"] as const)(
+  it.each(["query", "mutation", "action"] as const)(
     "uses the native shadcn badge for %s without overriding its size",
     (kind) => {
       const html = renderToStaticMarkup(createElement(FunctionBadge, { kind }));
@@ -130,7 +130,7 @@ describe("Dashboard standardization", () => {
       expect(html).toContain(kind);
       expect(html).toContain(functionColors[kind]);
       expect(html).not.toContain("text-[10px]");
-      expect(new Set(Object.values(functionColors)).size).toBe(4);
+      expect(new Set(Object.values(functionColors)).size).toBe(3);
     },
   );
   it("uses native field, input-group and empty primitives", () => {
@@ -190,28 +190,46 @@ describe("Dashboard standardization", () => {
   });
 });
 
-describe("Offline migration preparation", () => {
-  it("creates and extends a real SQLite table without losing rows", () => {
-    const db = new DatabaseSync(":memory:");
-    try {
-      const create = migrationDraft("create", "notes", []);
-      db.exec(create.sql);
-      db.exec("INSERT INTO notes (id) VALUES ('kept')");
-      const alter = migrationDraft(
-        "add-column",
-        "description",
-        [{ name: "notes", columns: [{ name: "id" }] }],
-        "notes",
-      );
-      db.exec(alter.sql);
-      expect({ ...db.prepare("SELECT * FROM notes").get() }).toEqual({
-        id: "kept",
-        description: null,
-      });
-      expect(create.definition).toContain("sqliteTable('notes'");
-    } finally {
-      db.close();
-    }
+describe("Standard JSON Schema field forms", () => {
+  it("preserves nullable union enums as typed choices", () => {
+    const [f] = contractFields({
+      properties: {
+        status: {
+          anyOf: [
+            { type: "string", const: "open" },
+            { type: "string", const: "closed" },
+            { type: "null", const: null },
+          ],
+        },
+      },
+    });
+    expect(f.choices).toEqual(["open", "closed", null]);
+    expect(f.nullable).toBe(true);
+  });
+  it("uses lossless JSON input for mixed scalar unions", () => {
+    const items = contractFields({
+      properties: {
+        value: { anyOf: [{ type: "string" }, { type: "number" }] },
+      },
+    });
+    expect(items[0].type).toBe("json");
+    expect(values(items, (key) => (key === "m0" ? "value" : "123"))).toEqual({
+      value: 123,
+    });
+  });
+});
+describe("Document schema guidance", () => {
+  it("prepares schema declarations without SQL or journal", () => {
+    const create = schemaDraft("create", "notes", []);
+    expect(create.definition).toContain("defineTable");
+    expect(create.notes).toContain("No SQL");
+    const field = schemaDraft(
+      "add-column",
+      "description",
+      [{ name: "notes", columns: [{ name: "title" }] }],
+      "notes",
+    );
+    expect(field.definition).toContain("z.string().optional()");
   });
   it.each([
     "",
@@ -221,27 +239,27 @@ describe("Offline migration preparation", () => {
     "A",
     "x".repeat(49),
   ])("rejects invalid or reserved name %s", (name) => {
-    expect(() => migrationDraft("create", name, [])).toThrow();
+    expect(() => schemaDraft("create", name, [])).toThrow();
   });
   it("rejects duplicate table/column names and missing tables", () => {
     const tables = [{ name: "Notes", columns: [{ name: "Description" }] }];
-    expect(() => migrationDraft("create", "notes", tables)).toThrow("exists");
+    expect(() => schemaDraft("create", "notes", tables)).toThrow("exists");
     expect(() =>
-      migrationDraft("add-column", "description", tables, "Notes"),
+      schemaDraft("add-column", "description", tables, "Notes"),
     ).toThrow("exists");
-    expect(() =>
-      migrationDraft("add-column", "value", tables, "missing"),
-    ).toThrow("Select");
+    expect(() => schemaDraft("add-column", "value", tables, "missing")).toThrow(
+      "Select",
+    );
   });
   it("quotes preexisting identifiers without offering arbitrary SQL execution", () => {
     expect(
-      migrationDraft(
+      schemaDraft(
         "add-column",
         "value",
         [{ name: 'odd"name', columns: [] }],
         'odd"name',
-      ).sql,
-    ).toContain('"odd""name"');
+      ).notes,
+    ).toContain("No ALTER TABLE");
     const source = readFileSync(
       new URL(
         "../packages/core/dashboard/src/components/table-guide.tsx",
@@ -251,6 +269,6 @@ describe("Offline migration preparation", () => {
     );
     expect(source.replace(/\s+/g, " ")).toContain("not a database change");
     expect(source).not.toMatch(/\bapi\(/);
-    expect(source).toContain("--confirm <project-UUID>");
+    expect(source).toContain("bunx flared");
   });
 });

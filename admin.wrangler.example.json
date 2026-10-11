@@ -15,7 +15,7 @@
   "assets": {
     "directory": "packages/core/dist/dashboard",
     "binding": "ASSETS",
-    "run_worker_first": true
+    "run_worker_first": ["/*", "!/_astro/*"]
   },
   "d1_databases": [
     {
@@ -35,6 +35,7 @@
   "vars": {
     "RUNTIME_URL": "https://api.example.com",
     "ACCESS_ISSUER": "https://YOUR_TEAM.cloudflareaccess.com",
-    "ACCESS_AUD": "YOUR_ACCESS_APPLICATION_AUD"
+    "ACCESS_AUD": "YOUR_ACCESS_APPLICATION_AUD",
+    "DASHBOARD_URL": "https://dashboard.example.com"
   }
 }

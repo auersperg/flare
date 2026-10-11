@@ -25,13 +25,13 @@ import {
   type Project,
   type Environment,
 } from "../lib/model";
-import {
-  HealthView,
-  SchemaView,
-  FilesView,
-  SchedulesView,
-  LogsView,
-} from "./overview";
+import { HealthView, SchemaView, LogsView } from "./overview";
+const FilesView = lazy(() =>
+  import("./services-view").then((m) => ({ default: m.FilesView })),
+);
+const SchedulesView = lazy(() =>
+  import("./services-view").then((m) => ({ default: m.SchedulesView })),
+);
 const DataView = lazy(() => import("./data-view"));
 const FunctionsView = lazy(() => import("./functions-view"));
 const SettingsView = lazy(() => import("./settings-view"));
@@ -47,7 +47,17 @@ export const sections = [
 ] as const;
 export type View = (typeof sections)[number]["key"] | "settings" | "sdk";
 export type Scope = { project: Project; env: Environment; session: Session };
+const CliApproval = lazy(() => import("./cli-approval"));
 export default function Dashboard() {
+  return new URLSearchParams(location.search).has("cli") ? (
+    <Suspense fallback={<p>Loading…</p>}>
+      <CliApproval />
+    </Suspense>
+  ) : (
+    <DashboardApp />
+  );
+}
+function DashboardApp() {
   const [session, setSession] = useState<Session>(),
     [projects, setProjects] = useState<Project[]>([]),
     [project, setProject] = useState<Project>(),
@@ -279,7 +289,7 @@ export default function Dashboard() {
           </Button>
         </aside>
         <main
-          className="min-w-0 flex-1 overflow-auto"
+          className={`min-h-0 min-w-0 flex-1 ${view === "data" ? "overflow-hidden" : "overflow-auto"}`}
           aria-label="Deployment content"
         >
           {error && (
@@ -291,7 +301,10 @@ export default function Dashboard() {
             <Status loading />
           ) : scope ? (
             <Suspense fallback={<Status loading />}>
-              <div key={`${project!.id}/${env}/${view}`} className="min-h-full">
+              <div
+                key={`${project!.id}/${env}/${view}`}
+                className={view === "data" ? "h-full min-h-0" : "min-h-full"}
+              >
                 {view === "health" ? (
                   <HealthView {...scope} connect={() => navigate("sdk")} />
                 ) : view === "data" ? (
@@ -301,7 +314,7 @@ export default function Dashboard() {
                 ) : view === "functions" ? (
                   <FunctionsView {...scope} />
                 ) : view === "files" ? (
-                  <FilesView />
+                  <FilesView {...scope} />
                 ) : view === "schedules" ? (
                   <SchedulesView {...scope} />
                 ) : view === "logs" ? (
