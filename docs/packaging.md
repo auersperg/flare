@@ -18,12 +18,12 @@ into `dist/cli`. Public exports point directly to these files, without forwardin
 wrappers or copying an intermediate SDK build. Ordinary compiler dependencies
 remain declared. Browser entry points never import CLI, Bun or Core.
 
-There is one SDK/CLI tarball and no overrides:
+Applications use one registry dependency, without vendor archives or overrides:
 
 ```json
 {
   "dependencies": {
-    "@auersperg/flare": "file:.packages/auersperg-flare-0.3.1.tgz"
+    "@auersperg/flare": "0.3.2"
   }
 }
 ```

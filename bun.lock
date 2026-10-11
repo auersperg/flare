@@ -30,7 +30,7 @@
       "version": "0.3.2",
       "dependencies": {
         "@astrojs/react": "7.0.1",
-        "@auersperg/flare": "0.3.1",
+        "@auersperg/flare": "npm:@auersperg/flare@0.3.2",
         "@base-ui/react": "1.9.0",
         "@fontsource-variable/geist": "5.3.0",
         "@tailwindcss/vite": "4.3.3",
