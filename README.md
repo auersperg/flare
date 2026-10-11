@@ -240,6 +240,6 @@ Settings → Backups and `bunx flared backup` now create private R2 capsules wit
 
 ## Release history and promotion
 
-Health → Manage releases shows the last five distinct successful backend builds and their contracts. `bunx flared promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx flared rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
+Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx flared promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx flared rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
 
 `bunx flared deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/cli/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).

@@ -176,7 +176,7 @@ Private R2 capsule: exact backend release + native document snapshot + ready fil
 
 Supervisor хранит пять последних уникальных успешных backend-сборок и дату первой публикации. Активация и запись успешной истории фиксируются в одной supervisor SQL-транзакции; это не распределённая транзакция с facet или frontend. Неуспешные candidates не входят в историю. Retention защищает последние пять, active/candidate и ссылки jobs/outbox, без периодического timer.
 
-Promote переносит точный проверенный dev bundle в prod без повторной компиляции и без данных dev. Expected-active-hash защищает от конкурентного изменения prod. Rollback проверяет совместимость кода со схемой текущих документов и заданиями, но не откатывает данные. Dashboard загружает историю только при открытии Manage releases.
+Promote переносит точный проверенный dev bundle в prod без повторной компиляции и без данных dev. Expected-active-hash защищает от конкурентного изменения prod. Rollback проверяет совместимость кода со схемой текущих документов и заданиями, но не откатывает данные. Health сразу показывает последние пять успешных релизов выбранной среды: Development releases или Production releases, без дополнительной кнопки и без interval polling.
 
 CLI `--cmd` собирает frontend до активации backend, передавая URL выбранной среды только дочернему процессу. Отдельный native Wrangler публикует frontend после backend; ошибки последнего шага явно означают partial release. Исторические изолированные preview и связанный каталог версий frontend/backend пока не реализованы. Проверка облачной истории/promotion/rollback входит в шестой disposable backup/release acceptance check.
 

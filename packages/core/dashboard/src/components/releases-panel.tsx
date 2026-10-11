@@ -18,35 +18,29 @@ import {
   DialogDescription,
 } from "./ui/dialog";
 import { useResource, Status, FormDialog, type Modal } from "./common";
-import { api, scopePath, type Environment } from "../lib/model";
+import { api, scopePath } from "../lib/model";
 import { FunctionBadge } from "./function-badge";
 import type { Scope } from "./dashboard";
 type Release = { hash: string; at: number };
 export default function ReleasesPanel(scope: Scope & { refresh: () => void }) {
-  const [open, setOpen] = useState(false);
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Releases</CardTitle>
+        <CardTitle>
+          {scope.env === "dev" ? "Development releases" : "Production releases"}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-muted-foreground">
-          Five recent immutable backend builds. Switching code never restores
-          database contents.
-        </p>
-        <Button variant="outline" onClick={() => setOpen(!open)}>
-          {open ? "Close releases" : "Manage releases"}
-        </Button>
-        {open && <ReleaseList {...scope} />}
+      <CardContent>
+        <ReleaseList {...scope} />
       </CardContent>
     </Card>
   );
 }
+
 function ReleaseList(scope: Scope & { refresh: () => void }) {
-  const [source, setSource] = useState<Environment>(scope.env),
-    [selected, setSelected] = useState<string>(),
+  const [selected, setSelected] = useState<string>(),
     [modal, setModal] = useState<Modal>();
-  const path = scopePath(scope.project, source),
+  const path = scopePath(scope.project, scope.env),
     target = scopePath(scope.project, scope.env);
   const history = useResource<Release[]>(path + "/history"),
     health = useResource<{ active: string }>(path + "/health");
@@ -58,7 +52,8 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
       title: promote ? "Promote backend to production" : "Rollback backend",
       description:
         "Activate this exact backend hash after native schema/job validation. Data, files and settings stay unchanged. Frontend is not published by this button; use the CLI release flow for that.",
-      productionId: scope.project.id,
+      productionId:
+        promote || scope.env === "prod" ? scope.project.id : undefined,
       submit: async () => {
         await api(
           destination + (promote ? "/release-promote" : "/release-rollback"),
@@ -73,29 +68,6 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
   const [error, setError] = useState<string>();
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {(["dev", "prod"] as const).map((env) => (
-          <Button
-            key={env}
-            variant={env === source ? "secondary" : "outline"}
-            onClick={() => {
-              setSource(env);
-              setSelected(undefined);
-            }}
-          >
-            {env === "dev" ? "Development" : "Production"}
-          </Button>
-        ))}
-        <Button
-          variant="outline"
-          onClick={() => {
-            history.refresh();
-            health.refresh();
-          }}
-        >
-          Refresh
-        </Button>
-      </div>
       <Status
         loading={history.loading || health.loading}
         error={error || history.error || health.error}
@@ -127,22 +99,20 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
                   >
                     View contracts
                   </Button>
-                  {writable &&
-                    source === scope.env &&
-                    health.data?.active !== release.hash && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          void approve(release.hash, false).catch((e) =>
-                            setError(e.message),
-                          )
-                        }
-                      >
-                        Rollback backend
-                      </Button>
-                    )}
-                  {writable && source === "dev" && (
+                  {writable && health.data?.active !== release.hash && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        void approve(release.hash, false).catch((e) =>
+                          setError(e.message),
+                        )
+                      }
+                    >
+                      Rollback backend
+                    </Button>
+                  )}
+                  {writable && scope.env === "dev" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -161,12 +131,6 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
           ))}
         </TableBody>
       </Table>
-      <p className="text-xs text-muted-foreground">
-        These are backend builds, not Git commits or saved frontend previews.
-        Old code must accept current documents; incompatible switches fail.
-        Builds required by active deployments or jobs are retained beyond these
-        five.
-      </p>
       {selected && (
         <ReleaseDetails
           path={path}

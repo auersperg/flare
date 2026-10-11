@@ -38,7 +38,7 @@ Promote copies the selected immutable dev bundle to prod without recompiling or 
 
 `--cmd` generates client references for the exact selected bundle and builds the frontend **before** activating the backend. The child receives the selected environment URL via `FLARED_URL`, `PUBLIC_FLARED_URL`, `VITE_FLARED_URL`, `NEXT_PUBLIC_FLARED_URL` and `EXPO_PUBLIC_FLARED_URL`; local dev env files remain unchanged. A failed build does not publish backend code. Framework build variables must be public URLs, not credentials.
 
-Frontend hosting stays with native Wrangler or another hosting tool. An application release script can sequence Flared + build + Wrangler. Frontend publication failure after backend activation is an explicit partial release, not an atomic transaction. Dashboard Health → Manage releases offers contract inspection, backend promotion and rollback on demand, with no polling. It does not publish the frontend.
+Frontend hosting stays with native Wrangler or another hosting tool. An application release script can sequence Flared + build + Wrangler. Frontend publication failure after backend activation is an explicit partial release, not an atomic transaction. Dashboard Health → Development/Production releases offers contract inspection, backend promotion and rollback on demand, with no polling. It does not publish the frontend.
 
 Isolated historical preview environments and a paired frontend/backend version catalogue are not implemented. A saved backend hash is not a preview URL or a Git commit. Use additive contracts when old clients may remain active.
 

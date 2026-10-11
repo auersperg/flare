@@ -171,6 +171,21 @@ describe("Astro/shadcn dashboard", () => {
       'maxLength={f.type === "password" ? 128 : undefined}',
     );
   });
+  it("shows releases inline only for the selected environment without standalone Refresh", () => {
+    const releases = read(
+      "packages/core/dashboard/src/components/releases-panel.tsx",
+    );
+    expect(releases).toContain('"Development releases"');
+    expect(releases).toContain('"Production releases"');
+    expect(releases).toContain("scopePath(scope.project, scope.env)");
+    expect(releases).not.toMatch(
+      /Manage releases|Close releases|setSource|setOpen/,
+    );
+    for (const file of ["releases-panel", "backups-panel"])
+      expect(
+        read(`packages/core/dashboard/src/components/${file}.tsx`),
+      ).not.toMatch(/>\s*Refresh\s*</);
+  });
   it("uses the supplied real preset and local fonts", () => {
     const config = JSON.parse(read("packages/core/dashboard/components.json"));
     expect(config.style).toBe("base-lyra");

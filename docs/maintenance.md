@@ -81,7 +81,7 @@ D1 audit retains 90 days and expired credentials retain a 14-day grace. Cleanup 
 
 ## Version history and application publishing
 
-Health → Manage releases lazily loads the latest five distinct successful builds; dates mean first publication, not every activation. Read-only contract inspection does not download source into the browser. Promote exports the selected immutable dev bundle and activates it in prod with an expected-current-hash check. Rollback uses the same compatible native activation path. Failed candidates cannot be selected. No dev documents, files or credentials are copied. This is code rollback, not database rollback.
+Health → Development/Production releases shows the latest five distinct successful builds of the selected environment; dates mean first publication, not every activation. Read-only contract inspection does not download source into the browser. Promote exports the selected immutable dev bundle and activates it in prod with an expected-current-hash check. Rollback uses the same compatible native activation path. Failed candidates cannot be selected. No dev documents, files or credentials are copied. This is code rollback, not database rollback.
 
 `flared deploy/promote --cmd "bun run build"` builds the frontend against the selected production URL before backend publication. Dev `.env.local` is preserved. The application can then invoke native Wrangler to publish assets. This sequencing is intentionally not called atomic: a frontend publishing failure leaves the completed backend release active and must be reported/inspected. Schema changes must remain compatible with older clients. No automatic rollback of data or external effects is attempted.
 

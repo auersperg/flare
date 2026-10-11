@@ -173,7 +173,7 @@ function SchemaForm({
         arbitrary SQL execution are intentionally unavailable here.{" "}
         {env === "prod"
           ? "Test the schema in dev first; production deployment requires explicit confirmation."
-          : "Refresh Data or Schema after the cloud release activates."}
+          : "Reopen Data or Schema after the cloud release activates."}
       </p>
     </div>
   );

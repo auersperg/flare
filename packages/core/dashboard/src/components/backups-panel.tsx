@@ -98,15 +98,7 @@ function BackupList(scope: Scope) {
             {env === "dev" ? "Development" : "Production"} backups
           </Button>
         ))}
-        <Button
-          variant="outline"
-          onClick={() => {
-            r.refresh();
-            state.refresh();
-          }}
-        >
-          Refresh
-        </Button>
+
         {write && (
           <Button
             onClick={() => {
