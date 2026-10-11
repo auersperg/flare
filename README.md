@@ -69,14 +69,14 @@ Dashboard: Astro 7.3.8, React 19.3.0, actual shadcn `bKGijeGe` preset (Base UI L
 
 Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`@auersperg/flare`**: client, server declarations and CLI in one installation. SDK/CLI live inside `packages/flare/src`, not separate source workspaces. The `@auersperg/flare` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flare/sdk` / `@flare/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
 
-Target registry installation (prepared, not published yet):
+npm preview installation (`0.3.1`, `next` tag):
 
 ```sh
 bun add @auersperg/flare@next
 bunx --bun --package @auersperg/flare@next flare dev
 ```
 
-With the private package installed from a verified local archive, `bunx --bun --package @auersperg/flare@next flare dev` already implements the same command interface:
+With the npm package installed, `bunx --bun --package @auersperg/flare@next flare dev` already implements the same command interface:
 
 1. On the first run, enter your installation's Runtime URL. Confirm the matching code in the Cloudflare Access-protected dashboard; select or create a project there.
 2. The CLI stores a project-scoped, 30-day credential outside the application in `~/.config/flare`, mode 0600. No token is copied into source or frontend env. Settings can revoke it. A new sign-in is required after expiry/revocation.
@@ -116,7 +116,7 @@ Schema changes validate existing documents and update native SQLite expression i
 
 **Breaking change:** only runtime ABI 4 and the native document API are supported. Old `tables`, Drizzle SQL declarations, `--migrations` and ABI 1–3 have been removed. Use a fresh environment/installation for this preview; rebuilding does not reset the existing cloud deployment, catalogue or databases. Do not deploy 0.3 over a 0.2 installation assuming compatibility.
 
-`platform init` is not implemented; `init` / `db generate` are unnecessary for the application flow. General platform provisioning remains an operator workflow. Packages are private tarballs, not an npm release; local builds perform no cloud deployment.
+`platform init` is not implemented; `init` / `db generate` are unnecessary for the application flow. General platform provisioning remains an operator workflow. The SDK/CLI is published as `@auersperg/flare@next`; core/dashboard are private components. Local builds perform no cloud deployment.
 
 ## Native data API
 

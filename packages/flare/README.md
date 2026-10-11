@@ -45,7 +45,7 @@ Mutation outbox entries and data commit together. Native Queues batches confirm 
 The CLI is compiled separately from the portable SDK in this package. Bun 1.4.3+; no local dashboard or emulator.
 
 ```sh
-bun add @auersperg/flare@next       # target registry flow; currently install a private packed archive
+bun add @auersperg/flare@next       # npm preview, next tag
 bunx --bun --package @auersperg/flare@next flare dev     # browser approval → project → native schema/types → cloud-dev watch
 bunx --bun --package @auersperg/flare@next flare deploy  # build and confirm production deployment
 ```
@@ -120,6 +120,5 @@ Sessions are memory-only and expire after at most 12 hours. Reload requires logi
 ## License and distribution
 
 SDK and CLI are MIT-licensed; see LICENSE. npm name: `@auersperg/flare`.
-The `flare` binary remains unchanged. This preview is not published yet; the
-first npm publication uses the `next` tag. Core/dashboard are separate private
+The `flare` binary remains unchanged. Version 0.3.1 is published under the `next` tag. Core/dashboard are separate private
 components and are not included in this package.
