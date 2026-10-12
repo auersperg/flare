@@ -1,5 +1,4 @@
 ---
-import Dashboard from "../components/dashboard";
 import "../styles/global.css";
 ---
 
@@ -12,14 +11,19 @@ import "../styles/global.css";
     <title>Flare · Dashboard</title>
   </head>
   <body>
-    <Dashboard client:only="react">
-      <div
-        slot="fallback"
-        class="p-6 text-sm text-muted-foreground"
-        role="status"
-      >
+    <div id="flare-dashboard">
+      <div class="p-6 text-sm text-muted-foreground" role="status">
         Loading Flare…
       </div>
-    </Dashboard>
+    </div>
+    <script>
+      import { createElement } from "react";
+      import { createRoot } from "react-dom/client";
+      import Dashboard from "../components/dashboard";
+
+      const element = document.getElementById("flare-dashboard");
+      if (!element) throw Error("Dashboard mount missing");
+      createRoot(element).render(createElement(Dashboard));
+    </script>
   </body>
 </html>

@@ -1,7 +1,7 @@
 {
   "name": "flare-workspace",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "workspaces": [
     "packages/flare",
@@ -14,6 +14,7 @@
     "test": "bun test ./tests",
     "test:kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs",
     "test:platform:local": "bun run build && bun scripts/platform-native-acceptance.mjs",
+    "test:platform:reproducible": "bun scripts/reproducible-platform.mjs",
     "test:packages": "bun run build && bun scripts/package-acceptance.mjs",
     "test:cloud-kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs --cloud",
     "test:cloud-sdk": "bun scripts/sdk-cloud-acceptance.mjs",
@@ -24,7 +25,7 @@
     "format": "bun x --bun prettier --write .",
     "format:check": "bun x --bun prettier --check .",
     "build:dashboard": "bun run --bun --cwd packages/core/dashboard build",
-    "deploy:dashboard": "bun run build && bun x --no-install wrangler deploy --config .private/cloudflare/admin.wrangler.json",
+    "update:platform": "bun packages/flare/dist/cli/flare.js platform update",
     "test:build": "bun run build && bun scripts/verify-build.mjs",
     "verify": "bun run build && bun run check && bun run test && bun run format:check && bun scripts/verify-build.mjs && bun scripts/package-acceptance.mjs",
     "clean": "bun scripts/clean.mjs",

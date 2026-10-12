@@ -1,6 +1,6 @@
 # Maintenance
 
-New source 0.3.4 managed installs use [platform lifecycle](platform-lifecycle.md); independent cloud acceptance and legacy adoption remain pending. This document also retains the existing manual operator flow.
+New source 0.3.5 managed installs use [platform lifecycle](platform-lifecycle.md); independent-account cloud acceptance remains pending; explicit standard-layout adoption is implemented in 0.3.5. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
 
 Operational invariants for the current source tree. [Architecture](architecture.md) is the canonical implementation map; [production runbook](production-runbook.md) is the release/recovery checklist. Package manifests and current verification output take precedence over dated reports. This guide intentionally does not retain obsolete application inventories, benchmark samples or test-count checkpoints.
 
@@ -18,7 +18,7 @@ Customer frontend/backend source belongs in separate application repositories. T
 - Preset: Base UI Lyra / Stone / Geist / Lucide / subtle menu accent. Use checked-in components.json; don't add custom button/badge geometry.
 - Native runtime dependencies remain pinned (Agents 0.28.0, Wrangler 4.149.0). UI maintenance does not add Cloudflare services or replace Dynamic Workers/Facets with per-project Workers.
 - TypeScript 6.0.2 is supported by Astro/Volar's compiler API; don't force TypeScript 7 peers. Native Vite prerender resolution keeps the React virtual-module consumer and Astro cookie version bundled.
-- Astro-generated bootstrap hashes feed Admin's strict CSP; no unsafe-inline/eval. Public hashed UI assets use asset-first immutable caching; HTML/API/bootstrap/starter remain protected and worker-first.
+- Astro bundles the client-only React mount; its external scripts use the strict self-only CSP (any inline scripts still require exact hashes); no unsafe-inline/eval. Public hashed UI assets use asset-first immutable caching; HTML/API/bootstrap/starter remain protected and worker-first.
 - Lazy secondary views, cancelled requests and scope-keyed remounting prevent stale data. Dashboard has no polling/automatic subscription/token issuance. Data uses a bounded full-height scroll region with a sticky header and bottom pagination. Files refresh once after an upload attempt and distinguish pending transfer from queue jobs. Function clients dispose on navigation.
 - Add/Edit table prepares document schema drafts, never arbitrary live SQL or destructive schema edits. App schema, function contracts and release checksums stay versioned together.
 - CLI scratch directories clean up in finally after success/failure. Immutable release output cannot be overwritten.

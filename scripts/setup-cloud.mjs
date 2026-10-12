@@ -63,6 +63,22 @@ let database = (await cf("d1/database")).find((x) =>
   previous?.database ? x.uuid === previous.database : x.name === dbName,
 );
 if (!database) database = await cf("d1/database", { name: dbName });
+// Once claimed by the native D1 lifecycle journal, legacy setup must not
+// deploy outside its lease/checkpoints or reconcile its configuration.
+const managedTable = await cf(`d1/database/${database.uuid}/query`, {
+  sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='flare_installation'",
+  params: [],
+});
+if (managedTable[0]?.results?.length) {
+  const managed = await cf(`d1/database/${database.uuid}/query`, {
+    sql: "SELECT installation_id FROM flare_installation WHERE singleton=1",
+    params: [],
+  });
+  if (managed[0]?.results?.length)
+    throw Error(
+      "Managed installation found. Use flare platform status/update; legacy setup cannot deploy it.",
+    );
+}
 const buckets = await cf("r2/buckets");
 for (const name of [bucket, "flare-files"])
   if (!buckets.buckets.some((x) => x.name === name))

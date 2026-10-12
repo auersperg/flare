@@ -54,7 +54,11 @@ for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
   );
   inlineScripts++;
 }
-assert(inlineScripts > 0);
+assert(inlineScripts > 0 || /<script\b[^>]*\bsrc="\/_astro\//.test(html));
+assert(
+  !html.includes("<astro-island"),
+  "Client-only dashboard must not depend on path-derived hydration IDs",
+);
 // Public variable names in setup instructions are not credential values.
 const forbiddenSecrets = [];
 for (const file of [".private/flare-dev-key", ".private/kernel-token"]) {

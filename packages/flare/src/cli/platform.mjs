@@ -11,6 +11,7 @@ import {
   validName,
   settingsDigest,
   configurationDigest,
+  validateState,
 } from "./platform-state.mjs";
 import { loadPlatformRelease, assertUpgrade } from "./platform-release.mjs";
 
@@ -228,9 +229,9 @@ export function workerConfiguration(state, release, role, bootstrap = false) {
     ratelimits: [
       {
         name: "RATE_LIMITER",
-        namespace_id: String(
-          parseInt(state.id.replaceAll("-", "").slice(0, 7), 16),
-        ),
+        namespace_id:
+          state.rateLimitNamespace ??
+          String(parseInt(state.id.replaceAll("-", "").slice(0, 7), 16)),
         simple: { limit: 600, period: 60 },
       },
     ],
@@ -262,7 +263,17 @@ async function confirm(options, state, plan, ask, log) {
 }
 async function assertAccess(cf, state) {
   const app = await cf.api(`access/apps/${state.access.id}`);
-  if (app.domain !== state.addresses.adminHost || app.aud !== state.access.aud)
+  const coversHost =
+    app.domain === state.addresses.adminHost ||
+    app.destinations?.some(
+      (d) => d.type === "public" && d.uri === state.addresses.adminHost,
+    );
+  if (
+    !coversHost ||
+    app.aud !== state.access.aud ||
+    (state.access.snapshot &&
+      configurationDigest(app) !== state.access.snapshot)
+  )
     throw Error(
       "Access application drift; refusing to change policies or audiences",
     );
@@ -588,6 +599,272 @@ async function verify(cf, state, release, fetcher, wait) {
   }
 }
 
+// A deliberately narrow migration for the original documented operator layout.
+// No name guessing, resource creation, config import, policy edits or secret reads.
+async function discoverOperator(cf, store, name) {
+  if (name !== "default")
+    throw Error("Operator adoption supports only --name default");
+  const databases = await cf.list("d1/database");
+  const matches = databases.filter((db) => db.name === "flare-catalog");
+  if (
+    matches.length !== 1 ||
+    databases.some((db) => db.name === "flare-default-catalog")
+  )
+    throw Error(
+      "Expected one legacy flare-catalog and no competing default catalogue",
+    );
+  const row = await store.row(matches[0].uuid);
+  const state = row?.state ?? (await store.local());
+  if (
+    state &&
+    (state.origin !== "operator" ||
+      state.resources.catalog.id !== matches[0].uuid)
+  )
+    throw Error("Catalogue/cache is owned by a different installation");
+  if (row) store.revision = row.revision;
+  return { state, row };
+}
+
+async function prepareOperator(cf, inventory, release, options, dependencies) {
+  const owner = options.owner?.toLowerCase();
+  if (!owner || !/^\S+@\S+\.\S+$/.test(owner))
+    throw Error("Explicit --owner is required for adoption");
+  const database = inventory.databases.find(
+    (db) => db.name === "flare-catalog",
+  );
+  const member = (
+    await cf.sql(database.uuid, "SELECT role FROM members WHERE email=?", [
+      owner,
+    ])
+  ).results[0];
+  if (member?.role !== "owner")
+    throw Error(
+      "Existing owner membership does not match; roles are never rewritten",
+    );
+  const state = {
+    format: 1,
+    origin: "operator",
+    id: randomUUID(),
+    account: cf.account,
+    name: "default",
+    owner,
+    resources: {
+      catalog: { name: "flare-catalog", id: database.uuid },
+      bundles: { name: "flare-builds", id: "flare-builds" },
+      files: { name: "flare-files", id: "flare-files" },
+      jobs: { name: "flare-jobs", id: null },
+      dlq: { name: "flare-jobs-dlq", id: null },
+    },
+    workers: {
+      runtime: { name: "flare-runtime" },
+      admin: { name: "flare-admin" },
+    },
+    addresses: { custom: true, subdomain: inventory.subdomain },
+    access: null,
+    installed: null,
+    operation: null,
+    snapshots: {},
+    versions: {},
+    domainSnapshots: {},
+    createdAt: Date.now(),
+  };
+  const remote = {};
+  for (const role of ["runtime", "admin"]) {
+    remote[role] = await cf.api(`workers/scripts/flare-${role}/settings`);
+    state.versions[role] = await cf.currentVersion(`flare-${role}`);
+    state.snapshots[role] = settingsDigest(remote[role]);
+    state.domainSnapshots[role] = await domainSnapshot(cf, `flare-${role}`);
+    const endpoint = await cf.api(`workers/scripts/flare-${role}/subdomain`);
+    if (endpoint.enabled || endpoint.previews_enabled)
+      throw Error(
+        "Adoption requires custom domains with alternate endpoints disabled",
+      );
+    if (
+      remote[role].logpush ||
+      remote[role].tail_consumers?.length ||
+      remote[role].tags?.length ||
+      Object.keys(remote[role].placement ?? {}).length ||
+      remote[role].limits?.cpu_ms !== 1000 ||
+      Object.keys(remote[role].limits ?? {}).some((key) => key !== "cpu_ms") ||
+      remote[role].observability?.enabled !== true ||
+      remote[role].observability?.head_sampling_rate !== 1 ||
+      remote[role].observability?.traces?.enabled === true ||
+      remote[role].observability?.logs?.enabled === false ||
+      remote[role].observability?.logs?.invocation_logs === false ||
+      remote[role].observability?.logs?.persist === false ||
+      remote[role].observability?.redact_query_string === true ||
+      remote[role].compatibility_flags?.join() !== "nodejs_compat"
+    )
+      throw Error(
+        "Unsupported operator Worker configuration; adoption does not silently reconcile custom settings",
+      );
+  }
+  const binding = (role, name, type) => {
+    const matches = remote[role].bindings?.filter(
+      (b) => b.name === name && b.type === type,
+    );
+    if (matches?.length !== 1)
+      throw Error(`Missing or ambiguous ${role} binding ${name}`);
+    return matches[0];
+  };
+  const allowed = {
+    runtime: [
+      "ADMIN_API",
+      "BUNDLES",
+      "FILES",
+      "JOBS",
+      "LOADER",
+      "RATE_LIMITER",
+      "SUPERVISORS",
+      "DEV_SIGNING_KEY",
+      "RUNTIME_URL",
+      "DASHBOARD_URL",
+      "DEV_TOKEN_ISSUER",
+    ],
+    admin: [
+      "RUNTIME",
+      "CATALOG",
+      "ASSETS",
+      "RUNTIME_URL",
+      "DASHBOARD_URL",
+      "ACCESS_ISSUER",
+      "ACCESS_AUD",
+    ],
+  };
+  for (const role of ["runtime", "admin"])
+    if (
+      remote[role].bindings.length !== allowed[role].length ||
+      remote[role].bindings.some((b) => !allowed[role].includes(b.name))
+    )
+      throw Error(
+        "Unsupported extra bindings; adoption must not remove operator capabilities",
+      );
+  const runtimeUrl = binding("runtime", "RUNTIME_URL", "plain_text").text;
+  const dashboardUrl = binding("admin", "DASHBOARD_URL", "plain_text").text;
+  for (const value of [runtimeUrl, dashboardUrl]) {
+    const url = new URL(value);
+    if (url.origin !== value || url.protocol !== "https:")
+      throw Error("Operator URL must be a plain HTTPS origin");
+  }
+  state.addresses.runtimeHost = new URL(runtimeUrl).hostname;
+  state.addresses.adminHost = new URL(dashboardUrl).hostname;
+  if (
+    binding("admin", "RUNTIME_URL", "plain_text").text !== runtimeUrl ||
+    binding("runtime", "DASHBOARD_URL", "plain_text").text !== dashboardUrl ||
+    binding("runtime", "DEV_TOKEN_ISSUER", "plain_text").text !== runtimeUrl
+  )
+    throw Error(
+      "Operator URLs/identity issuer do not match; refusing identity migration",
+    );
+  for (const role of ["runtime", "admin"]) {
+    const own = inventory.domains.filter((d) => d.service === `flare-${role}`);
+    if (
+      own.length !== 1 ||
+      own[0].hostname !==
+        state.addresses[role === "runtime" ? "runtimeHost" : "adminHost"] ||
+      !own[0].enabled ||
+      own[0].previews_enabled
+    )
+      throw Error("Operator custom domain does not match binding URL");
+  }
+  if (
+    binding("admin", "CATALOG", "d1").id !== database.uuid &&
+    binding("admin", "CATALOG", "d1").database_id !== database.uuid
+  )
+    throw Error("Admin catalogue binding mismatch");
+  for (const [role, key, target, entrypoint] of [
+    ["admin", "RUNTIME", "flare-runtime", "RuntimeControl"],
+    ["runtime", "ADMIN_API", "flare-admin", "AdminControl"],
+  ]) {
+    const b = binding(role, key, "service");
+    if (
+      b.service !== target ||
+      b.entrypoint !== entrypoint ||
+      (b.environment && b.environment !== "production")
+    )
+      throw Error("Operator service binding mismatch");
+  }
+  for (const [key, bucket] of [
+    ["BUNDLES", "flare-builds"],
+    ["FILES", "flare-files"],
+  ])
+    if (binding("runtime", key, "r2_bucket").bucket_name !== bucket)
+      throw Error("Operator R2 binding mismatch");
+  if (binding("runtime", "JOBS", "queue").queue_name !== "flare-jobs")
+    throw Error("Operator Queue binding mismatch");
+  binding("runtime", "LOADER", "worker_loader");
+  binding("runtime", "DEV_SIGNING_KEY", "secret_text");
+  binding("admin", "ASSETS", "assets");
+  const supervisor = binding(
+    "runtime",
+    "SUPERVISORS",
+    "durable_object_namespace",
+  );
+  if (
+    supervisor.class_name !== "EnvironmentSupervisor" ||
+    supervisor.script_name
+  )
+    throw Error("Operator supervisor must be owned by Runtime");
+  state.supervisorNamespace = supervisor.namespace_id;
+  const rate = binding("runtime", "RATE_LIMITER", "ratelimit");
+  if (rate.simple?.limit !== 600 || rate.simple?.period !== 60)
+    throw Error("Unsupported operator rate-limit configuration");
+  state.rateLimitNamespace = String(rate.namespace_id);
+  const aud = binding("admin", "ACCESS_AUD", "plain_text").text;
+  const app = inventory.apps.find((a) => a.aud === aud);
+  if (
+    !app ||
+    binding("admin", "ACCESS_ISSUER", "plain_text").text !== inventory.issuer
+  )
+    throw Error("Access application/issuer mismatch");
+  const access = await cf.api(`access/apps/${app.id}`);
+  state.access = {
+    id: app.id,
+    aud,
+    issuer: inventory.issuer,
+    snapshot: configurationDigest(access),
+  };
+  for (const key of ["jobs", "dlq"]) {
+    const q = inventory.queues.find(
+      (q) => q.queue_name === state.resources[key].name,
+    );
+    if (!q) throw Error("Operator queue is missing");
+    state.resources[key].id = q.queue_id;
+  }
+  validateState(state, cf.account, "default");
+  await assertResources(cf, state, inventory);
+  const migrations = (
+    await cf.sql(database.uuid, "SELECT name FROM d1_migrations")
+  ).results;
+  if (
+    migrations.some(
+      (m) =>
+        !migrationInventory(release.manifest).some((f) => f.name === m.name),
+    )
+  )
+    throw Error(
+      "Operator has unknown migrations; an explicit compatibility review is required",
+    );
+  const response = await (dependencies.fetch ?? globalThis.fetch)(
+    runtimeUrl + "/health",
+    { redirect: "error", signal: AbortSignal.timeout(15000) },
+  );
+  const health = await response.json();
+  if (
+    !response.ok ||
+    health.protocol !== release.manifest.protocol ||
+    health.runtimeAbi !== release.manifest.runtimeAbi ||
+    ![release.manifest.version, ...release.manifest.upgradeFrom].includes(
+      health.version,
+    )
+  )
+    throw Error(
+      "Operator runtime version/ABI is not an admitted adoption source",
+    );
+  state.adoptedFrom = { version: health.version, at: Date.now() };
+  return state;
+}
+
 export async function platform(options, dependencies = {}) {
   const source = dependencies.release ?? (await loadPlatformRelease());
   const scratch = await mkdtemp(join(tmpdir(), "flare-platform-payload-"));
@@ -606,9 +883,9 @@ export async function platform(options, dependencies = {}) {
 
 async function runPlatform(options, dependencies = {}) {
   const operation = options.operation;
-  if (!["install", "status", "update"].includes(operation))
+  if (!["install", "status", "update", "adopt"].includes(operation))
     throw Error(
-      "Supported: flare platform install|status|update; no deployment has occurred.",
+      "Supported: flare platform install|status|update|adopt; no deployment has occurred.",
     );
   const name = options.name ?? "default";
   if (!validName(name))
@@ -642,7 +919,10 @@ async function runPlatform(options, dependencies = {}) {
   account ??= cf.account;
   if (cf.account !== account) throw Error("Cloudflare account mismatch");
   const store = new InstallationStore(cf, name, dependencies.storeOptions);
-  const discovered = await store.discover();
+  const adoption = operation === "adopt";
+  const discovered = adoption
+    ? await discoverOperator(cf, store, name)
+    : await store.discover();
   let state = discovered.state;
   if (operation === "status")
     return state
@@ -654,6 +934,14 @@ async function runPlatform(options, dependencies = {}) {
           target: release.manifest.version,
         };
   const inventory = await preflight(cf);
+  if (adoption && !state)
+    state = await prepareOperator(
+      cf,
+      inventory,
+      release,
+      options,
+      dependencies,
+    );
   if (state) {
     if (
       (options.owner && options.owner.toLowerCase() !== state.owner) ||
@@ -694,12 +982,12 @@ async function runPlatform(options, dependencies = {}) {
       await assertNoDrift(cf, state);
       if (state.installed.digest === release.manifest.digest)
         return { ...publicState(state, release.manifest), unchanged: true };
-      if (operation === "install")
+      if (operation === "install" || adoption)
         throw Error(
           "Already installed. Use flare platform update to change the platform version",
         );
     }
-  } else if (operation !== "install")
+  } else if (operation !== "install" && !adoption)
     throw Error(
       "Installation is incomplete; resume platform install with the original release",
     );
@@ -707,14 +995,15 @@ async function runPlatform(options, dependencies = {}) {
     account,
     installation: name,
     operation,
-    from: state.installed?.version ?? null,
+    from: state.installed?.version ?? state.adoptedFrom?.version ?? null,
     to: release.manifest.version,
     digest: release.manifest.digest,
     dashboard: "https://" + state.addresses.adminHost,
     runtime: "https://" + state.addresses.runtimeHost,
-    steps: state.installed
-      ? ["migrations", "runtime", "admin", "verify"]
-      : steps,
+    steps:
+      state.installed || adoption
+        ? ["migrations", "runtime", "admin", "verify"]
+        : steps,
     preserve: [
       "Workers and DO namespace identities",
       "projects/dev/prod",
@@ -769,16 +1058,21 @@ async function runPlatform(options, dependencies = {}) {
     await store.cache(state);
   }
   if (!discovered.row) {
-    const tables = (
-      await cf.sql(
-        state.resources.catalog.id,
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('flare_installation','d1_migrations')",
-      )
-    ).results;
-    if (tables.length)
-      throw Error(
-        "Unmanaged catalogue contains tables; refusing to claim existing data",
-      );
+    if (!adoption) {
+      const tables = (
+        await cf.sql(
+          state.resources.catalog.id,
+          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('flare_installation','d1_migrations')",
+        )
+      ).results;
+      if (tables.length)
+        throw Error(
+          "Unmanaged catalogue contains tables; refusing to claim existing data",
+        );
+    } else {
+      await assertResources(cf, state, inventory);
+      await assertNoDrift(cf, state);
+    }
     await store.initialize(
       state,
       await readFile(
@@ -868,7 +1162,7 @@ async function runPlatform(options, dependencies = {}) {
     if (role === "runtime") await supervisorNamespace(cf, state);
   };
   try {
-    if (!state.installed) {
+    if (!state.installed && !adoption) {
       await checkpoint("resources", () =>
         ensureResources(cf, state, store, inventory),
       );
@@ -888,7 +1182,7 @@ async function runPlatform(options, dependencies = {}) {
       if (!(await migrationsApplied(cf, state, release.manifest)))
         throw Error("D1 migrations did not finish");
     });
-    if (!state.installed) {
+    if (!state.installed && !adoption) {
       await checkpoint("owner", async () => {
         await cf.sql(
           state.resources.catalog.id,

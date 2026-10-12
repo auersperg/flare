@@ -352,17 +352,29 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
     report.recoveryDirectory = scratch;
     await saveReport();
     await test("Install immutable npm archive outside the repository", async () => {
-      const result = spawnSync(
-        process.execPath,
-        ["pm", "pack", "--quiet", "--ignore-scripts", "--destination", scratch],
-        {
-          cwd: resolve("packages/flare"),
-          encoding: "utf8",
-          timeout: 120000,
-        },
-      );
-      assert.equal(result.status, 0, "Unable to pack the built release");
-      const archive = resolve("packages/flare", result.stdout.trim());
+      const result = options.archive
+        ? null
+        : spawnSync(
+            process.execPath,
+            [
+              "pm",
+              "pack",
+              "--quiet",
+              "--ignore-scripts",
+              "--destination",
+              scratch,
+            ],
+            {
+              cwd: resolve("packages/flare"),
+              encoding: "utf8",
+              timeout: 120000,
+            },
+          );
+      if (result)
+        assert.equal(result.status, 0, "Unable to pack the built release");
+      const archive = options.archive
+        ? resolve(options.archive)
+        : resolve("packages/flare", result.stdout.trim());
       let initialArchive = archive;
       if (options["from-archive"]) {
         initialArchive = resolve(options["from-archive"]);
@@ -798,6 +810,7 @@ if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? "")).href) {
       confirm: { type: "string" },
       report: { type: "string" },
       "from-archive": { type: "string" },
+      archive: { type: "string" },
     },
     strict: true,
   });

@@ -34,8 +34,8 @@ const cspHashes = {
   scripts: hashes("script-src"),
   styles: hashes("style-src"),
 };
-if (!cspHashes.scripts.length)
-  throw Error("Astro bootstrap CSP hashes missing");
+if (!cspHashes.scripts.length && !/<script\b[^>]*\bsrc=/.test(html))
+  throw Error("Dashboard bootstrap missing");
 for (const role of ["runtime", "admin"]) {
   const result = await bundle({
     entrypoints: [`packages/core/src/${role}.ts`],

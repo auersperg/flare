@@ -10,37 +10,39 @@ if (
 const [command, ...args] = process.argv.slice(2);
 if (!command || ["--help", "help"].includes(command))
   console.log(
-    `Flare ${packageInfo.version} trusted-team preview\n\nflare dev                  Browser login, setup and cloud dev watch\nflare deploy               Confirmed production build and deploy\n\nPlatform lifecycle (Cloudflare account authorization):\nflare platform install\nflare platform status\nflare platform update --dry-run\nflare platform update\n\nAdvanced commands:\nflare releases --env dev|prod\nflare promote --hash <dev release hash> [--cmd "bun run build"]\nflare rollback --hash <retained release hash> --env dev|prod\nflare build --entry <app.ts> --outdir <new directory>\nflare link --platform <management URL> --project <ID>\nflare deploy --env dev|prod --release <directory> [--confirm <project ID>]\nflare dev --entry <app.ts>\nflare backup create|list|restore|delete|status --env dev|prod\n  restore --from dev|prod --id <backup ID> (empty target only)\n\nDashboard is Cloudflare-only. Local tooling does not run a dashboard or backend. Run flare dev for Access-protected browser approval and project-scoped credentials stored outside the application; CI can use FLARE_DEPLOY_TOKEN. Backend dev runs in Cloudflare; start the frontend separately. Production changes require project confirmation. Platform installation is separate.`,
+    `Flare ${packageInfo.version} trusted-team preview\n\nflare dev                  Browser login, setup and cloud dev watch\nflare deploy               Confirmed production build and deploy\n\nPlatform lifecycle (Cloudflare account authorization):\nflare platform install\nflare platform adopt --owner <existing owner email>\nflare platform status\nflare platform update --dry-run\nflare platform update\n\nAdvanced commands:\nflare releases --env dev|prod\nflare promote --hash <dev release hash> [--cmd "bun run build"]\nflare rollback --hash <retained release hash> --env dev|prod\nflare build --entry <app.ts> --outdir <new directory>\nflare link --platform <management URL> --project <ID>\nflare deploy --env dev|prod --release <directory> [--confirm <project ID>]\nflare dev --entry <app.ts>\nflare backup create|list|restore|delete|status --env dev|prod\n  restore --from dev|prod --id <backup ID> (empty target only)\n\nDashboard is Cloudflare-only. Local tooling does not run a dashboard or backend. Run flare dev for Access-protected browser approval and project-scoped credentials stored outside the application; CI can use FLARE_DEPLOY_TOKEN. Backend dev runs in Cloudflare; start the frontend separately. Production changes require project confirmation. Platform installation is separate.`,
   );
 else if (command === "platform") {
   try {
     const operation = args.shift();
     if (["help", "--help"].includes(operation)) {
       console.log(
-        "flare platform install|status|update [--account <ID>] [--name <name>]\ninstall: [--owner <email>] [--dashboard-host <host> --runtime-host <host>] [--subdomain <workers.dev prefix>]\ninstall/update: [--dry-run] [--confirm <account ID>] [--resume]\nUses the platform payload bundled with this CLI release. Never updates applications or runs a local dashboard. Requires separate Cloudflare account permissions; FLARE_DEPLOY_TOKEN is not an account token.",
+        "flare platform install|status|update|adopt [--account <ID>] [--name <name>]\ninstall: [--owner <email>] [--dashboard-host <host> --runtime-host <host>] [--subdomain <workers.dev prefix>]\nadopt: --owner <email> (existing standard flare-admin/flare-runtime/flare-catalog; default installation only)\ninstall/update/adopt: [--dry-run] [--confirm <account ID>] [--resume]\nUses the platform payload bundled with this CLI release. Never updates applications or runs a local dashboard. Requires separate Cloudflare account permissions; FLARE_DEPLOY_TOKEN is not an account token.",
       );
     } else {
-      if (!["install", "status", "update"].includes(operation))
+      if (!["install", "status", "update", "adopt"].includes(operation))
         throw Error(
-          "Supported: flare platform install|status|update; no deployment has occurred.",
+          "Supported: flare platform install|status|update|adopt; no deployment has occurred.",
         );
       const options = { operation };
       const allowed =
-        operation === "install"
-          ? [
-              "account",
-              "name",
-              "owner",
-              "dashboard-host",
-              "runtime-host",
-              "subdomain",
-              "confirm",
-              "dry-run",
-              "resume",
-            ]
-          : operation === "update"
-            ? ["account", "name", "confirm", "dry-run", "resume"]
-            : ["account", "name"];
+        operation === "adopt"
+          ? ["account", "name", "owner", "confirm", "dry-run", "resume"]
+          : operation === "install"
+            ? [
+                "account",
+                "name",
+                "owner",
+                "dashboard-host",
+                "runtime-host",
+                "subdomain",
+                "confirm",
+                "dry-run",
+                "resume",
+              ]
+            : operation === "update"
+              ? ["account", "name", "confirm", "dry-run", "resume"]
+              : ["account", "name"];
       for (let i = 0; i < args.length; i++) {
         const key = args[i]?.slice(2);
         if (

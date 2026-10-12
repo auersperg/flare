@@ -257,7 +257,7 @@ describe("Astro/shadcn dashboard", () => {
       /output:\s*["']static["']/,
     );
     expect(read("packages/core/dashboard/src/pages/index.astro")).toContain(
-      'client:only="react"',
+      'id="flare-dashboard"',
     );
     expect(
       read("packages/core/dashboard/src/components/dashboard.tsx"),

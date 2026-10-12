@@ -52,6 +52,7 @@ jobs:
       - run: bun run verify
       - run: bun run test:kernel
       - run: bun scripts/platform-native-acceptance.mjs
+      - run: bun run test:platform:reproducible
       - run: bun audit --production --audit-level=high
       - run: git diff --exit-code
       - name: Verify the exact independently accepted archive (do not repack)

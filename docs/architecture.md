@@ -1,6 +1,6 @@
 # Flare — полная карта текущей архитектуры
 
-Зафиксировано **12 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Базовый commit до обновления документа: `8e4a451`. Версия исходников **0.3.4**, протокол **1**, runtime ABI **4**.
+Зафиксировано **12 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Базовый commit до обновления документа: `8e4a451`. Версия исходников **0.3.5**, протокол **1**, runtime ABI **4**.
 
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
@@ -359,7 +359,7 @@ bunx --bun --package @auersperg/flare@0.3.2 flare releases --env dev
 bunx --bun --package @auersperg/flare@0.3.2 flare promote --env prod --hash HASH
 ```
 
-Advanced commands: `build`, `link`, `deploy --release`, `rollback`, `backup create|list|restore|delete|status`. Установка платформы отделена: `platform install|status|update`; legacy `platform init` отсутствует. `db generate` отсутствует и не нужен document API. Local workerd используется только acceptance tests ядра, не installed developer backend.
+Advanced commands: `build`, `link`, `deploy --release`, `rollback`, `backup create|list|restore|delete|status`. Установка платформы отделена: `platform install|status|update|adopt`; legacy `platform init` отсутствует. `db generate` отсутствует и не нужен document API. Local workerd используется только acceptance tests ядра, не installed developer backend.
 
 ## 14. Релизы и frontend
 
@@ -466,29 +466,21 @@ install exact registry SDK → app checks
 
 ### Установка и обновление core
 
-Новый managed lifecycle: `flare platform install|status|update` — [команды, state и recovery](platform-lifecycle.md). CLI использует проверенный payload своей версии, D1 installation ID/journal/revision lease и сохраняет namespace/resource IDs. `--dry-run` делает только чтения; destructive/legacy/undeclared upgrades запрещены. Сам installer не выполняет cloud acceptance или автоматические обновления.
+Новый managed lifecycle: `flare platform install|status|update|adopt` — [команды, state и recovery](platform-lifecycle.md). CLI использует проверенный payload своей версии, D1 installation ID/journal/revision lease и сохраняет namespace/resource IDs. `--dry-run` делает только чтения; destructive/legacy/undeclared upgrades запрещены. Сам installer не выполняет cloud acceptance или автоматические обновления.
 
-Ниже сохранён прежний ручной operator flow для существующей, **не автоматически adopted**, установки:
+Стандартную старую operator-установку переводят под CLI один раз через явный `platform adopt --owner EMAIL`: проверяются существующий owner, bindings, domains, Access, ресурсы и ABI; замены namespace/resources, сброса данных или ротации secret нет. После adoption D1 journal становится источником истины. Произвольный import/reconciliation нестандартной конфигурации не поддерживается.
 
-Рабочие конфигурации находятся в ignored `.private/cloudflare/{admin,runtime,landing}.wrangler.json`; отслеживаемые examples в `packages/core` содержат placeholders, а не deploy-ready credentials.
-
-Для новой установки оператор создаёт D1/R2/Queues/DLQ, SQLite DO exports/namespace и Loader binding, применяет административные migrations, добавляет owner membership, signing secret, custom domains и Access application/policy. Admin/Runtime имеют взаимные service bindings: первоначальное provisioning требует временного Runtime bootstrap без отсутствующего Admin binding, затем Admin и финального Runtime. Смена имени Worker не должна незаметно пересоздавать DO namespace и терять данные.
-
-Для уже provisioned установки:
+Обычный flow managed-установки, с выбранной точной совместимой версией CLI:
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run verify
-bun run test:kernel
-# Сначала отдельно применить необходимые D1 migrations, если они изменились.
-bun run deploy:dashboard
-# Только при изменениях Runtime; build уже выполнен предыдущей командой:
-bunx --no-install wrangler deploy --config .private/cloudflare/runtime.wrangler.json
-# Landing — отдельный optional static deployment:
-bunx --no-install wrangler deploy --config .private/cloudflare/landing.wrangler.json
+flare platform status --account ACCOUNT_ID
+flare platform update --account ACCOUNT_ID --dry-run
+flare platform update --account ACCOUNT_ID
 ```
 
-Эти команды явно изменяют облако и не являются частью обычного CI. `deploy:dashboard` не обновляет Runtime автоматически и не применяет D1 migrations. `bun run clean` удаляет только локальный reproducible output/reports/caches, не credentials, source, installed dependencies или cloud data; после него нужен новый build. Cloud acceptance использует отдельные disposable scopes и не должна направляться на данные заказчика.
+CLI применяет additive migrations → Runtime → Admin → verification под D1 lease. Прямой Wrangler deploy этих Workers после adoption запрещён нормальным flow: это out-of-band drift, который следующий update откажется перезаписывать. Source shortcut `bun run update:platform` требует предварительного build и отдельных account credentials. Старый setup отказывает после появления managed D1 journal; private Wrangler configs остаются только историческими operator-артефактами, а landing/frontend hosting независим.
+
+`bun run clean` удаляет только локальный reproducible output/reports/caches, не credentials, source, installed dependencies или cloud data; после него нужен новый build. Cloud acceptance использует отдельные disposable scopes и не должна направляться на данные заказчика.
 
 ### Ресурсы при работе и простое
 
@@ -514,7 +506,7 @@ Local native kernel: настоящее workerd/Lifecycle/facet RPC/SQLite/hiber
 
 ### Не выдаём за завершённые возможности
 
-- `platform install|status|update` реализованы в исходниках 0.3.4 и покрыты mock/package/local-native gates. На временной установке в существующем account владельца прошли реальный install, recovery после потери ответа финального deploy, native-data canary через packaged CLI/SDK, same-version no-op update, discovery без локального cache и scoped cleanup с совпадением исходного/итогового инвентаря. Отдельный реальный upgrade 0.3.3 → 0.3.4 подтвердил сохранность native-data, app release, DO namespace и resource identities, Access policy, старого developer JWT, password session, приватного файла и pending job. Вход владельца через настоящий Access проверен в браузере отдельно. Независимый account/full-scope-token platform CLI ещё не подтверждён. Legacy operator adoption и автоматическое reconciliation конфигурации не реализованы. Подробнее: [platform lifecycle](platform-lifecycle.md).
+- `platform install|status|update|adopt` реализованы в исходниках 0.3.5 и покрыты mock/package/local-native gates. На временной установке в существующем account владельца прошли реальный install, recovery после потери ответа финального deploy, native-data canary через packaged CLI/SDK, same-version no-op update, discovery без локального cache и scoped cleanup с совпадением исходного/итогового инвентаря. Отдельный реальный upgrade 0.3.3 → 0.3.4 подтвердил сохранность native-data, app release, DO namespace и resource identities, Access policy, старого developer JWT, password session, приватного файла и pending job. Вход владельца через настоящий Access проверен в браузере отдельно. Дополнительно прошли exact-registry 0.3.4 → frozen 0.3.5 cloud upgrade с одним scoped token, сохранностью data/auth/files/pending job и полной cleanup, а также adoption личной панели через external compiled CLI. Независимый account/fresh platform CLI install ещё не подтверждён. Явный adoption стандартной operator-установки реализован в 0.3.5; произвольное reconciliation конфигурации не реализовано. Подробнее: [platform lifecycle](platform-lifecycle.md).
 - Полное graceful release draining и все concurrent crash cases: открытая приёмка; serial gate/conflict и recovery checkpoints не равны полной гарантии.
 - Access-authorized cross-client push dashboard invalidation: отсутствует.
 - Доступ к полным historical logs/billing/alerts: в текущем audit неполный.

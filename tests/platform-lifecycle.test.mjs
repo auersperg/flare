@@ -325,6 +325,35 @@ class Cloud {
           text,
         })),
         ...[...worker.secrets].map(([name]) => ({ name, type: "secret_text" })),
+        ...(config.services ?? []).map((b) => ({
+          name: b.binding,
+          service: b.service,
+          entrypoint: b.entrypoint,
+          type: "service",
+        })),
+        ...(config.r2_buckets ?? []).map((b) => ({
+          name: b.binding,
+          type: "r2_bucket",
+          bucket_name: b.bucket_name,
+        })),
+        ...(config.d1_databases ?? []).map((b) => ({
+          name: b.binding,
+          type: "d1",
+          id: b.database_id,
+        })),
+        ...(config.queues?.producers ?? []).map((b) => ({
+          name: b.binding,
+          type: "queue",
+          queue_name: b.queue,
+        })),
+        ...(config.worker_loaders ?? []).map((b) => ({
+          name: b.binding,
+          type: "worker_loader",
+        })),
+        ...(config.ratelimits ?? []).map((b) => ({ ...b, type: "ratelimit" })),
+        ...(config.assets
+          ? [{ name: config.assets.binding, type: "assets" }]
+          : []),
         ...(config.durable_objects
           ? [
               {
@@ -1032,4 +1061,180 @@ describe("Platform failure recovery regressions", () => {
       else process.env.CLOUDFLARE_API_TOKEN = original;
     }
   });
+});
+
+async function operatorContext(work) {
+  await testContext(async (ctx) => {
+    const { cloud, install, deps, directory } = ctx;
+    await install({
+      "dashboard-host": "dashboard.example.test",
+      "runtime-host": "api.example.test",
+    });
+    const state = cloud.state();
+    const legacy = {
+      catalog: "flare-catalog",
+      bundles: "flare-builds",
+      files: "flare-files",
+      jobs: "flare-jobs",
+      dlq: "flare-jobs-dlq",
+    };
+    cloud.databases.get(state.resources.catalog.id).name = legacy.catalog;
+    cloud.databases
+      .get(state.resources.catalog.id)
+      .db.exec("DELETE FROM flare_installation");
+    for (const key of ["bundles", "files"]) {
+      cloud.buckets.delete(state.resources[key].name);
+      cloud.buckets.set(legacy[key], { name: legacy[key] });
+    }
+    for (const key of ["jobs", "dlq"])
+      cloud.queues.get(state.resources[key].id).queue_name = legacy[key];
+    for (const role of ["runtime", "admin"]) {
+      const w = cloud.workers.get(state.workers[role].name);
+      cloud.workers.delete(state.workers[role].name);
+      w.config.name = "flare-" + role;
+      delete w.config.vars.FLARE_INSTALLATION_ID;
+      delete w.config.vars.FLARE_PLATFORM_PAYLOAD;
+      w.settings.bindings = w.settings.bindings.filter(
+        (b) =>
+          !["FLARE_INSTALLATION_ID", "FLARE_PLATFORM_PAYLOAD"].includes(b.name),
+      );
+      for (const b of w.settings.bindings) {
+        if (b.type === "service")
+          b.service = b.service.endsWith("admin")
+            ? "flare-admin"
+            : "flare-runtime";
+        if (b.type === "r2_bucket")
+          b.bucket_name = b.name === "BUNDLES" ? legacy.bundles : legacy.files;
+        if (b.type === "queue") b.queue_name = legacy.jobs;
+      }
+      cloud.workers.set(w.config.name, w);
+    }
+    for (const domain of cloud.domains)
+      domain.service = domain.service.endsWith("admin")
+        ? "flare-admin"
+        : "flare-runtime";
+    await rm(join(directory, "config"), { recursive: true, force: true });
+    const adopt = (options = {}) =>
+      platform(
+        { operation: "adopt", account, owner, confirm: account, ...options },
+        deps,
+      );
+    await work({ ...ctx, state, adopt });
+  });
+}
+
+describe("Explicit operator adoption", () => {
+  it("plans without writes, retains identities/secrets, adopts with the existing engine and discovers without cache", async () =>
+    operatorContext(async ({ cloud, adopt, deps, directory, state }) => {
+      const namespace = cloud.workers.get("flare-runtime").namespace,
+        secretWrites = cloud.secretWrites,
+        writes = cloud.mutationCount();
+      const plan = await adopt({ "dry-run": true });
+      expect(plan.steps).toEqual(["migrations", "runtime", "admin", "verify"]);
+      expect(cloud.mutationCount()).toBe(writes);
+      expect(
+        await new InstallationStore(
+          cloud.api,
+          "default",
+          deps.storeOptions,
+        ).local(),
+      ).toBeNull();
+      const result = await adopt();
+      expect(result.status).toBe("installed");
+      expect(cloud.secretWrites).toBe(secretWrites);
+      expect(cloud.workers.size).toBe(2);
+      expect(cloud.databases.size).toBe(1);
+      expect(cloud.buckets.size).toBe(2);
+      expect(cloud.queues.size).toBe(2);
+      expect(cloud.workers.get("flare-runtime").namespace).toBe(namespace);
+      expect(cloud.state().resources.catalog.id).toBe(
+        state.resources.catalog.id,
+      );
+      expect(cloud.state().origin).toBe("operator");
+      const after = cloud.mutationCount();
+      expect(
+        (await platform({ operation: "update", account }, deps)).unchanged,
+      ).toBe(true);
+      expect(cloud.mutationCount()).toBe(after);
+      await rm(join(directory, "config"), { recursive: true, force: true });
+      expect((await platform({ operation: "status", account }, deps)).id).toBe(
+        result.id,
+      );
+    }));
+  it.each([
+    "owner",
+    "secret",
+    "binding",
+    "issuer",
+    "namespace",
+    "endpoint",
+    "domain",
+    "rate",
+  ])("rejects incompatible %s without writes", async (which) =>
+    operatorContext(async ({ cloud, adopt }) => {
+      const w = cloud.workers.get("flare-runtime");
+      let options = {};
+      if (which === "owner") options.owner = "other@example.test";
+      if (which === "secret")
+        w.settings.bindings = w.settings.bindings.filter(
+          (b) => b.name !== "DEV_SIGNING_KEY",
+        );
+      if (which === "binding")
+        w.settings.bindings.push({
+          name: "EXTRA",
+          type: "service",
+          service: "other",
+        });
+      if (which === "issuer")
+        w.settings.bindings.find((b) => b.name === "DEV_TOKEN_ISSUER").text =
+          "https://different.example.test";
+      if (which === "namespace")
+        w.settings.bindings.find((b) => b.name === "SUPERVISORS").class_name =
+          "Different";
+      if (which === "endpoint") w.config.workers_dev = true;
+      if (which === "domain")
+        cloud.domains.find((d) => d.service === "flare-runtime").hostname =
+          "different.example.test";
+      if (which === "rate")
+        w.settings.bindings.find(
+          (b) => b.name === "RATE_LIMITER",
+        ).simple.limit = 1;
+      const writes = cloud.mutationCount();
+      await expect(adopt(options)).rejects.toThrow();
+      expect(cloud.mutationCount()).toBe(writes);
+    }),
+  );
+  it("resumes a lost Runtime deploy acknowledgement without another Runtime deployment", async () =>
+    operatorContext(async ({ cloud, adopt }) => {
+      cloud.deploymentFailure = "runtime";
+      await expect(adopt()).rejects.toThrow("acknowledgement");
+      const count = cloud.deployments.length,
+        version = cloud.workers.get("flare-runtime").version;
+      await adopt();
+      expect(cloud.deployments.length).toBe(count + 1);
+      expect(cloud.workers.get("flare-runtime").version).toBe(version);
+      expect(cloud.state().operation).toBeNull();
+    }));
+  it("upgrades an adopted layout without replacing identities or rate-limit namespace", async () =>
+    operatorContext(async ({ cloud, adopt, deps }) => {
+      await adopt();
+      const target = await fixture("0.3.4", true);
+      try {
+        const before = cloud.state();
+        await platform(
+          { operation: "update", account, confirm: account },
+          { ...deps, release: target.release },
+        );
+        expect(cloud.state().resources).toEqual(before.resources);
+        expect(cloud.state().supervisorNamespace).toBe(
+          before.supervisorNamespace,
+        );
+        expect(cloud.state().rateLimitNamespace).toBe(
+          before.rateLimitNamespace,
+        );
+        expect(cloud.state().installed.version).toBe("0.3.4");
+      } finally {
+        await rm(target.directory, { recursive: true, force: true });
+      }
+    }));
 });

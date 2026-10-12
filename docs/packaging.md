@@ -1,6 +1,6 @@
 # One application package
 
-`@auersperg/flare` is a self-contained distribution, not a facade over unpublished SDK/CLI dependencies. SDK and CLI are MIT-licensed and prepared for public npm distribution. This change does not publish anything or update Cloudflare.
+`@auersperg/flare` is a self-contained distribution, not a facade over unpublished SDK/CLI dependencies. SDK and CLI are MIT-licensed and prepared for public npm distribution. Source changes do not themselves publish npm; cloud deployment is a separate explicit lifecycle operation.
 
 ## Design
 
@@ -23,12 +23,12 @@ Applications use one registry dependency, without vendor archives or overrides:
 ```json
 {
   "dependencies": {
-    "@auersperg/flare": "0.3.4"
+    "@auersperg/flare": "0.3.5"
   }
 }
 ```
 
-The npm preview is installed with `bun add @auersperg/flare@next`; commands remain `bunx --bun --package @auersperg/flare@next flare dev` and `bunx --bun --package @auersperg/flare@next flare deploy`. Source 0.3.4 adds platform install/status/update and a checksummed `dist/platform` payload to this same archive; [platform lifecycle](platform-lifecycle.md) documents the implementation and remaining cloud gates.
+The npm preview is installed with `bun add @auersperg/flare@next`; commands remain `bunx --bun --package @auersperg/flare@next flare dev` and `bunx --bun --package @auersperg/flare@next flare deploy`. Source 0.3.5 extends platform install/status/update with explicit operator adoption and a reproducible checksummed `dist/platform` payload to this same archive; [platform lifecycle](platform-lifecycle.md) documents the implementation and remaining cloud gates.
 
 ## Verification
 
@@ -63,9 +63,9 @@ bun install --frozen-lockfile
 bun run test:kernel
 bun pm pack --cwd packages/flare --destination artifacts/packages/flare
 bun scripts/verify-package-artifact.mjs
-npm publish artifacts/packages/flare/auersperg-flare-0.3.4.tgz --dry-run --ignore-scripts --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.5.tgz --dry-run --ignore-scripts --access public --tag next
 # Only after reviewing the archive and authorizing the public release:
-npm publish artifacts/packages/flare/auersperg-flare-0.3.4.tgz --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.5.tgz --access public --tag next
 ```
 
 The source package's `prepack` runs the full repository verification, including
@@ -98,3 +98,5 @@ npm trusted publisher settings:
 A configured trust relationship is verified with `npm trust list @auersperg/flare`.
 Configuration alone does not prove a successful OIDC release; that is confirmed
 by the first approved publication run of a new version.
+
+The 0.3.5 source candidate adds `bun run test:platform:reproducible` before publication. Two frozen-lockfile builds at different absolute paths and the working-tree payload must have identical complete manifests. The private dashboard uses the workspace SDK and bounded Tailwind source discovery. There is no generated-output normalization or exception for differing payload digests.

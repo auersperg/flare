@@ -34,11 +34,32 @@ export function validateState(state, account, name) {
   )
     throw Error("Unsupported installation state or account/name mismatch");
   const prefix = `flare-${name}-${state.id.replaceAll("-", "").slice(0, 12)}`;
+  const operator = state.origin === "operator";
+  if (state.origin !== undefined && !operator)
+    throw Error("Unsupported installation origin");
+  if (
+    operator &&
+    (name !== "default" ||
+      !state.addresses?.custom ||
+      !/^\d{1,10}$/.test(state.rateLimitNamespace ?? ""))
+  )
+    throw Error("Unsupported operator installation identity");
+  const legacy = {
+    catalog: "flare-catalog",
+    bundles: "flare-builds",
+    files: "flare-files",
+    jobs: "flare-jobs",
+    dlq: "flare-jobs-dlq",
+  };
   for (const key of ["catalog", "bundles", "files", "jobs", "dlq"])
     if (
       !resourceName.test(state.resources?.[key]?.name ?? "") ||
       state.resources[key].name !==
-        (key === "catalog" ? `flare-${name}-catalog` : `${prefix}-${key}`)
+        (operator
+          ? legacy[key]
+          : key === "catalog"
+            ? `flare-${name}-catalog`
+            : `${prefix}-${key}`)
     )
       throw Error("Invalid installation resource identity");
   if (
@@ -49,7 +70,8 @@ export function validateState(state, account, name) {
   for (const key of ["admin", "runtime"])
     if (
       !resourceName.test(state.workers?.[key]?.name ?? "") ||
-      state.workers[key].name !== `${prefix}-${key}`
+      state.workers[key].name !==
+        (operator ? `flare-${key}` : `${prefix}-${key}`)
     )
       throw Error("Invalid Worker identity");
   if (
@@ -81,7 +103,7 @@ export function validateState(state, account, name) {
   if (
     state.operation &&
     (!uuid.test(state.operation.id ?? "") ||
-      !["install", "update"].includes(state.operation.kind) ||
+      !["install", "update", "adopt"].includes(state.operation.kind) ||
       !/^[a-f0-9]{64}$/.test(state.operation.targetDigest ?? "") ||
       !Array.isArray(state.operation.completed) ||
       state.operation.completed.some(
@@ -251,12 +273,18 @@ export class InstallationStore {
       return { state: local, row: null };
     }
     const candidates = (await this.cf.list("d1/database")).filter(
-      (db) => db.name === `flare-${this.name}-catalog`,
+      (db) =>
+        db.name === `flare-${this.name}-catalog` ||
+        (this.name === "default" && db.name === "flare-catalog"),
     );
     const found = [];
     for (const candidate of candidates) {
       const row = await this.row(candidate.uuid);
       if (row) found.push(row);
+      else if (candidate.name === "flare-catalog")
+        throw Error(
+          "Legacy operator installation found. Use explicit platform adopt; do not reinstall over existing data.",
+        );
       else if (candidate.name !== local?.resources.catalog.name)
         throw Error(
           "Unmanaged catalogue found. Refusing implicit adoption; use a distinct installation name or an explicit migration.",
@@ -270,17 +298,6 @@ export class InstallationStore {
       this.revision = found[0].revision;
       return { state: found[0].state, row: found[0] };
     }
-    // Legacy operator installs must not silently receive a second default platform.
-    if (
-      !local &&
-      this.name === "default" &&
-      (await this.cf.list("d1/database")).some(
-        (db) => db.name === "flare-catalog",
-      )
-    )
-      throw Error(
-        "Legacy operator installation found. Automatic adoption is not supported yet; do not reinstall over existing data.",
-      );
     return { state: local, row: null };
   }
   async initialize(state, ddl) {
