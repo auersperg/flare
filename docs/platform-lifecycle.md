@@ -1,6 +1,6 @@
 # Platform installation and updates
 
-Source release **0.3.4** adds `flare platform install|status|update`. Registry availability is a separate release gate: check the exact version, not a moving tag. Fresh install, interrupted final-deploy recovery, control-plane readiness, a real CLI/SDK native-data canary, same-version no-op update, cache-free discovery and scoped cleanup have passed in a disposable installation on the owner's existing Cloudflare account. A second disposable run passed the genuine **0.3.3 → 0.3.4** update with data/auth/files/pending-job preservation; the owner also signed in through real Cloudflare Access in the existing authorized browser. This is not independent-account or full-scope-token platform CLI acceptance. Source/package tests, native local workerd and real Cloudflare acceptance are separate proofs.
+Source release **0.3.4** adds `flare platform install|status|update`. The exact npm release **0.3.4** is available under `next` as of October 12, 2026; `latest` remains 0.3.1. Registry installation, payload integrity and compiled CLI/portable SDK imports were checked outside the repository. Prefer the exact version, not a moving tag. Fresh install, interrupted final-deploy recovery, control-plane readiness, a real CLI/SDK native-data canary, same-version no-op update, cache-free discovery and scoped cleanup have passed in a disposable installation on the owner's existing Cloudflare account. A second disposable run passed the genuine **0.3.3 → 0.3.4** update with data/auth/files/pending-job preservation; the owner also signed in through real Cloudflare Access in the existing authorized browser. This is not independent-account or full-scope-token platform CLI acceptance. Source/package tests, native local workerd and real Cloudflare acceptance are separate proofs.
 
 ## Prerequisites and authorization
 
@@ -13,6 +13,13 @@ Do not paste credentials into command arguments or commit them. Set `CLOUDFLARE_
 
 ## First installation
 
+For the published preview:
+
+```sh
+bunx --bun --package @auersperg/flare@0.3.4 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
+bunx --bun --package @auersperg/flare@0.3.4 flare platform install --account ACCOUNT_ID --owner owner@example.com
+```
+
 For a source checkout, build and use the **compiled** CLI:
 
 ```sh
@@ -22,7 +29,7 @@ bun packages/flare/dist/cli/flare.js platform install --account ACCOUNT_ID --own
 bun packages/flare/dist/cli/flare.js platform install --account ACCOUNT_ID --owner owner@example.com
 ```
 
-Once a verified release is published, the same interface is available through its exact npm version. Do not assume an existing `next` tag already contains 0.3.4.
+The published package contains the same interface and complete platform payload. Always verify the exact version before deployment; moving registry tags can change.
 
 The default installation name is `default`; use `--name NAME` for an independent installation. Account ID confirmation is required before cloud writes (`--confirm ACCOUNT_ID` for non-interactive operation). Omitting account/owner uses interactive discovery/prompts. Names are 1–20 lowercase letters/digits/hyphens, starting with a letter.
 
@@ -50,7 +57,7 @@ flare platform update --account ACCOUNT_ID --dry-run
 flare platform update --account ACCOUNT_ID
 ```
 
-The target is the payload bundled with the running CLI, not a downloaded moving `latest` platform. Maintainers publish a new immutable package for different bytes. Same version/different digest, downgrades, protocol/ABI mismatch and undeclared version transitions are rejected. `upgradeFrom` is an explicit manifest allowlist; **the first 0.3.3 manifest has an empty list**, because no preceding release has managed installation state. The 0.3.4 candidate declares **0.3.3** as its compatible source; this transition passed the real-cloud gate. Each declared transition must pass the cross-version gate before release. Future versions must declare and test supported source versions.
+The target is the payload bundled with the running CLI, not a downloaded moving `latest` platform. Maintainers publish a new immutable package for different bytes. Same version/different digest, downgrades, protocol/ABI mismatch and undeclared version transitions are rejected. `upgradeFrom` is an explicit manifest allowlist; **the first 0.3.3 manifest has an empty list**, because no preceding release has managed installation state. The 0.3.4 candidate declares **0.3.3** as its compatible source; this transition passed the real-cloud gate. Each declared transition must pass the cross-version gate before release. Future versions must declare and test supported source versions. Always preserve the exact registry archive for future upgrade acceptance; rebuilding the same source can change Astro’s SSR island identifier and therefore the payload digest. The published 0.3.4 digest is `b2a9b9ba43b5bd2514c26eb40e9e99792b1a20387d8503f9284dc853781fd78e`; comparison with the cloud-tested candidate found only that one identifier difference, with identical executable/migration/bootstrap/other asset bytes and release contracts. The published manifest itself was not separately cloud-deployed.
 
 Updates apply additive D1 migrations, then Runtime and Admin, then verify. Previously applied migration files must remain byte-identical. Workers update sequentially, not atomically; compatible intermediate states and possible client reconnection are part of the release contract. There is no zero-downtime or full graceful job/action-drain guarantee in this preview.
 

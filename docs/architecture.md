@@ -446,7 +446,7 @@ Workflow проверяет имя/version/license MIT/private flag, повто�
 
 Publish job имеет `id-token: write`; npm Trusted Publisher связан с repo → `publish.yml` → environment `npm`. Постоянный npm publish token workflow не использует. Это [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/), не авторизация Cloudflare.
 
-Зафиксированный срез registry от 12.10.2026: публичный `@auersperg/flare@0.3.2` под `next`, `latest = 0.3.1`. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.4 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
+Зафиксированный срез registry от 12.10.2026: публичный `@auersperg/flare@0.3.4` под `next`, `latest = 0.3.1`. Публикация через защищённый GitHub workflow с provenance завершена; registry tarball установлен вне repo с проверкой каждого файла, integrity, CLI/SDK и platform manifest. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.4 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
 
 ### 18.3 CI клиентского приложения
 
