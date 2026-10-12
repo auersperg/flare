@@ -95,7 +95,12 @@ export default function FunctionsView(scope: Scope) {
       <section className="min-w-0 flex-1">
         <Status {...r} />
         {active ? (
-          <Runner key={active[0]} {...scope} path={active[0]} fn={active[1]} />
+          <Runner
+            key={active[0] + ":" + JSON.stringify(active[1])}
+            {...scope}
+            path={active[0]}
+            fn={active[1]}
+          />
         ) : r.data ? (
           <Empty title="No deployed functions" />
         ) : null}
@@ -125,17 +130,21 @@ function Runner({
     [executed, setExecuted] = useState(false),
     [elapsed, setElapsed] = useState<number>();
   const alive = useRef(true),
-    client = useRef<FlareClient>(undefined);
+    client = useRef<FlareClient>(undefined),
+    pending = useRef<AbortController>(undefined);
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
+      pending.current?.abort();
       client.current?.dispose();
     };
   }, []);
   const run = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!allowed || busy) return;
+    if (!allowed || busy || pending.current) return;
+    const abort = new AbortController();
+    pending.current = abort;
     setBusy(true);
     setFailure("");
     setElapsed(undefined);
@@ -146,23 +155,25 @@ function Runner({
       const info = await api<{ url: string; token: string }>(
         scopePath(project, env) + "/dev-token",
         {},
+        abort.signal,
       );
-      if (!alive.current) return;
+      if (!alive.current || abort.signal.aborted) return;
       client.current = createClient({
         url: info.url,
         getToken: () => info.token,
       });
       const started = performance.now(),
         value = await client.current[fn.kind](reference(path, fn.kind), input);
-      if (alive.current) {
+      if (alive.current && !abort.signal.aborted) {
         setResult(value);
         setExecuted(true);
         setElapsed(Math.round(performance.now() - started));
       }
     } catch (e) {
-      if (alive.current) setFailure(message(e));
+      if (alive.current && !abort.signal.aborted) setFailure(message(e));
     } finally {
       client.current?.dispose();
+      if (pending.current === abort) pending.current = undefined;
       if (alive.current) setBusy(false);
     }
   };

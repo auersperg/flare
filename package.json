@@ -1,7 +1,7 @@
 {
   "name": "flare-workspace",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.4",
   "type": "module",
   "workspaces": [
     "packages/flare",
@@ -9,15 +9,17 @@
     "packages/core/dashboard"
   ],
   "scripts": {
-    "build": "bun scripts/build-packages.mjs && bun scripts/build-platform.mjs",
+    "build": "bun scripts/build-packages.mjs && bun scripts/build-platform.mjs && bun scripts/package-platform.mjs",
     "check": "bun x --bun tsc --noEmit && bun run --bun --cwd packages/core/dashboard check",
     "test": "bun test ./tests",
     "test:kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs",
+    "test:platform:local": "bun run build && bun scripts/platform-native-acceptance.mjs",
     "test:packages": "bun run build && bun scripts/package-acceptance.mjs",
     "test:cloud-kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs --cloud",
     "test:cloud-sdk": "bun scripts/sdk-cloud-acceptance.mjs",
     "build:platform": "bun run build",
     "test:platform:cloud": "bun scripts/platform-acceptance.mjs",
+    "test:platform:lifecycle:cloud": "bun scripts/platform-lifecycle-cloud-acceptance.mjs",
     "test:backup:cloud": "bun scripts/backup-acceptance.mjs",
     "format": "bun x --bun prettier --write .",
     "format:check": "bun x --bun prettier --check .",

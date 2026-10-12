@@ -27,6 +27,11 @@ test("local cleanup removes only reproducible output and preserves operator/appl
       ".private/cloudflare/admin.wrangler.json",
       ".private/cloudflare/runtime.wrangler.json",
       ".flare/project.json",
+      "packages/core/bootstrap/.flare/project.json",
+      "tests/fixtures/.flare/project.json",
+      "tests/fixtures/tasks/.flare/project.json",
+      "tests/kernel/.dev.vars",
+      "tests/kernel/.dev 2.vars",
       "tests/fixtures/tasks/app.ts",
       "node_modules/dependency/index.js",
       ".git/config",
@@ -39,12 +44,18 @@ test("local cleanup removes only reproducible output and preserves operator/appl
       "packages/flare/dist/index.js",
       "packages/core/dist/dashboard/index 2.html",
       "packages/core/dashboard/.astro/types.d.ts",
+      "tests/fixtures/.flare/tmp/build/generated.js",
+      "packages/core/bootstrap/.flare/tmp/build/generated.js",
+      "tests/fixtures/tasks/.flare/tmp/build/generated.js",
       "test/node_modules/.vite/deps/old.js",
       "node_modules/.vite-temp/old.js",
       ".private/.DS_Store",
       "packages/.DS_Store",
     ];
     for (const path of generated) await put(path);
+    await mkdir(join(root, "packages 2"));
+    // A conflict-copy name alone never authorizes deleting its contents.
+    await put("node_modules 2/dependency/index.js");
     // An unrelated application's source makes the legacy directory nonempty.
     await put("test/application.ts");
     const run = () =>
@@ -59,12 +70,19 @@ test("local cleanup removes only reproducible output and preserves operator/appl
     expect(await readFile(join(root, "test/application.ts"), "utf8")).toBe(
       "keep",
     );
+    expect(
+      await readFile(join(root, "node_modules 2/dependency/index.js"), "utf8"),
+    ).toBe("keep");
+    await expect(access(join(root, "packages 2"))).rejects.toThrow();
     for (const path of generated)
       await expect(access(join(root, path))).rejects.toThrow();
     expect(run().exitCode).toBe(0);
     await rm(join(root, "test/application.ts"));
     expect(run().exitCode).toBe(0);
     await expect(access(join(root, "test"))).rejects.toThrow();
+    await rm(join(root, "node_modules 2/dependency"), { recursive: true });
+    expect(run().exitCode).toBe(0);
+    await expect(access(join(root, "node_modules 2"))).rejects.toThrow();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

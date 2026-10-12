@@ -17,8 +17,9 @@ for (const path of [
   "node_modules/.vite-temp",
   "packages/core/dashboard/node_modules/.vite-temp",
   "test/node_modules/.vite",
-  "packages/core/bootstrap/.flare",
-  "tests/fixtures/tasks/.flare",
+  "packages/core/bootstrap/.flare/tmp",
+  "tests/fixtures/.flare/tmp",
+  "tests/fixtures/tasks/.flare/tmp",
   "tests/kernel/.wrangler",
 ]) {
   await rm(resolve(root, path), { recursive: true, force: true });
@@ -36,7 +37,16 @@ async function removeFinderMetadata(directory) {
 }
 await removeFinderMetadata(root);
 // Remove obsolete empty directories, never an application or CLI connection.
-for (const path of ["test/node_modules", "test", ".flare"]) {
+for (const path of [
+  "test/node_modules",
+  "test",
+  ".flare",
+  "packages/core/bootstrap/.flare",
+  "tests/fixtures/.flare",
+  "tests/fixtures/tasks/.flare",
+  "node_modules 2",
+  "packages 2",
+]) {
   await rmdir(resolve(root, path)).catch((error) => {
     if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error.code)) throw error;
   });

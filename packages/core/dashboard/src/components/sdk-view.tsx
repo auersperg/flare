@@ -70,7 +70,7 @@ export default function SdkView({ project, env, session }: Scope) {
           <p className="text-muted-foreground">
             {env === "dev"
               ? "A 15-minute identity for this project's development environment. Keep it in a git-ignored local file, never in a bundle or commit. Request a new token after expiry."
-              : "Use an OIDC access token from your application's login provider. Developer identities cannot access production."}
+              : "Use enabled built-in password authentication or a configured OIDC provider. Developer identities cannot access production; application handlers enforce record permissions."}
           </p>
           {env === "dev" && session.role !== "viewer" && (
             <Button variant="outline" onClick={issueToken} disabled={busy}>

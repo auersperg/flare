@@ -31,22 +31,52 @@ async function request(platform, path, body) {
   }
   if (!token)
     throw Error("Sign in with flare dev; CI can set FLARE_DEPLOY_TOKEN");
-  const r = await fetch(allowedUrl(platform) + path, {
-    method: body === undefined ? "GET" : "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    redirect: "error",
-    signal: AbortSignal.timeout(60000),
-  });
-  const result = await r.json();
-  if (!r.ok) {
+  const url = allowedUrl(platform) + path;
+  const write = body !== undefined;
+  const encoded = write ? JSON.stringify(body) : undefined;
+  let r;
+  try {
+    r = await fetch(url, {
+      method: write ? "POST" : "GET",
+      headers: {
+        authorization: `Bearer ${token}`,
+        ...(write ? { "content-type": "application/json" } : {}),
+      },
+      body: encoded,
+      redirect: "error",
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch {
     const error = Error(
-      `${result.error ?? "Deployment failed"} (HTTP ${r.status}); writes are not automatically retried`,
+      write
+        ? "Management write outcome is unknown; inspect current state before retrying. Writes are not automatically retried."
+        : "Management request interrupted or timed out",
+    );
+    error.ambiguous = write;
+    throw error;
+  }
+  let result;
+  try {
+    result = await r.json();
+  } catch {
+    const error = Error(
+      `Invalid management response (HTTP ${r.status}); ${write && (r.ok || r.status >= 500) ? "write outcome is unknown; inspect current state before retrying" : "check platform availability and authorization"}`,
     );
     error.status = r.status;
+    error.ambiguous = write && (r.ok || r.status >= 500);
+    throw error;
+  }
+  if (!r.ok) {
+    const code =
+      typeof result?.error === "string" &&
+      /^[A-Z][A-Z0-9_]{0,63}$/.test(result.error)
+        ? result.error
+        : "Management request failed";
+    const error = Error(
+      `${code} (HTTP ${r.status}); writes are not automatically retried`,
+    );
+    error.status = r.status;
+    error.ambiguous = write && r.status >= 500;
     throw error;
   }
   return result;
@@ -80,10 +110,6 @@ export async function link(options) {
 export async function deploy(options = {}) {
   if (!options.release) {
     const config = JSON.parse(await readFile(".flare/project.json", "utf8"));
-    const { prepare, generateApi } = await import("./project.mjs");
-    const { buildApplication } = await import("./build.mjs");
-    const source = await prepare(),
-      directory = resolve(".flare/releases/" + randomUUID());
     const env = options.env ?? "prod";
     if (!["dev", "prod"].includes(env))
       throw Error("Environment must be dev or prod");
@@ -106,6 +132,10 @@ export async function deploy(options = {}) {
         prompt.close();
       }
     }
+    const { prepare, generateApi } = await import("./project.mjs");
+    const { buildApplication } = await import("./build.mjs");
+    const source = await prepare(),
+      directory = resolve(".flare/releases/" + randomUUID());
     try {
       await buildApplication({ ...source, outdir: directory });
       const result = await deploy({
@@ -135,16 +165,20 @@ export async function deploy(options = {}) {
     facet: await read("facet.js"),
     action: await read("action.js"),
   };
-  let expected;
-  if (options.cmd) {
-    const health = await request(
-      config.platform,
-      `/api/projects/${config.project}/${env}/health`,
+  const health = await request(
+    config.platform,
+    `/api/projects/${config.project}/${env}/health`,
+  );
+  const expected = health?.active;
+  if (!/^[a-f0-9]{64}$/.test(expected ?? ""))
+    throw Error(
+      "Environment has no active backend; inspect dashboard Health before deploying",
     );
-    expected = health.active;
-    const { generateApi } = await import("./project.mjs");
-    await generateApi(directory);
-    await frontendBuild(config, env, options.cmd);
+  if (options.cmd) {
+    const { withGeneratedApi } = await import("./project.mjs");
+    await withGeneratedApi(directory, () =>
+      frontendBuild(config, env, options.cmd),
+    );
   }
   return request(
     config.platform,
@@ -359,7 +393,7 @@ async function releaseOperation(options, operation) {
     if (bundle.release.hash !== options.hash)
       throw Error("Release hash mismatch");
     const { generateReferences } = await import("./build.mjs");
-    const { generateApi } = await import("./project.mjs");
+    const { withGeneratedApi } = await import("./project.mjs");
     await mkdir(".flare", { recursive: true });
     const directory = await mkdtemp(resolve(".flare/release-contract-"));
     try {
@@ -371,8 +405,9 @@ async function releaseOperation(options, operation) {
         join(directory, "manifest.json"),
         JSON.stringify(bundle.manifest),
       );
-      await generateApi(directory);
-      await frontendBuild(config, env, options.cmd);
+      await withGeneratedApi(directory, () =>
+        frontendBuild(config, env, options.cmd),
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

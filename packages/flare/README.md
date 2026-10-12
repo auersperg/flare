@@ -63,7 +63,7 @@ flare deploy --env dev --release release
 
 Immutable output contains facet/action modules, `schema.json`, manifest, checksums, generated TypeScript API and OpenAPI 3.1. Only ABI 4 is accepted. No old `tables` declarations, `--migrations` flag or Drizzle pipeline.
 
-Browser approval is protected by online Access/owner authorization and same-origin CSRF. Project-scoped credentials stay outside source/frontend env. Dev publishes to an already provisioned platform; general `platform init` is not implemented. No npm publication or cloud provisioning occurs during local verification.
+Browser approval is protected by online Access/owner authorization and same-origin CSRF. Project-scoped credentials stay outside source/frontend env. Dev publishes to an already provisioned platform. Source 0.3.4 includes `platform install|status|update` plus a checksummed Core/dashboard payload, with separate Cloudflare account authorization; see [platform lifecycle](../../docs/platform-lifecycle.md). Disposable install/recovery and a genuine 0.3.3 → 0.3.4 upgrade passed in the owner’s Cloudflare account. This remains a trusted-team preview; independent-account acceptance with a full-scope platform CLI token is not yet complete. Check the registry for exact-version availability rather than assuming a moving tag contains the platform commands. No npm publication or cloud provisioning occurs during local verification.
 
 ## Immutable releases
 
@@ -79,6 +79,8 @@ History keeps the last five **distinct successful backend builds**, with their f
 Promote copies the selected immutable dev bundle to prod without recompiling or copying development data. Rollback activates compatible historical code against current data; it does not rewind the database. Both require explicit confirmation (`--confirm PROJECT_UUID` in CI), validate schema/job compatibility and compare the target's expected active hash. A changed target returns a conflict, never an automatic write retry.
 
 `--cmd` generates client references for the exact selected bundle and builds the frontend **before** activating the backend. The child receives the selected environment URL via `FLARE_URL`, `PUBLIC_FLARE_URL`, `VITE_FLARE_URL`, `NEXT_PUBLIC_FLARE_URL` and `EXPO_PUBLIC_FLARE_URL`; local dev env files remain unchanged. A failed build does not publish backend code. Framework build variables must be public URLs, not credentials.
+
+Every CLI deploy compares the expected active backend hash, including without `--cmd`; conflicts are not retried. A failed frontend build restores the previous generated `api.ts`/`references.ts` (or their absence). Invalid/unconfirmed deployments do not scaffold or evaluate app code. Management errors retain HTTP status; interrupted writes and malformed successful responses are reported as unknown outcomes, never replayed automatically.
 
 Frontend hosting stays with native Wrangler or another hosting tool. An application release script can sequence Flare + build + Wrangler. Frontend publication failure after backend activation is an explicit partial release, not an atomic transaction. Dashboard Health → Development/Production releases offers contract inspection, backend promotion and rollback on demand, with no polling. It does not publish the frontend.
 
@@ -108,14 +110,18 @@ const url = import.meta.env.PUBLIC_FLARE_URL;
 const auth = createPasswordAuth({ url });
 const client = createClient({ url, getToken: auth.getToken });
 const stopAuth = auth.onChange(() => client.refreshAuth());
-await auth.register("my-login", "a long unique passphrase");
-// Later: await auth.login(login, password), auth.me(), auth.changePassword(old, next).
+await auth.restore(); // Verify a saved session before rendering protected UI.
+// Explicit sign-in: auth.register(login, password) or auth.login(login, password).
+// Account operations: auth.me(), auth.changePassword(old, next).
 await auth.logout();
 stopAuth();
 client.dispose();
+auth.dispose();
 ```
 
-Sessions are memory-only and expire after at most 12 hours. Reload requires login again. Password reset/block/revoke in Auth disconnects affected live users. Owner/Access manages accounts; application users and project CLI credentials do not gain dashboard privileges. Public login/registration have bounded rate limits; public registration is not equivalent to public access to private rows. Passwords require 6–128 characters. There is no email verification/recovery or MFA in this minimal version; owner reset is available. Existing short-lived R2 download grants remain valid for their explicit TTL, not until session logout.
+Sessions expire after at most 12 hours. Browsers default to localStorage scoped to the deployment URL; `restore()` verifies the saved session against the server. Server/mobile callers provide storage explicitly or use `storage: null` for memory-only auth. Temporary network failures do not erase saved credentials; cross-tab logout is synchronized. `dispose()` is not logout. This is bearer-token storage, not HttpOnly-cookie authentication: prevent XSS in the application. No perpetual refresh is implemented.
+
+Password reset/block/revoke disconnects affected live users. Live cache is cleared when authorization is rejected, including during reconnect ticket acquisition; a transient connection failure keeps the last valid snapshot. Owner/Access manages accounts; application users and project CLI credentials do not gain account-management privileges. Handlers enforce record ownership. Passwords require 6–128 characters; registration is rate-limited and closed by default. Email verification/recovery and MFA are not implemented. Existing R2 download grants remain valid for their explicit TTL, not until session logout.
 
 ## License and distribution
 

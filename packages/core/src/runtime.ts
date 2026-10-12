@@ -1,4 +1,5 @@
 import { PasswordAuth } from "./auth.js";
+import packageInfo from "../package.json" with { type: "json" };
 import { BackupStore, backupPrefix } from "./backups.js";
 import { InvocationSummaries } from "./observability.js";
 import { queueBatches, consumeBatch } from "./queue.js";
@@ -82,8 +83,22 @@ interface Env {
   RUNTIME_URL: string;
   DASHBOARD_URL?: string;
   DEV_TOKEN_ISSUER?: string;
+  FLARE_INSTALLATION_ID?: string;
+  FLARE_PLATFORM_PAYLOAD?: string;
   RATE_LIMITER: RateLimit;
-  ADMIN_API: { request(request: Request): Promise<Response> };
+  ADMIN_API: {
+    request(request: Request): Promise<Response>;
+    readiness(): Promise<{
+      version: string;
+      installationId?: string;
+      platformPayload?: string;
+      runtime: {
+        version: string;
+        installationId?: string;
+        platformPayload?: string;
+      };
+    }>;
+  };
 }
 // A bounded per-isolate cache; cold aliases need one R2 read, not a catalog call.
 const registries = new WeakMap<R2Bucket, AliasRegistry>();
@@ -1919,11 +1934,22 @@ export class RuntimeControl extends WorkerEntrypoint<Env> {
           "publishAlias",
           "destroy",
           "prepareDestroy",
+          "readiness",
         ].includes(op)
       )
         fail("INVALID_OPERATION");
       return (this as any)[op](...args);
     });
+  }
+
+  readiness() {
+    return {
+      version: packageInfo.version,
+      protocol: 1,
+      runtimeAbi: 4,
+      installationId: this.env.FLARE_INSTALLATION_ID,
+      platformPayload: this.env.FLARE_PLATFORM_PAYLOAD,
+    };
   }
 
   destroy(scope: string) {
@@ -2017,12 +2043,56 @@ export class RuntimeControl extends WorkerEntrypoint<Env> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/health")
-      return Response.json({
-        service: "flare-runtime",
-        version: "0.3.0",
-        status: "service-reachable",
-      });
+    if (url.pathname === "/health") {
+      if (url.searchParams.get("ready") === "1") {
+        if (
+          !(
+            await env.RATE_LIMITER.limit({
+              key:
+                "readiness:" +
+                (request.headers.get("cf-connecting-ip") ?? "unknown"),
+            })
+          ).success
+        )
+          return new Response("Rate limited", { status: 429 });
+        try {
+          const admin = await env.ADMIN_API.readiness();
+          if (
+            ![admin, admin.runtime].every(
+              (role) =>
+                role.version === packageInfo.version &&
+                role.installationId === env.FLARE_INSTALLATION_ID &&
+                role.platformPayload === env.FLARE_PLATFORM_PAYLOAD,
+            )
+          )
+            throw Error("Platform role mismatch");
+        } catch (error) {
+          console.error({
+            source: "flare-runtime-readiness",
+            code: status(error).code,
+          });
+          return Response.json(
+            { status: "not-ready" },
+            { status: 503, headers: { "cache-control": "no-store" } },
+          );
+        }
+      }
+      return Response.json(
+        {
+          service: "flare-runtime",
+          version: packageInfo.version,
+          protocol: 1,
+          runtimeAbi: 4,
+          installationId: env.FLARE_INSTALLATION_ID,
+          platformPayload: env.FLARE_PLATFORM_PAYLOAD,
+          ...(url.searchParams.get("ready") === "1"
+            ? { readiness: "control-plane-ready" }
+            : {}),
+          status: "service-reachable",
+        },
+        { headers: { "cache-control": "no-store" } },
+      );
+    }
     if (url.pathname.startsWith("/control/api/")) {
       if (!env.ADMIN_API) return new Response("Not ready", { status: 503 });
       if (

@@ -535,6 +535,82 @@ describe("live client lifecycle", () => {
 });
 
 describe("expired live cache", () => {
+  it.each([
+    ["UNAUTHORIZED", 401],
+    ["AUTH_EXPIRED", 401],
+    ["FORBIDDEN", 403],
+    ["AUTH_DISABLED", 403],
+  ] as const)(
+    "does not replay cached data after reconnect ticket fails with %s",
+    async (code, status) => {
+      jest.useFakeTimers();
+      let denied = false;
+      const sockets: TestSocket[] = [];
+      const client = createClient({
+        url: "https://backend.example",
+        fetch: async () =>
+          denied
+            ? new Response(JSON.stringify({ error: code }), { status })
+            : json({ ticket: "ticket" }),
+        createWebSocket: () => {
+          const socket = new TestSocket();
+          sockets.push(socket);
+          return socket;
+        },
+      });
+      try {
+        const ref = reference("counter/publicGet", "query"),
+          error = jest.fn();
+        client.onUpdate(ref, {}, () => {}, error);
+        await ticks();
+        sockets[0].open();
+        sockets[0].snapshot("subscription-1", 1, "PRIVATE_OLD_IDENTITY");
+        denied = true;
+        sockets[0].close();
+        jest.advanceTimersByTime(300);
+        await ticks();
+        await ticks();
+        expect(error).toHaveBeenLastCalledWith(
+          expect.objectContaining({ code }),
+        );
+        const next = jest.fn();
+        client.onUpdate(ref, {}, next);
+        expect(next).not.toHaveBeenCalled();
+        expect(sockets).toHaveLength(1);
+      } finally {
+        client.dispose();
+      }
+    },
+  );
+  it("keeps the last snapshot after a transient ticket network failure", async () => {
+    jest.useFakeTimers();
+    let offline = false;
+    const socket = new TestSocket();
+    const client = createClient({
+      url: "https://backend.example",
+      fetch: async () => {
+        if (offline) throw Error("Temporary outage");
+        return json({ ticket: "ticket" });
+      },
+      createWebSocket: () => socket,
+    });
+    try {
+      const ref = reference("counter/publicGet", "query");
+      client.onUpdate(ref, {}, () => {});
+      await ticks();
+      socket.open();
+      socket.snapshot("subscription-1", 1, "LAST_VALID_SNAPSHOT");
+      offline = true;
+      socket.close();
+      jest.advanceTimersByTime(300);
+      await ticks();
+      const next = jest.fn();
+      client.onUpdate(ref, {}, next);
+      expect(next).toHaveBeenCalledWith("LAST_VALID_SNAPSHOT");
+    } finally {
+      client.dispose();
+    }
+  });
   it("clears cached snapshots when the server closes for authorization", async () => {
     const { client, sockets } = await fixture();
     const ref = reference("counter/publicGet", "query"),

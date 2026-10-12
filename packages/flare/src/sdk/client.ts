@@ -135,6 +135,14 @@ type Subscription = {
   hasValue: boolean;
   terminal: boolean;
 };
+const authorizationErrors = new Set([
+  "UNAUTHORIZED",
+  "AUTH_EXPIRED",
+  "FORBIDDEN",
+  "AUTH_DISABLED",
+  "HTTP_401",
+  "HTTP_403",
+]);
 
 export function createClient(options: ClientOptions) {
   const base = new URL(options.url);
@@ -363,9 +371,7 @@ export function createClient(options: ClientOptions) {
           if (!sub || sub.terminal) return;
           if (frame.type === "error") {
             sub.terminal = true;
-            if (
-              ["AUTH_EXPIRED", "UNAUTHORIZED", "FORBIDDEN"].includes(frame.code)
-            ) {
+            if (authorizationErrors.has(frame.code)) {
               sub.hasValue = false;
               sub.value = undefined;
             }
@@ -439,7 +445,7 @@ export function createClient(options: ClientOptions) {
       for (const sub of subscriptions.values()) {
         if (
           error instanceof FlareError &&
-          ["HTTP_401", "HTTP_403"].includes(error.code)
+          authorizationErrors.has(error.code)
         ) {
           sub.hasValue = false;
           sub.value = undefined;

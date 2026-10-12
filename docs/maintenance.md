@@ -1,5 +1,9 @@
 # Maintenance
 
+New source 0.3.4 managed installs use [platform lifecycle](platform-lifecycle.md); independent cloud acceptance and legacy adoption remain pending. This document also retains the existing manual operator flow.
+
+Operational invariants for the current source tree. [Architecture](architecture.md) is the canonical implementation map; [production runbook](production-runbook.md) is the release/recovery checklist. Package manifests and current verification output take precedence over dated reports. This guide intentionally does not retain obsolete application inventories, benchmark samples or test-count checkpoints.
+
 ## Production-focused source tree
 
 Two top-level packages: `core` and `@auersperg/flare`. SDK and CLI live inside `flare/src/sdk` and `flare/src/cli`, with one package manifest and no forwarding wrappers. Core contains the online Astro/shadcn dashboard and an empty application bootstrap used when creating projects. No demonstration frontend, hard-coded developer-session endpoint or application workspace belongs in the production repository.
@@ -10,7 +14,7 @@ Customer frontend/backend source belongs in separate application repositories. T
 
 ## Build and dependency boundaries
 
-- One Bun workspace and lockfile; SDK/CLI 0.3.1, shared Admin/Runtime, Astro 7.3.8 and actual shadcn 4.21.4 preset `bKGijeGe`.
+- One Bun workspace and lockfile; exact versions live in package manifests. Admin/Runtime metadata and CLI help read their package version instead of maintaining independent hardcoded versions. Version parity is regression-tested.
 - Preset: Base UI Lyra / Stone / Geist / Lucide / subtle menu accent. Use checked-in components.json; don't add custom button/badge geometry.
 - Native runtime dependencies remain pinned (Agents 0.28.0, Wrangler 4.149.0). UI maintenance does not add Cloudflare services or replace Dynamic Workers/Facets with per-project Workers.
 - TypeScript 6.0.2 is supported by Astro/Volar's compiler API; don't force TypeScript 7 peers. Native Vite prerender resolution keeps the React virtual-module consumer and Astro cookie version bundled.
@@ -37,7 +41,7 @@ Pre-0.3 Cloudflare acceptance reports are historical evidence for the old implem
 
 `verify-build` is self-contained local bundle verification. It does not depend on historical acceptance reports, removed demos or an already logged-in cloud account. Never turn old load-test evidence into a current latency/cost guarantee.
 
-Production dependency audit is separate from build tooling. Full development audit still reports [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) in the shadcn CLI registry → braces 3.0.3; no patched release is available. Production dependency audit passes; do not force a downgrade or unverified replacement. Those registry tools are not shipped to the browser/Workers.
+Run production and development dependency audits separately; record the current output rather than assuming an old report still applies. Evaluate affected runtime paths and toolchain exposure before changing dependencies. Registry/build tools are not automatically shipped to the browser or Workers. Do not force unverified downgrades or claim an advisory is fixed without retesting.
 
 ## Generated and private files
 
@@ -59,7 +63,20 @@ Record changes to app contracts, migration semantics, auth boundaries and beta A
 
 ## Remaining production gates
 
-Repository cleanup is not full production certification. Required gates depend on the application: representative workload/cost acceptance, an acceptable recovery policy, release draining under concurrent actions, and operational error/DLQ ownership. Native password auth is supported; an independent external OIDC provider is optional, not mandatory for password-only applications. Operator Secrets Store/egress provisioning, full analytics, extended files/cron crash/load acceptance, delegated client membership and portable installation remain unfinished. Public licence/npm ownership matters for distribution, not use in this private account. Bounded same-project empty-target backup/restore is verified; off-account recovery, in-place restore and PITR are not implemented. Follow the [production runbook](production-runbook.md); do not treat an unperformed or cancelled soak as PASS.
+Repository cleanup is not full production certification. Required gates depend on the application: representative workload/cost acceptance, an acceptable recovery policy, release draining under concurrent actions, and operational error/DLQ ownership. Native password auth is supported; an independent external OIDC provider is optional, not mandatory for password-only applications. Operator Secrets Store/egress provisioning, full analytics, extended files/cron crash/load acceptance, delegated client membership and independent installation/cloud update acceptance remain unfinished. Public licence/npm ownership matters for distribution, not use in this private account. Bounded same-project empty-target backup/restore is verified; off-account recovery, in-place restore and PITR are not implemented. Follow the [production runbook](production-runbook.md); do not treat an unperformed or cancelled soak as PASS.
+
+Prioritized next work; these are acceptance criteria, not features added by this cleanup:
+
+| Priority | Improvement                                        | Completion evidence                                                                                                                                                        |
+| -------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0       | Workload-specific release gate                     | Disposable cloud proof with cleanup, concurrent old/new clients and two-user ownership checks; measured latency, throughput and scoped usage for a declared workload.      |
+| P0       | Release draining and crash correctness             | Admission/drain semantics defined; concurrent actions/jobs, queued capabilities and repeated crashes exercised without losing data or silently replaying external effects. |
+| P0       | Recovery policy                                    | Operator-approved RPO/RTO, tested recovery from corrupted/missing objects; off-account recovery or occupied-target restore only if the application requires it.            |
+| P0       | DLQ and incident ownership                         | Verified alerts and an operator procedure for failed jobs, retained releases and explicit idempotent reconciliation; no blind automatic replay.                            |
+| P1       | Cross-client dashboard invalidation                | Access-authorized, environment-scoped push hints refresh bounded snapshots; reconnect resync and permission revocation tested, without interval polling.                   |
+| P1       | Independent provisioning and optional capabilities | Fresh-account installation/recovery rehearsed; enabled egress, Secrets Store and OIDC individually cloud-tested with explicit operator policy.                             |
+| P1       | Query scalability                                  | Representative fan-out benchmark before finer read-set/index-range invalidation; pure query contracts documented, no keep-warm or synthetic timers.                        |
+| P2       | Full-stack release coordination                    | Frontend/backend version association, old-client compatibility and an explicit partial-release recovery flow; no claim of atomic rollback of data.                         |
 
 ## On-demand logical backup and empty-target recovery
 
@@ -71,13 +88,13 @@ Restore is owner-only, explicitly confirmed and restricted to the other empty de
 
 Backups are on-demand, with no polling, retention timer or additional bindings. Stored copies incur R2 storage/operation usage until explicitly deleted; partial capsules also require explicit deletion. Listing is paginated and reads metadata, not full manifests. The dashboard does not request backups until Manage backups is opened. Existing application releases must be rebuilt with the current SDK to expose native backup methods; the loader does not silently emulate missing methods.
 
-Verification: 276 unit tests, 43 native checks (including forced supervisor abort during a fenced restore), independent packed installation, and seven real-cloud backup/release/auth checks PASS. Cloud proof uses disposable scopes only: 111 documents across pages, file bytes, exact release, owner/scope checks, occupied-target refusal, corrupted-file fencing, pinned deletion refusal and explicit repair/retry. `bun run test:backup:cloud` is an explicit operator workflow; it removes its own temporary project/resources after successful recovery. It is not run in CI or on customer production data.
+Verify file bytes, document IDs/references, exact release, scope/confirmation checks, occupied-target refusal, corrupted-file fencing, source pins and explicit retry. Local native acceptance covers a forced supervisor abort during a fenced restore. `bun run test:backup:cloud` is an explicit operator workflow on disposable scopes and must confirm resource cleanup; it does not run in CI or on customer production data.
 
 ## Breaking native-data preview
 
 0.3 accepts only ABI 4, with `defineSchema`/`defineTable` and native CRUD/index/keyset API. No old SQL adapters or ABI fallback remain. A fresh environment/installation is required; local build/test/clean never resets deployed resources. Receipts/completed-or-failed job summaries retain 30 days and are cleaned in bounded batches on traffic, not an always-on timer. Sent outbox entries are removed only after Queue acknowledgement; old release metadata uses active/candidate/outbox/job reference checks; R2 builds use project/environment-scoped prefixes; their bounded retention protects active/candidate/outbox/job references before deleting blobs and metadata.
 
-Current cloud proof: 16 checks including physical hibernation and 1002-record keyset traversal. Big Bang uses EnvironmentSupervisor with native declarative exports; it intentionally erased the prior namespace. Temporary acceptance projects are removed only after the active cloud run completes. Test app dev/prod use the immutable 0.3 tarball; do not overwrite a same-path private archive and assume Bun cache refreshes it — use a checksum-bearing filename.
+Never change an existing Worker/DO namespace as a cleanup operation. Temporary acceptance resources are removed only by the proof that owns them. Installed application archives are immutable: a changed SDK needs a new published version and rebuilt app release, not a silently overwritten archive or Core-only update.
 
 ## Bounded diagnostics, files and catalog retention
 
@@ -93,13 +110,13 @@ Health → Development/Production releases shows the latest five distinct succes
 
 `flare deploy/promote --cmd "bun run build"` builds the frontend against the selected production URL before backend publication. Dev `.env.local` is preserved. The application can then invoke native Wrangler to publish assets. This sequencing is intentionally not called atomic: a frontend publishing failure leaves the completed backend release active and must be reported/inspected. Schema changes must remain compatible with older clients. No automatic rollback of data or external effects is attempted.
 
-The release cloud proof adds six successful variants, exact-hash promotion preserving 112 production documents, compatible rollback, stale-target conflict and failed-candidate exclusion. Temporary resources are removed after acceptance. The current production Astro playground also passes five browser checks and the local dev app passes nine cloud-backed checks. These results do not replace a new monthly cost estimate or full release crash/draining proof.
+Verify history bounds, exact-hash promotion, preservation of production documents, compatible rollback, stale-target conflict and exclusion of failed candidates. Local verification is not a cloud publication or a monthly cost estimate. Reports must identify their source revision, scope and cleanup outcome before being used for a release decision.
 
 Not implemented: isolated historical application preview URLs, coordinated frontend/backend version history and automatic paired rollback. Existing history only records backend hashes; do not represent it as a full-stack snapshot.
 
-## Release checkpoint 0.3.0-rc.1
+## Release readiness
 
-This private prerelease is a reproducible checkpoint, not a claim that all production gates are closed. It supports the existing trusted-team installation. Dashboard Access stays enabled; functions requiring authentication accept enabled built-in password sessions or an explicitly configured OIDC issuer/audience. Built-in registration stays closed until the owner enables it for the selected environment. Start with non-sensitive projects and keep schema changes additive.
+The source remains a trusted-team preview, not a claim that all production gates are closed. Dashboard Access stays enabled; functions requiring authentication accept enabled built-in password sessions or an explicitly configured OIDC issuer/audience. Registration stays closed until the owner enables it for that environment. Keep schema changes additive and record the chosen release/configuration.
 
 The native workerd harness forces supervisor abort at two real activation checkpoints: after the durable candidate journal and after facet schema commit, before marking the release active. A subsequent application query resumes activation, preserves document IDs and records successful history. Health reports `activating`, not `ready`, until recovery finishes. Fault injection is authenticated and compiled only into the test harness; it is absent from the production core.
 
@@ -112,11 +129,11 @@ Production rollout checklist:
 - Inspect failed jobs in Schedules and native Cloudflare DLQ. Automatic platform DLQ replay is not implemented; do not discard dead-letter messages. External effects must be idempotent.
 - Monitor native Cloudflare usage/billing. Idle hibernation is verified; storage, traffic and running jobs are still billable. The $5 subscription is not a maximum invoice.
 
-Not certified by this checkpoint: independent external OIDC-provider integration, arbitrary frontend/backend previews, full graceful draining under concurrent deployment, portable installation in another account, off-account disaster recovery, platform DLQ replay, comprehensive telemetry and a workload-specific monthly bill. Do not use the GitHub release label to imply those checks passed.
+Working-tree changes, a package version and a GitHub release label are not evidence of cloud rollout or completed production gates. Publishing requires a new immutable package version and its own approval; deploying Core does not rewrite retained application releases.
 
 ## Password-auth operations
 
-The native auth cloud proof passes registration/login, context through query/action, wrong-origin/wrong-environment refusal, project-CLI management denial, password reset/live revocation and account blocking. This is a bounded self-hosted password feature, not a complete consumer identity product. No emails, MFA or anonymous recovery. Owner resets require Access; recovery of the Cloudflare owner account follows Cloudflare's own procedures.
+Before rollout verify registration/login, query/action identity, wrong-origin/wrong-environment refusal, project-CLI management denial, password reset/live revocation and account blocking. Browser sessions persist per deployment URL and must be restored/verified before protected UI; server/mobile storage is explicit. Rejected reconnect authorization clears live snapshots, but a transient outage must not erase saved sessions. This is not a complete consumer identity product: no email recovery or MFA. Owner resets require Access; recovery of the operator's Cloudflare account is separate.
 
 Private backup capsules include salted user credential hashes to preserve IDs/ownership after empty-target restore. Treat capsule access as credential-store access, not a public export. Active sessions are intentionally discarded. Target auth settings remain unchanged and must be explicitly enabled after recovery; no automatic login or copied administrative privileges. Restoring onto an environment with existing users is rejected. Sessions/counters clean up on traffic, not periodic polling; idle storage still consumes storage quota.
 
@@ -124,8 +141,9 @@ Private backup capsules include salted user credential hashes to preserve IDs/ow
 
 `bun run clean` removes reproducible SDK/platform/dashboard output, tarballs,
 acceptance reports, Wrangler/Vite/Astro caches and Finder metadata. It also removes
-leftover Vite cache from the former root test app and prunes its empty directories.
-The root `test` app no longer exists; maintained fixtures are under `tests/fixtures`.
+leftover Vite cache from the former root test app, generated fixture scratch state
+and empty conflict-copy directories. Nonempty conflict copies are never erased
+just because of their name. Maintained fixtures are under `tests/fixtures`.
 Installed dependencies, tracked sources/tests, live Wrangler configurations,
 installation state, credentials and nonempty CLI connections remain intact.
 Cleanup never contacts Cloudflare. Build again before packaging or deployment.

@@ -1,5 +1,7 @@
 # Production runbook: trusted-team installation
 
+New source 0.3.4 managed installs use [platform lifecycle](platform-lifecycle.md). Disposable install/recovery/cleanup have been exercised in the owner's account; the real 0.3.3 → 0.3.4 update preserved data/auth/files/pending jobs and owner Access sign-in was checked separately in the browser. Independent-account/full-token CLI acceptance and legacy adoption remain pending. This document also retains the existing manual operator flow.
+
 Flare is a self-hosted backend, not a managed service with an operator SLA. Use the shared Cloudflare installation for trusted application code. Dev and prod have independent data, accounts, files and schedules. Promotion copies a backend release, not those resources.
 
 ## Before admitting real users
@@ -11,7 +13,7 @@ Flare is a self-hosted backend, not a managed service with an operator SLA. Use 
 5. Make schema changes compatible with old clients. Test the frontend build against the chosen production URL before promotion. Backend/frontend publishing is sequential, not atomic; inspect both results.
 6. Choose an acceptable recovery point/time and verify that the bounded empty-target restore meets it. Do not admit irreplaceable data if same-account R2 and empty-target-only recovery are insufficient.
 
-The cloud scripts require the existing operator installation and Wrangler session. They create only random disposable scopes; they never reset Local/test. Temporary proof Workers have a random secret, fixed compiled-in scopes and are removed after the proof. They are not part of the production architecture or SDK.
+The cloud scripts require the existing operator installation and Wrangler session. They create only random disposable scopes; they never reset retained application projects. Temporary proof Workers have a random secret, fixed compiled-in scopes and are removed after the proof. They are not part of the production architecture or SDK.
 
 ## Backup and restore
 
@@ -45,13 +47,11 @@ A passed short acceptance supports a controlled pilot, not an unlimited producti
 
 Do not label a cancelled 30-minute test as complete. Preserve exact reports, failing checks and cleanup outcome locally; private credentials and raw authenticated request logs never belong in Git.
 
-## Acceptance checkpoint — 2026-10-11
+## Release evidence
 
-Latest short Cloudflare proof: 16 platform checks, eight backup/auth/release checks and two grouped deletion checks passed. The deletion proof calls the production deletion module through a secret-protected, fixed-scope operator Worker; it is not an end-to-end test of Cloudflare Access login. Both environments, credentials and scoped R2 objects are checked; URL reservations remain until the disposable proof is explicitly cleaned. All proof resources were cleaned. Local verification: 325 tests, packaged installation/build checks, native workerd kernel and production dependency audit passed.
+Record the source revision, dependency/toolchain versions, commands, result, target release hash and cleanup outcome for each acceptance run. Local checks do not certify Cloudflare Access login, physical cloud hibernation or billing. The secret-protected deletion harness verifies the production deletion module, not an end-to-end dashboard login. Historical reports are not a substitute for testing the selected release.
 
-Two independently registered password users exercise indexed ownership queries, cross-user mutation refusal and isolated live results. SDK errors from separately bundled entrypoints now retain their bounded explicit codes instead of depending on class identity; ordinary error messages remain private. Existing application bundles must be rebuilt to take this SDK correction—deploying Core alone does not rewrite an immutable application release.
-
-The 30-minute test was stopped at the owner's request, with its temporary scopes cleaned. No current soak/throughput/monthly-price certification is claimed. Local and test application data were not reset. Reports stay under ignored artifacts; repository documentation contains conclusions, never credentials or raw authenticated traffic.
+Two independently registered users must exercise ownership queries, cross-user mutation refusal and isolated live results. SDK changes require rebuilding and deploying app bundles; deploying Core alone does not rewrite immutable application code. A previously cancelled soak remains unperformed, not PASS. Raw authenticated logs and credentials stay private.
 
 ## Production endpoint policy
 

@@ -51,13 +51,14 @@ jobs:
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run verify
       - run: bun run test:kernel
+      - run: bun scripts/platform-native-acceptance.mjs
       - run: bun audit --production --audit-level=high
       - run: git diff --exit-code
-      - name: Pack verified SDK and CLI only
-        run: |
-          mkdir -p artifacts/packages/flare
-          bun pm pack --ignore-scripts --cwd packages/flare --destination "$PWD/artifacts/packages/flare"
+      - name: Verify the exact independently accepted archive (do not repack)
+        run: bun scripts/verify-package-artifact.mjs
       - name: Install pinned OIDC-capable npm
         run: npm install --global npm@12.1.0
       - name: Publish through npm trusted publishing
-        run: npm publish "artifacts/packages/flare/auersperg-flare-${RELEASE_VERSION}.tgz" --access public --tag "$RELEASE_TAG" --provenance
+        run: |
+          bun scripts/verify-package-artifact.mjs
+          npm publish "artifacts/packages/flare/auersperg-flare-${RELEASE_VERSION}.tgz" --access public --tag "$RELEASE_TAG" --provenance

@@ -23,16 +23,16 @@ Applications use one registry dependency, without vendor archives or overrides:
 ```json
 {
   "dependencies": {
-    "@auersperg/flare": "0.3.2"
+    "@auersperg/flare": "0.3.4"
   }
 }
 ```
 
-The npm preview is installed with `bun add @auersperg/flare@next`; commands remain `bunx --bun --package @auersperg/flare@next flare dev` and `bunx --bun --package @auersperg/flare@next flare deploy`. A portable platform installer remains separate work.
+The npm preview is installed with `bun add @auersperg/flare@next`; commands remain `bunx --bun --package @auersperg/flare@next flare dev` and `bunx --bun --package @auersperg/flare@next flare deploy`. Source 0.3.4 adds platform install/status/update and a checksummed `dist/platform` payload to this same archive; [platform lifecycle](platform-lifecycle.md) documents the implementation and remaining cloud gates.
 
 ## Verification
 
-`bun scripts/build-packages.mjs && bun scripts/package-acceptance.mjs` builds and installs **only the flare archive** in a disposable directory outside the workspace. No internal archives, overrides or symlinks are allowed. It verifies the installed dependency graph, lazy CLI entry, native facet/action builds, immutable checksums, generated public API/TypeScript/OpenAPI, an independent Astro/React frontend, portable Node client imports, and cleanup on build failure. It also exercises no-flags `dev` discovery/schema/API/env against an intercepted mock control API. No requests reach Cloudflare and no application data is modified.
+`bun run build && bun scripts/package-acceptance.mjs` builds and installs **only the flare archive** in a disposable directory outside the workspace. No internal archives, overrides or symlinks are allowed. Every installed package file must match the verified tarball's SHA-256; a fresh directory is not accepted as proof against stale package caches. It verifies the dependency graph, exact-version CLI help, native facet/action builds, immutable checksums, generated API/TypeScript/OpenAPI, an independent Astro/React frontend, portable Node client imports, and cleanup on build failure. No-flags `dev` also exercises expected-active-hash deployment against an intercepted mock control API. No requests reach Cloudflare and no application data is modified.
 
 ## Convex reference
 
@@ -42,7 +42,7 @@ Studied the official [`convex-js/package.json`](https://github.com/get-convex/co
 
 The SDK and CLI package is `@auersperg/flare`, under MIT. The repository and
 core/dashboard use the same MIT license. Only
-`packages/flare` is publishable; the root and platform packages remain private.
+`packages/flare` is publishable; the root and platform workspaces remain private. Compiled Core/dashboard/bootstrap/migrations ship as CLI-only payload files, not public SDK exports. The npm archive still has no Wrangler/workerd dependency: the account CLI lazily invokes pinned Wrangler using its supported Node runtime.
 
 For an application:
 
@@ -62,9 +62,10 @@ For a maintainer, from the repository root:
 bun install --frozen-lockfile
 bun run test:kernel
 bun pm pack --cwd packages/flare --destination artifacts/packages/flare
-npm publish artifacts/packages/flare/auersperg-flare-0.3.2.tgz --dry-run --ignore-scripts --access public --tag next
+bun scripts/verify-package-artifact.mjs
+npm publish artifacts/packages/flare/auersperg-flare-0.3.4.tgz --dry-run --ignore-scripts --access public --tag next
 # Only after reviewing the archive and authorizing the public release:
-npm publish artifacts/packages/flare/auersperg-flare-0.3.2.tgz --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.4.tgz --access public --tag next
 ```
 
 The source package's `prepack` runs the full repository verification, including
@@ -82,7 +83,7 @@ GitHub environment `npm` requires owner approval. The publication job alone
 receives OIDC `id-token: write`; no permanent npm token is stored in GitHub.
 PRs and ordinary pushes never publish. Checks, native kernel tests, dependency
 audit and clean-source verification must pass before the archive is published
-with provenance. npm rejects an already published version; releases are immutable.
+with provenance. The workflow publishes the exact tarball installed by package acceptance, without repacking it afterwards; its version and SHA-256 are verified immediately before publication. A changed archive or missing/failed acceptance report stops the release. npm rejects an already published version; releases are immutable.
 
 npm trusted publisher settings:
 

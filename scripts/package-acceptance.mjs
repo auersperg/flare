@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
+import { loadPlatformRelease } from "../packages/flare/src/cli/platform-release.mjs";
 const root = process.cwd(),
   external = await mkdtemp(join(tmpdir(), "flare-package-proof-"));
 function run(args, cwd = root) {
@@ -61,9 +62,7 @@ try {
   assert.equal(packed.dependencies["@flare/sdk"], undefined);
   assert.equal(packed.dependencies["@flare/cli"], undefined);
   for (const file of files.keys())
-    assert.ok(
-      !/\.private|\.dev\.vars|node_modules|dashboard|kernel-token/.test(file),
-    );
+    assert.ok(!/\.private|\.dev\.vars|node_modules|kernel-token/.test(file));
   const packages = [archive];
   await writeFile(
     join(external, "package.json"),
@@ -82,6 +81,24 @@ try {
     ).isSymbolicLink(),
     false,
   );
+  // A fresh directory alone does not prove the package manager used this tarball.
+  for (const [path, blob] of files) {
+    assert.ok(path.startsWith("package/"), "Unexpected archive root");
+    const installed = await readFile(
+      join(
+        external,
+        "node_modules/@auersperg/flare",
+        path.slice("package/".length),
+      ),
+    );
+    assert.equal(
+      createHash("sha256").update(installed).digest("hex"),
+      createHash("sha256")
+        .update(new Uint8Array(await blob.arrayBuffer()))
+        .digest("hex"),
+      `Installed bytes differ from verified archive: ${path}`,
+    );
+  }
   assert.equal(
     await lstat(join(external, "node_modules/react")).then(
       () => true,
@@ -129,7 +146,71 @@ try {
   }
   await inspectDependencies(join(external, "node_modules"));
   const help = run(["--bun", "./node_modules/.bin/flare", "--help"], external);
-  assert.ok(help.includes("Flare 0.3") && help.includes("Cloudflare-only"));
+  assert.ok(
+    help.includes(`Flare ${packed.version} trusted-team preview`) &&
+      help.includes("Cloudflare-only"),
+  );
+  const platformPayload = await loadPlatformRelease(
+    join(external, "node_modules/@auersperg/flare/dist/platform"),
+  );
+  assert.equal(platformPayload.manifest.version, packed.version);
+  for (const entry of Object.values(packed.exports))
+    assert.ok(
+      !JSON.stringify(entry).includes("platform/"),
+      "Platform payload entered public SDK exports",
+    );
+  const platformHelp = run(
+    ["--bun", "./node_modules/.bin/flare", "platform", "--help"],
+    external,
+  );
+  assert.ok(platformHelp.includes("install|status|update"));
+  await writeFile(
+    join(external, "mock-account.mjs"),
+    `
+    import assert from 'node:assert/strict';
+    process.env.CLOUDFLARE_API_TOKEN='synthetic-cloudflare-token';
+    process.env.FLARE_CONFIG_HOME=${JSON.stringify(join(external, "platform-config"))};
+    globalThis.fetch=async(url,init)=>{
+      assert.equal(init.method,'GET','Platform dry-run must not issue cloud writes');
+      assert.equal(init.headers.authorization,'Bearer synthetic-cloudflare-token');
+      const path=new URL(url).pathname.split('/accounts/'+'a'.repeat(32)+'/')[1];
+      assert.ok(path,'Unexpected API destination');
+      let result;
+      if(path==='access/organizations')result={auth_domain:'team.cloudflareaccess.com'};
+      else if(path==='workers/subdomain')result={subdomain:'account'};
+      else if(path==='r2/buckets')result={buckets:[]};
+      else if(['d1/database','queues','access/apps','workers/scripts','workers/domains'].includes(path))result=[];
+      else throw Error('Unexpected Cloudflare API path '+path);
+      return Response.json({success:true,result});
+    };
+  `,
+  );
+  const platformPlan = JSON.parse(
+    run(
+      [
+        "--preload",
+        "./mock-account.mjs",
+        "./node_modules/@auersperg/flare/dist/cli/flare.js",
+        "platform",
+        "install",
+        "--dry-run",
+        "--account",
+        "a".repeat(32),
+        "--owner",
+        "owner@example.test",
+      ],
+      external,
+    ),
+  );
+  assert.equal(platformPlan.to, packed.version);
+  assert.equal(platformPlan.digest, platformPayload.manifest.digest);
+  assert.equal(
+    await lstat(join(external, "platform-config")).then(
+      () => true,
+      () => false,
+    ),
+    false,
+  );
   // Portable JS remains usable without Bun or window, independently of CLI.
   const portable = spawnSync(
     "node",
@@ -356,9 +437,10 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
     globalThis.fetch=async (url,options)=>{
       assert.equal(new URL(url).origin,'https://package-proof.invalid');
       calls.push(options.method);
-      if(options.method==='GET') return Response.json({project:${JSON.stringify(project)}});
+      if(options.method==='GET') return Response.json(new URL(url).pathname.endsWith('/health')?{active:'a'.repeat(64)}:{project:${JSON.stringify(project)}});
       assert.equal(new URL(url).pathname,'/control/api/projects/${project}/dev/deploy');
-      const {bundle}=JSON.parse(options.body);
+      const {bundle,expected}=JSON.parse(options.body);
+      assert.equal(expected,'a'.repeat(64));
       assert.equal(bundle.manifest.functions['notes/list'].kind,'query');
       assert.equal(bundle.manifest.runtimeAbi,4);
       assert.equal(bundle.schema.notes.document.type,"object");
@@ -368,7 +450,7 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
     console.log=(...args)=>{
       log(...args);
       if(String(args[0]).startsWith('Watching application code')) {
-        assert.deepEqual(calls,['GET','POST']);
+        assert.deepEqual(calls,['GET','GET','POST']);
         log('PASS packaged automatic dev (mock control API)');
         process.exit(0);
       }
@@ -414,6 +496,14 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
   assert.deepEqual(await readdir(join(external, ".flare/tmp")), []);
   const report = {
     status: "PASS",
+    archive: {
+      name: packed.name,
+      version: packed.version,
+      sha256: createHash("sha256")
+        .update(await readFile(archive))
+        .digest("hex"),
+      platformDigest: platformPayload.manifest.digest,
+    },
     runtime: "bun",
     bun: Bun.version,
     externalDirectory: external,
@@ -423,6 +513,9 @@ export default function App() { return <FlareProvider client={client}><Tasks /><
     releaseHash: release.hash,
     tests: [
       "One self-contained tarball, no overrides or internal packages",
+      "Every installed package file matches the verified archive SHA-256",
+      "Platform payload checksums/version verified outside the repository",
+      "Packaged platform help and read-only install plan use only an intercepted mock account API",
       "Native facet/action compilation",
       "Immutable bundle checksums",
       "Generated API has no backend imports",

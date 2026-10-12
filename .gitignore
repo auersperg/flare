@@ -12,6 +12,7 @@ vendor/
 .env*
 !.env.example
 .dev.vars*
+.dev*.vars*
 .dev-session.json
 .DS_Store
 

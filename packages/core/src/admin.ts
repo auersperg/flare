@@ -1,4 +1,5 @@
 import { collectCatalog } from "./retention.js";
+import packageInfo from "../package.json" with { type: "json" };
 import { authorizeProjectDeletion, deleteProject } from "./project-deletion.js";
 import { publicLogin, loginInfo, approveLogin } from "./cli-login.js";
 declare const FLARE_DASHBOARD_CSP_HASHES: {
@@ -47,6 +48,8 @@ interface Env {
   DASHBOARD_URL: string;
   ACCESS_ISSUER: string;
   ACCESS_AUD: string;
+  FLARE_INSTALLATION_ID?: string;
+  FLARE_PLATFORM_PAYLOAD?: string;
 }
 function runtime(env: Env): RuntimeApi {
   return new Proxy({} as RuntimeApi, {
@@ -227,8 +230,8 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
       role: a.role,
       projectId: a.projectId,
       runtime: env.RUNTIME_URL,
-      version: "0.3.0",
-      stage: "private-minimum",
+      version: packageInfo.version,
+      stage: "trusted-team-preview",
     });
   if (path === "/api/projects" && request.method === "GET") {
     const rows = await env.CATALOG.prepare(
@@ -595,6 +598,26 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
   fail("INVALID_OPERATION");
 }
 export class AdminControl extends WorkerEntrypoint<Env> {
+  async readiness() {
+    const row = await this.env.CATALOG.prepare(
+      "SELECT installation_id FROM flare_installation WHERE singleton=1",
+    ).first<{ installation_id: string }>();
+    const owner = await this.env.CATALOG.prepare(
+      "SELECT email FROM members WHERE role='owner' LIMIT 1",
+    ).first<{ email: string }>();
+    if (
+      !row ||
+      row.installation_id !== this.env.FLARE_INSTALLATION_ID ||
+      !owner
+    )
+      fail("NOT_READY");
+    return {
+      version: packageInfo.version,
+      installationId: this.env.FLARE_INSTALLATION_ID,
+      platformPayload: this.env.FLARE_PLATFORM_PAYLOAD,
+      runtime: await this.env.RUNTIME.command("readiness", []).then(unwrap),
+    };
+  }
   async request(request: Request) {
     try {
       if (

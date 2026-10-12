@@ -35,6 +35,7 @@ jobs:
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run verify
       - run: bun run test:kernel
+      - run: bun scripts/platform-native-acceptance.mjs
       - run: bun audit --production --audit-level=high
       - name: Ensure verification leaves tracked source unchanged
         run: git diff --exit-code

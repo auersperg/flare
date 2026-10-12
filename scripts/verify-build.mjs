@@ -2,10 +2,21 @@ import assert from "node:assert/strict";
 import { readFile, readdir, writeFile, access, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { loadPlatformRelease } from "../packages/flare/src/cli/platform-release.mjs";
 
 const dashboard = "packages/core/dist/dashboard";
 const html = await readFile(`${dashboard}/index.html`, "utf8");
 const admin = await readFile("packages/core/dist/admin.js", "utf8");
+const payload = await loadPlatformRelease("packages/flare/dist/platform");
+const sourcePackage = JSON.parse(
+  await readFile("packages/flare/package.json", "utf8"),
+);
+assert.equal(payload.manifest.version, sourcePackage.version);
+for (const role of ["admin", "runtime"])
+  assert.deepEqual(
+    await readFile(`packages/flare/dist/platform/${role}.js`),
+    await readFile(`packages/core/dist/${role}.js`),
+  );
 for (const name of ["admin", "runtime"]) {
   const code = await readFile(`packages/core/dist/${name}.js`, "utf8");
   assert(
@@ -118,6 +129,7 @@ const report = {
     "Secondary view chunks are separate",
     "Legacy root source and nested platform removed",
     "New project bootstrap has no application tables or functions",
+    "Bundled platform payload has verified immutable manifest/checksums and matches core output",
   ],
   sizes: {
     adminGzipBytes: gzipSync(admin).length,

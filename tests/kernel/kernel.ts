@@ -449,7 +449,7 @@ export default {
     if (url.pathname.startsWith("/p/"))
       return coreRuntime.fetch(request, coreEnv(env));
     if (url.pathname === "/health")
-      return Response.json({ status: "kernel-only", version: "0.3.0" });
+      return Response.json({ status: "kernel-only" });
     if (url.pathname === "/core" && request.method === "POST") {
       if (
         !env.KERNEL_TOKEN ||

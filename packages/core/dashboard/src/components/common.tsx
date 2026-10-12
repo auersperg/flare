@@ -59,7 +59,7 @@ export function useResource<T>(path: string) {
     const abort = new AbortController();
     setState((previous) =>
       previous.path === path && previous.data !== undefined
-        ? { ...previous, error: undefined, loading: false }
+        ? { ...previous, error: undefined, loading: true }
         : { path, loading: true },
     );
     void api<T>(path, undefined, abort.signal)

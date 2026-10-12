@@ -10,5 +10,6 @@ bun.lock
 
 **/.flare/
 **/.dev-session.json
+**/.dev*.vars*
 tests/kernel/wrangler.cloud.json
 coverage/

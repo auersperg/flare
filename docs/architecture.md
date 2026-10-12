@@ -1,192 +1,560 @@
-# Flare — единая архитектура Cloudflare-native платформы
+# Flare — полная карта текущей архитектуры
 
-Обновлено: 11 октября 2026 года. **Статус: 0.3 native-data preview; базовый облачный flow проверен, полная production-приёмка не завершена.**
+Зафиксировано **12 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Базовый commit до обновления документа: `8e4a451`. Версия исходников **0.3.4**, протокол **1**, runtime ABI **4**.
 
-Этот документ заменяет прежнее предложение Reactive с обычным Worker на проект. Ограничения и границы реализации описаны в `docs/maintenance.md` и проверяются тестами исходников. Фактические результаты и незакрытые проверки: `README.md`. Старый SDK 0.1 удалён из рабочего репозитория.
+**Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
-## 1. Продукт и разделение проектов
+## Содержание
 
-**Flare устанавливается в собственный Cloudflare аккаунт оператора. Dashboard существует только онлайн в Cloudflare. Локально — frontend приложения, SDK и тонкий CLI.**
+1. [Продукт и границы](#1-продукт-и-границы)
+2. [Общая схема](#2-общая-схема)
+3. [Репозиторий и пакеты](#3-репозиторий-и-пакеты)
+4. [Стек и сборка](#4-стек-и-сборка)
+5. [Control plane](#5-control-plane)
+6. [Data plane и Dynamic Workers](#6-data-plane-и-dynamic-workers)
+7. [Данные и схема](#7-данные-и-схема)
+8. [Функции и контекст](#8-функции-и-контекст)
+9. [Реактивность](#9-реактивность)
+10. [Dashboard](#10-dashboard)
+11. [Три независимые границы авторизации](#11-три-независимые-границы-авторизации)
+12. [SDK и протокол](#12-sdk-и-протокол)
+13. [CLI и developer flow](#13-cli-и-developer-flow)
+14. [Релизы и frontend](#14-релизы-и-frontend)
+15. [Файлы](#15-файлы)
+16. [Задания и расписания](#16-задания-и-расписания)
+17. [Backup и удаление](#17-backup-и-удаление)
+18. [CI и npm publishing](#18-ci-и-npm-publishing)
+19. [Эксплуатация и экономия](#19-эксплуатация-и-экономия)
+20. [Проверки и оставшиеся границы](#20-проверки-и-оставшиеся-границы)
+21. [Навигация по исходникам](#21-навигация-по-исходникам)
+22. [K2 — расширение, не текущий компонент](#22-k2--расширение-не-текущий-компонент)
 
-Иерархия: установка → пространство заказчика → проект → окружение `dev` / `prod`. Заказчик здесь — владелец магазина, лендинга или другого проекта; SDK-клиент — код приложения, подключённый к конкретной среде. Одно пространство может содержать несколько проектов.
+## 1. Продукт и границы
 
-Каждое project/environment имеет собственные SQLite-данные, выпуск, настройки авторизации, файловый namespace, задания и подписки. Идентичность хранилища основана на неизменяемых IDs, не на названиях. Права и принадлежность заказчику проверяются сервером: вкладки dashboard не обеспечивают изоляцию.
+Flare — собственный backend-as-a-service в Cloudflare аккаунте оператора: одна установка core обслуживает несколько приложений. Cloudflare хранит и исполняет backend; локально работают CLI, сборщик и frontend dev server. Постоянной Bun/Node VM нет.
 
-Две среды не требуют двух установок платформы. Локальный frontend подключается к cloud dev; production — отдельная облачная среда с явно подтверждаемой публикацией.
+Иерархия управления: **установка → customer/workspace → project UUID → dev/prod**. Customer — группировка проектов, не отдельная инфраструктурная установка и не реализованная система делегированных прав заказчикам. Сейчас membership owner/editor/viewer относится к установке, а deploy credential ограничен проектом.
 
-## 2. Только онлайн-dashboard
+Каждая среда имеет независимые данные, пользователей/пароли/сессии, origin/auth настройки, active release, файлы, задания и подписки. Ключ backend-хранилища: `<project UUID>/<dev|prod>`. Переименование проекта или URL alias не меняет этот ключ.
 
-- Один web-интерфейс: Cloudflare Static Assets + Admin Worker, защищённый Cloudflare Access.
-- Нет локального dashboard, локального административного сервера или второй UI сборки для CLI.
-- CLI не обслуживает панель через localhost. Возможная команда открытия панели только откроет её облачный URL.
-- Панель, CLI и CI используют общий API управления. Owner/editor/viewer, scope и аудит проверяются сервером. Сейчас Access допускает только владельца; роли команды общие для установки, отдельное делегирование заказчикам ещё не реализовано.
-- Приложения работают через Runtime Worker: закрытие или недоступность dashboard не останавливает данные, подписки и задания.
-- Логи, метрики и recovery работают независимо от открытой панели. Обновляется только видимый раздел, данные читаются постранично, скрытые вкладки не создают лишний опрос.
-- Административные вкладки пока используют snapshots: обновление после собственных изменений и при возврате/focus, без interval polling. Неизменившаяся таблица остаётся видимой при фоновой загрузке. Cross-client изменения через SDK не доставляются в Data/Auth/Files автоматически в открытой панели; отдельный Access-authorized push/invalidation channel остаётся незавершённым. Компактная reload-кнопка для snapshots не является live-подпиской.
+Frontend приложения — отдельный проект и отдельный hosting deployment. Статическому лендингу не обязательно подключать Flare. Expo и другие клиенты могут обращаться к HTTP/WebSocket протоколу; готовые отдельные Rust/Go SDK пока не реализованы.
 
-Работающий интерфейс: Health, Data, Schema, Functions, Files, Schedules, Auth, Logs; выбор проекта/среды в шапке, Settings под шестерёнкой, SDK под Health. Files и Schedules работают с настоящими R2/Queues/Scheduler; Secrets и полные analytics не имитируются. Новые проекты после установки обновлённого Admin получают пустой bootstrap, без демонстрационных таблиц/функций; существующие релизы и данные не сбрасываются. Data edits проходят mutation/commit/live и аудит; разрушительные prod-операции требуют подтверждения. Схема и функции меняются через код и релизы; native facet валидирует документы и применяет индексы транзакционно. Произвольный SQL, создание/drop таблиц мышкой и компиляция в браузере не входят в MVP.
+## 2. Общая схема
 
-## 3. Облачные компоненты
+```text
+Оператор / разработчик
+  ├─ Browser → Cloudflare Access → Admin Worker + Static Assets
+  │                                  ├─ D1: каталог / membership / аудит
+  │                                  └─ RuntimeControl service RPC
+  └─ Bun CLI → /control/api/* → AdminControl service RPC
+                                     │
+                                     ▼
+Frontend / серверный SDK → Runtime Worker
+                          ├─ route / rate limit / origin / identity
+                          ├─ R2 alias mapping (только холодный lookup)
+                          └─ Supervisor DO [project UUID / environment]
+                               ├─ собственная SQLite платформы
+                               │    auth / activation / subscriptions / jobs / files
+                               ├─ Lifecycle + WebSockets + Scheduler
+                               │    физические WebSocket и alarm
+                               ├─ persistent facet "app"
+                               │    Dynamic Worker AppFacet
+                               │    отдельная SQLite приложения
+                               └─ Dynamic Worker Action
+                                    scoped AppCapability → query/mutation/files/cron
 
-| Компонент                            | Назначение                                                                       |
-| ------------------------------------ | -------------------------------------------------------------------------------- |
-| Admin Worker + Static Assets         | Онлайн-dashboard, роли, каталог и релизы                                         |
-| Runtime Worker                       | API приложений, loader, actions, Queues consumer                                 |
-| D1                                   | Каталог заказчиков/проектов/сред/релизов и аудит; не app DB                      |
-| Supervisor DO на project/environment | Активный релиз, физические WebSockets, auth-aware подписки, расписания, recovery |
-| Постоянный facet `app`               | Изолированная native SQLite, документы/индексы, query/mutation                   |
-| Dynamic Worker action-role           | Actions без прямого доступа к app SQLite                                         |
-| R2                                   | Неизменяемые сборки, файлы, экспорты                                             |
-| Queues + Scheduler                   | Outbox, отложенные задания, повторная доставка и DLQ                             |
-| Tail / Workers Logs / Analytics      | Ошибки и метрики; доступность datasets проверяется                               |
-| Secrets Store                        | Scoped native bindings; dashboard provisioning ещё не реализован                 |
+R2 BUNDLES: immutable code + route mappings + backup capsules
+R2 FILES: приватные bytes файлов
+Facet outbox → Supervisor recovery → Queues JOBS → Action
+                                              └─ retries → DLQ
+DynamicTail → console → Cloudflare Workers Logs
+```
 
-Два основных Worker общие для проектов, **не два Worker на каждого заказчика**. Frontend сайтов размещается независимо; статическому лендингу не обязательно использовать backend SDK.
+Два основных Worker — **Admin и Runtime**, общие для всех проектов. Landing — дополнительный static Worker; Workers клиентских frontend не являются backend Worker на каждый Flare project. D1 и dashboard не нужны для каждого клиентского запроса уже настроенной среды.
 
-Основа — Dynamic Workers + native Durable Object Facets. Beta/экспериментальные API фиксируются по версиям и проверяются в настоящем Cloudflare. Нет скрытого fallback к обычным Worker на проект. Supervisor использует публичные Lifecycle/WebSockets/Scheduler, не полный Agent, AI/MCP или приватные SDK методы. WebSocket/alarm принадлежат supervisor; между ним и facet — сериализуемый native RPC.
+Установка AUER на момент фиксации:
 
-## 4. Выполнение, релизы и безопасность
+| Назначение               | Ресурс / адрес                                                 |
+| ------------------------ | -------------------------------------------------------------- |
+| Landing                  | `flare-landing` → `https://flare.auer.wien`                    |
+| Dashboard                | `flare-admin` → `https://dash.flare.auer.wien`                 |
+| API и management gateway | `flare-runtime` → `https://api.flare.auer.wien`                |
+| SQLite DO                | namespace класса `EnvironmentSupervisor`, один объект на среду |
+| Каталог                  | D1 `flare-catalog`                                             |
+| Сборки / backups         | R2 `flare-builds`                                              |
+| Файлы                    | R2 `flare-files`                                               |
+| Работа / dead letters    | `flare-jobs` / `flare-jobs-dlq`                                |
 
-- Сборка происходит в CLI/CI. R2 содержит код, manifest, document schema и SHA-256.
-- Loader ID стабилен для project/environment + build hash + config version + compatibility date + runtime role; request ID и access token в него не входят.
-- D1/dashboard не находятся в пути каждого вызова приложения. Активное состояние среды хранится в supervisor.
-- Имя facet остаётся `app`. Обновление через `abort()`, не удаление данных. Prepare/drain/migrate/activate и recovery требуют долговечного журнала. Rollback кода не является rollback базы.
-- Queries read-only; mutation фиксирует данные, revision, validated output и outbox транзакционно. Live отправляется после commit. Внешние эффекты — в action.
-- Read capability предоставляет только `get/query`; raw SQL, storage и write methods не выдаются. Capability отзывается после вызова; mutation использует native transaction.
-- Перед mutation supervisor долговечно планирует recovery. Generic SDK outbox связан с native Queues consumer/recovery и проверен фактической delivery receipt.
-- Queues — at-least-once: deduplication, retry/DLQ и идемпотентность внешних эффектов обязательны. Старые сборки сохраняются, пока на них ссылаются задания.
-- Data-role не имеет egress; actions получают scoped capabilities; native outbound gateway запрещает сеть по умолчанию и разрешает только адреса operator policy. Реальная облачная приёмка gateway ещё не проведена. Общие D1/R2 bindings и account token не передаются приложениям.
-- API приложений: HTTP JSON; live: hibernating WebSocket, короткоживущий single-use ticket, ACK/coalescing/reconnect snapshot. JWT/OIDC signature/issuer/audience/JWKS/expiry и origin allowlist обязательны для production.
-- Авторизация администратора отделена от авторизации пользователей приложений. Deploy credentials не попадают в frontend env: публичным является URL среды, не административный токен.
-- Первый MVP предназначен для доверенных разработчиков оператора, не для публичного исполнения чужого непроверенного кода.
+У core и landing `workers_dev: false`, `preview_urls: false`; публичные адреса — custom domains. Secret values, персональные записи пользователей, рабочие resource IDs и сырые логи в эту карту не включаются. Полный account inventory/ночные измерения находятся в ignored `.private/audits`, а не в публичной документации репозитория.
 
-## 5. Пакеты и тонкий локальный flow
+## 3. Репозиторий и пакеты
 
-| Пакет                      | Граница                                                                                   |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| `@auersperg/flare`         | Один SDK + CLI: `src/sdk` и `src/cli`, отдельные browser/server/React/native entry points |
-| `@flare/platform` (`core`) | Облачный runtime и онлайн-dashboard; не dependency приложения                             |
+```text
+flare/
+├── .github/workflows/     ci.yml и publish.yml
+├── packages/
+│   ├── flare/             публичный SDK + CLI в одном npm-пакете
+│   │   ├── src/sdk/       client, server, native data/runtime, React, protocol
+│   │   ├── src/cli/       команды, build, cloud, login, project discovery
+│   │   └── dist/          генерируется сборкой, не исходники
+│   └── core/              приватный workspace-пакет платформы
+│       ├── src/           Admin/Runtime и platform services
+│       ├── dashboard/     Astro + React + shadcn, вложенный workspace
+│       ├── migrations/    административные D1 migrations 0001–0006
+│       ├── bootstrap/     пустое приложение для нового проекта
+│       ├── landing/       static HTML заглушка
+│       ├── *.wrangler.example.json
+│       └── dist/          генерируемые Workers, dashboard и bootstrap
+├── scripts/               сборка, упаковка, acceptance, cleanup
+├── tests/                 unit/regression, fixtures и native workerd kernel
+├── docs/                  карта, runbook, эксплуатация, исторические аудиты
+└── .private/              ignored конфигурация установки / credentials / отчёты
+```
 
-npm-пакет — `@auersperg/flare`, исполняемый файл CLI — `flare`. Репозиторий, SDK/CLI, core и dashboard распространяются под MIT. Облачная приёмка в отдельном аккаунте остаётся отдельным критерием; открытая лицензия не означает, что все production-гарантии уже проверены.
+Корневые файлы: `package.json`, `bun.lock`, `tsconfig.json`, `README.md`, `LICENSE`, `.gitignore`, `.prettierignore`. Настройки Prettier — в `package.json`. Приложения заказчиков не являются workspace этого репозитория.
 
-**Основной реализованный flow:**
+| Workspace                                      | Публикация              | Назначение                                                    |
+| ---------------------------------------------- | ----------------------- | ------------------------------------------------------------- |
+| `@auersperg/flare` (`packages/flare`)          | Публичный npm, MIT      | Единственная зависимость приложения: SDK и executable `flare` |
+| `@flare/platform` (`packages/core`)            | `private: true`, не npm | Core Workers и platform services                              |
+| `@flare/dashboard` (`packages/core/dashboard`) | `private: true`, не npm | Сборка онлайн-dashboard                                       |
+| `flare-workspace` (root)                       | `private: true`         | Toolchain и общий lockfile                                    |
+
+**Один устанавливаемый пакет не означает одну папку исходников.** Готовые Core/dashboard/bootstrap/migrations входят в `dist/platform` того же tarball, но не в browser SDK exports или application bundle. Dashboard использует `@auersperg/flare: workspace:*` для совместной разработки; внешние приложения используют опубликованный registry package, без локальных SDK/CLI overrides и symlinks.
+
+Публичные exports: `@auersperg/flare` (client), `/server`, `/react`, `/protocol`, `/cloudflare`. React — optional peer `>=19`. SDK JavaScript portable; CLI требует Bun. Весь репозиторий MIT, не только SDK.
+
+## 4. Стек и сборка
+
+Зафиксированные версии из текущих manifests, не обещание «всегда latest»:
+
+| Инструмент                 | Версия / роль                                                     |
+| -------------------------- | ----------------------------------------------------------------- |
+| Bun                        | `1.4.3`, package manager / CLI / compiler / tests                 |
+| Node                       | CI `24`; vendor Wrangler boundary, не runtime приложения          |
+| Wrangler                   | `4.149.0`                                                         |
+| Cloudflare Workers types   | `5.20261010.1`                                                    |
+| Workers compatibility date | `2026-10-10`; release validator требует эту дату                  |
+| Agents                     | `0.28.0`, только публичные Lifecycle/WebSockets/Scheduler modules |
+| Astro / Astro React        | `7.3.8` / `7.0.1`                                                 |
+| React / React DOM          | `19.3.0`                                                          |
+| TypeScript                 | `6.0.2`                                                           |
+| Tailwind                   | `4.3.3`                                                           |
+| shadcn / Base UI           | `4.21.4` / `1.9.0`                                                |
+| Zod / Standard Schema spec | `4.6.5` / `1.1.0`                                                 |
+
+`bun run build` выполняет:
+
+1. `scripts/build-packages.mjs`: Bun.Transpiler → portable SDK ESM; TypeScript → declarations; Bun.build → lazy/split CLI для Bun. Проверка не допускает core/agents/wrangler/workerd внутрь CLI bundle.
+2. `scripts/build-platform.mjs`: Astro static dashboard → `packages/core/dist/dashboard`; CSP hashes из HTML; Bun bundles → `admin.js` и `runtime.js`; compilation пустого bootstrap приложения; bootstrap artifacts в assets для внутреннего provisioning.
+3. Проверки metafile исключают полный MCP слой из core bundles. Worker bundles target Cloudflare/browser ESM с external `cloudflare:workers` / `node:*`, а не Bun runtime.
+
+Astro сохраняет свой Vite pipeline. Wrangler используется с поддерживаемым Node runtime: попытка принудительно запускать vendor dev tooling под Bun ранее зависала. `nodejs_compat` в Cloudflare даёт совместимые API, а не запускает Node-сервер.
+
+Version в Runtime `/health`, Admin `/api/session` и CLI help берётся из соответствующего package manifest; равенство workspace versions проверяется тестами. Admin stage — `trusted-team-preview`, не production-сертификация. Изменения working tree не означают новый npm release или cloud deployment.
+
+## 5. Control plane
+
+**Admin Worker** управляет проектами, окружениями, настройками, credentials, релизными операциями и dashboard API `/api/*`.
+
+D1 хранит customer/project/environment metadata, membership, hashes deploy credentials, CLI login sessions, audit, alias reservations, deletion fences и lease административного cleanup. **D1 не хранит документы приложения, пользовательские пароли приложения или основной runtime release journal** — они находятся в соответствующих DO/facet.
+
+Admin → Runtime: нативный service binding `RUNTIME`, entrypoint `RuntimeControl`. Runtime → Admin: `ADMIN_API`, entrypoint `AdminControl`; это gateway для `/control/api/*`, не публичный доступ к Cloudflare account API.
+
+Project create создаёт dev/prod, origin settings, immutable alias mapping и пустой bootstrap. Новому проекту не добавляются demo tables/functions/users. Проектное удаление — отдельная owner-only операция, описанная ниже.
+
+Административные изменения оборачиваются аудитом с actor, project/environment, operation, time, status и ограниченным detail. Транзакция D1 не является общей транзакцией с DO/R2: partial failure/retry — явная операционная граница.
+
+## 6. Data plane и Dynamic Workers
+
+**Runtime Worker** принимает HTTP/WebSocket, определяет scope, проверяет rate/origin/identity и передаёт вызовы supervisor. Публичный base URL среды:
+
+```text
+https://api.flare.auer.wien/<alias>/dev
+https://api.flare.auer.wien/<alias>/prod
+# Неизменяемый UUID route также поддерживается:
+https://api.flare.auer.wien/p/<project UUID>/prod
+```
+
+Alias → UUID хранится write-once в R2 `routes/<alias>.json`. Per-isolate positive cache ограничен 256 mappings; misses не кешируются; concurrent cold lookups дедуплицируются. Alias не переприсваивается другому проекту после удаления — старый URL не должен открыть чужие данные.
+
+`EnvironmentSupervisor` — обычный SQLite-backed DurableObject, владеющий active/candidate release, password auth, subscription state, файловыми grants/metadata, jobs/receipts, расписаниями, recovery и backup/deletion fences.
+
+`ctx.facets.get("app", ...)` запускает `AppFacet` из Dynamic Worker. **Facet имеет собственную SQLite, отделённую от supervisor**; app-код не получает supervisor storage или общие account bindings. Эта изоляция соответствует [нативной модели Facets](https://developers.cloudflare.com/dynamic-workers/usage/durable-object-facets/).
+
+Loader использует:
+
+```text
+LOADER.get(scope + hash + abi4 + policyHash + compatibilityDate + role)
+role = facet | action
+```
+
+Request ID и пользовательский token не участвуют в ID. Код читается из R2, SHA-256 сверяется с manifest. Role-specific limits: CPU 1000 ms; facet subrequests 0; action subrequests 100. Активный metadata cache bounded: до четырёх releases / 4 MiB.
+
+Facet egress запрещён (`globalOutbound: null`). Actions работают отдельно, без прямой SQLite; получают узкий `AppCapability`. Outbound по умолчанию запрещён, разрешается operator policy только на exact HTTPS hosts, без implicit redirects/TCP; поток ограничен 1 MiB, deadline 10 секунд. Секреты выдаются только по scoped mapping в Secrets Store bindings, не как account API token. Provisioning и облачная приёмка optional capabilities остаются отдельными задачами.
+
+## 7. Данные и схема
+
+ORM/Drizzle и legacy SQL migration API удалены. Документный DX — небольшой собственный слой поверх **нативного `storage.sql` SQLite**.
+
+```ts
+import { defineSchema, defineTable, z } from "@auersperg/flare/server";
+export default defineSchema({
+  tasks: defineTable(
+    z.object({
+      title: z.string(),
+      done: z.boolean().default(false),
+    }),
+  ).index("by_done", ["done"]),
+});
+```
+
+Каждая логическая таблица — физическая SQLite table с `_id`, `_creationTime`, `_data` (validated JSON). Scalar indexes — SQLite expression indexes на JSON fields, не JS filtering всей коллекции. Идентификаторы проверяются/quoted, values bind-ятся; raw SQL клиентам и `ctx.db` не выдаётся.
+
+API: `get(table,id)`, `query(table).withIndex(...).order(...).take/first/paginate`; mutation дополнительно `insert`, `patch`, `replace`, `delete`. Страницы 1–100, keyset cursor привязан к форме запроса; до 1000 database operations на вызов. Read capability отзывается после invocation, незавершённые writes учитываются до commit.
+
+Schema activation валидирует существующие документы и применяет индексы транзакционно. Невалидные данные/несовместимый контракт отклоняют активацию; удаление непустой таблицы не является автоматической миграцией данных. Transformations выполняются явными application mutations. Код rollback не откатывает документы.
+
+Системные таблицы `_flared_*` содержат revision/table changes/outbox/schema metadata и скрыты от обычного Data UI. Prefix сохранён как внутренний storage identifier, не публичное имя продукта. Поддерживается только ABI 4; совместимость со старыми SQL/Drizzle ABI 1–3 не обещается.
+
+## 8. Функции и контекст
+
+**Только три server kinds: query, mutation, action. Отдельного kind `live` нет.** Для каждой функции обязательны input/output validators с JSON Schema converters; auth default — `required`.
+
+| Kind     | Контекст                                                    | Семантика                                                                            |
+| -------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| query    | `ctx.db` read-only, `ctx.auth`                              | Snapshot или подписка на ту же функцию; без writes/egress                            |
+| mutation | `ctx.db` writable, `ctx.auth`, `ctx.jobs.schedule/cancel`   | Native transaction; data/revision/outbox вместе; invalid output откатывает изменения |
+| action   | `ctx.auth`, `runQuery/runMutation`, files/schedules/secrets | Нет прямого SQLite; внешние эффекты не входят в DB transaction                       |
+
+`auth: public|required|internal` — входная проверка, **не автоматический row-level ACL**. Приложение проверяет ownership/permissions через `ctx.auth.subject`, а не доверяет присланному user ID. `internal` недоступен прямому public client call.
+
+Mutation flow:
+
+```text
+Supervisor: durable recovery job/marker до вызова
+  → Facet: validate input → native transaction
+       handler + pending DB writes + validate output + revision + outbox
+  → commit/sync
+  → Supervisor: dispatch due outbox + recalculate affected subscriptions
+  → ответ mutation
+```
+
+В текущем runtime mutation ждёт recovery/broadcast до ответа. Дальнейшая оптимизация этого пути требует сохранения crash correctness, а не простого fire-and-forget.
+
+## 9. Реактивность
+
+Supervisor использует публичные модули `agents/lifecycle`, `agents/websockets`, `agents/schedules`; физические sockets/alarm принадлежат supervisor, не facet. Нативные RPC пересылают сериализуемые invocation/results, не родительский WebSocket.
+
+```text
+client.onUpdate(query,args)
+  → HTTP single-use short-lived ticket
+  → shared hibernating WebSocket
+  → subscribe frame → initial query snapshot
+  → mutations commit → affected query snapshots → ACK
+```
+
+Первый результат приходит той же подпиской: дополнительный initial HTTP query не нужен. Ticket request — connection authentication, не второй query. One-off `client.query()` остаётся HTTP.
+
+Реализация отслеживает **table-level dependencies**, не полный Convex read-set/index-range engine. Query должна зависеть от DB/args/auth: clock/random virtualization и отдельной инвалидации от времени нет. При mutation пересчитываются затронутые active queries; новая code release инвалидирует зависимости. В пределах broadcast одинаковые path/args/auth дедуплицируются, неизменившийся результат не отправляется. Auth входит в key, разные identities не смешиваются. Snapshot cache bounded: 64 entries / 4 MiB.
+
+Persisted subscription state и connection attachments переживают hibernation. ACK ограничивает отправки медленному клиенту: промежуточные изменения объединяются до актуального snapshot, нет бесконечного backlog. Reconnect повторно подписывается и получает текущее состояние, не гарантированный replay всех промежуточных событий. Expired/revoked auth прекращает выдачу данных. Без subscribers query не выполняется в фоне.
+
+Cloudflare поддерживает сохранение соединений при idle hibernation; это не обещание нулевой стоимости активных вызовов или хранения. [Hibernation WebSockets](https://developers.cloudflare.com/durable-objects/best-practices/websockets/).
+
+## 10. Dashboard
+
+Единственный dashboard — онлайн, Cloudflare Static Assets + Admin Worker + Access. Локального dashboard/SSR server/administrative callback server нет.
+
+UI: Astro static shell, React island, Tailwind CSS variables, shadcn Base Lyra/Stone/Geist/Lucide (`components.json`). UI primitives находятся в `components/ui`, общие typed forms/status/function badges — shared components. Data grid использует shadcn Table, а не перенесённый Convex grid или собственный внешний сервер таблиц.
+
+Header: project selector, Development/Production tabs. Sidebar: **Health, Data, Schema, Functions, Files, Schedules, Auth, Logs**. Settings — gear; SDK setup — из Health. Вторичные views lazy-loaded; root session/projects fetch параллелен, старые запросы отменяются при смене view/scope.
+
+| Раздел    | Реальная работа                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health    | Supervisor status, active hash, connections/subscriptions; последние пять backend releases выбранной среды; contract details и release operations |
+| Data      | Pagination, typed insert/edit/delete, expectedRevision конфликт, validators, audit, подтверждение prod; таблица занимает рабочую область          |
+| Schema    | Contract активного release; Add/Edit table готовит draft для application code, не изменяет облачную схему напрямую                                |
+| Functions | Manifest, цветные query/mutation/action badges, typed arguments/results; ручной запуск только dev, не viewer/internal                             |
+| Files     | Scoped R2 list, upload/download/delete через grants; pagination и cleanup состояния                                                               |
+| Schedules | Outbox/job state, попытки/receipts, UTC cron; не универсальная stream pub/sub консоль                                                             |
+| Auth      | User list/settings по read permissions; create/reset/block/revoke/configure только owner через Access; hashes/passwords не возвращаются           |
+| Logs      | Recent bounded invocation summaries; не весь Cloudflare Workers Logs dataset и не billing                                                         |
+| Settings  | Origin/OIDC, credentials, backups, owner-only deletion проекта                                                                                    |
+
+**Реактивные приложения ≠ полностью push-reactive dashboard.** Admin views сейчас snapshots: read при открытии, после собственного изменения, при focus/visibility return; compact reload предусмотрен там, где нужен. Interval polling нет. Изменения другого SDK-клиента не инвалидируют все открытые Data/Auth/Files views автоматически: отдельный Access-authorized dashboard push channel ещё не реализован.
+
+Static asset routing: `run_worker_first: ["/*", "!/_astro/*"]`. HTML/API проходит Admin auth/membership и security headers; hashed `/_astro/*` обслуживается native assets route с immutable caching. Bootstrap artifacts запрещены в публичном Admin fetch. Astro CSP hashes включаются в core build; `connect-src` ограничен dashboard/runtime; HTML `no-store`, no-referrer/nosniff. Edge Access policy должна защищать hostname независимо от asset routing.
+
+## 11. Три независимые границы авторизации
+
+### 11.1 Администратор dashboard
+
+Cloudflare Access → проверенная identity → D1 membership owner/editor/viewer. Где доступен native `ctx.access`, проверяется AUD; для asset-router boundary fallback криптографически проверяет Access assertion/cookie через issuer/audience/JWKS. Доверия к произвольному email header нет. Mutating browser requests требуют same-origin.
+
+Viewer читает; editor имеет разрешённые write/deploy операции; owner управляет пользователями/auth, удаляет проект и выполняет owner operations. Project-scoped CLI credential не получает права изменять app-users/auth settings даже от owner. Read endpoints Auth сейчас доступны по общим read permissions: это не owner-only просмотр списка пользователей.
+
+### 11.2 Разработчик / CI приложения
+
+Browser CLI approval через защищённый dashboard, matching code, выбранный/новый проект. Ten-minute login request, ephemeral RSA-encrypted credential delivery, one-time claim. CLI credential живёт 30 дней и хранится вне приложения в `~/.config/flare`, mode 0600; D1 хранит hash, scope, expiry/revocation. Settings может отозвать его. CI использует `FLARE_DEPLOY_TOKEN` из своего secret store, не из frontend env.
+
+### 11.3 Пользователь приложения
+
+Два механизма: встроенный password auth выбранной среды или явно настроенный JWT/OIDC (signature, issuer, audience, JWKS, expiry). Access login оператора не является пользовательским входом приложения.
+
+Password auth находится в supervisor SQLite: нормализованный login, salted scrypt hash (`N=16384,r=8,p=5`, random 16-byte salt, 32-byte key), opaque random session token; в базе hash session token. Текущая политика пароля **6–128 символов**, срок сессии **12 часов**, persistent per-login rate limit. Это описание текущей политики, не утверждение, что короткие пароли достаточны для всех production-сценариев.
+
+Registration по умолчанию закрыта; owner включает её отдельно для dev/prod. Регистрация не создаёт platform administrator. Owner reset/block/revoke удаляет соответствующие sessions и отключает affected live clients. Hashes не возвращаются Auth API; исключение — приватная backup capsule.
+
+`createPasswordAuth()` сохраняет браузерную сессию в localStorage, namespace по URL среды; `restore()` проверяет `/v1/auth/me` до protected UI. Network error не считается доказательством invalid session; cross-tab storage events синхронизируются. Сервер/mobile задаёт storage явно или memory-only. Это не HttpOnly-cookie auth: приложение должно учитывать XSS-риск хранения bearer token. Dispose не равен logout. Автоматического вечного refresh, MFA, email recovery и OAuth sign-in UI нет.
+
+**Пароль, изменённый в dev, не меняется в prod.** Одинаковый login в двух средах не связывает их учётные записи.
+
+## 12. SDK и протокол
+
+`createClient({url,getToken})` работает в browser/server JS; transport можно адаптировать без обязательного `window`. Публичные методы: `query`, `mutation`, `action`, `onUpdate`, `refreshAuth`, `dispose`. React: `FlareProvider`, `useFlare`, `useQuery`; provider использует client приложения, не создаёт свой.
+
+`useQuery` возвращает data/`undefined` при загрузке или `"skip"`, автоматически unsubscribes; errors передаются error boundary. SSR не открывает sockets/polling. При обычном reconnect сохраняется последний snapshot до нового; отказ авторизации, в том числе при получении нового ticket, очищает live cache.
+
+| Endpoint относительно base URL среды                       | Назначение                         |
+| ---------------------------------------------------------- | ---------------------------------- |
+| `POST /v1/call`                                            | Function path/kind/args, HTTP JSON |
+| `POST /v1/live/ticket`                                     | Короткоживущий single-use ticket   |
+| `GET /v1/live?ticket=…`                                    | WebSocket upgrade                  |
+| `POST /v1/auth/{register,login,logout,me,change-password}` | Password auth                      |
+| `POST /v1/files/upload?ticket=…`                           | Single-use upload grant            |
+| `GET /v1/files/download?ticket=…`                          | Download grant до expiry           |
+
+Отдельного Convex-style HTTP Actions hostname нет: actions вызываются через тот же `/v1/call`. Произвольный application HTTP/webhook router в текущем SDK не предоставлен.
+
+JSON lossless: нет implicit Date/undefined/NaN/class coercion. Limits из `protocol.ts`: input 64 KiB, output 256 KiB, client frame 8 KiB, subscriptions 64/connection, files 10 MiB. Manifest максимум 200 functions; facet/action code максимум 1 MiB каждый. Core/Dynamic CPU limit сейчас 1000 ms — не общий рекламируемый максимум тарифа.
+
+Mutation не повторяется автоматически при network failure; неоднозначный write result отмечается `ambiguous`. Upload grants тоже не retry-ятся автоматически. Клиент должен проверить состояние перед повтором.
+
+Внутренние `_flared_*`, `flared_session_`, `flaredSession`, `x-flared-identity`, `flared:session:` сохранены для storage/wire continuity и retained releases. Это не дополнительные legacy packages или alias kind `live`.
+
+## 13. CLI и developer flow
+
+npm registry проверен 12.10.2026: `next = 0.3.2`, `latest = 0.3.1`. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
 
 ```sh
-# Сейчас — проверенный приватный tarball, не опубликованный npm пакет
-bun add /path/to/auersperg-flare-0.3.1.tgz
-bunx --bun --package @auersperg/flare flare dev
-# Browser approval → выбор/создание проекта → cloud dev + typed API
-# Frontend запускается своим обычным dev server
-bunx --bun --package @auersperg/flare flare deploy
-# Сборка и prod-публикация с явным подтверждением проекта
+bun add @auersperg/flare@0.3.2
+bunx --bun --package @auersperg/flare@0.3.2 flare dev
 ```
 
-Единый пользовательский пакет `@auersperg/flare` содержит portable SDK и lazy Bun CLI. В исходниках Core/SDK/CLI остаются внутренними границами, не отдельными обязательными установками пользователя. Схему задают в `flare/schema.ts`, функции — в `flare/*.ts`. CLI генерирует `_generated/server.ts`, `_generated/api.ts`, facet/action bundles, schema/manifest/checksums и OpenAPI 3.1. Браузер не импортирует backend-код.
+1. Первый `dev` scaffold-ит минимальный `flare/` и предлагает platform URL, если приложение ещё не linked.
+2. Browser approval выбирает/создаёт проект. Публичное connection state — `.flare/project.json`; deploy secret — только user config вне проекта.
+3. `flare/schema.ts` — default `defineSchema`; named query/mutation/action exports — `flare/*.ts`, nested directories дают nested paths; underscore helpers не регистрируются как функции.
+4. CLI обнаруживает modules, формирует typed `_generated/server.ts`, компилирует facet/action; генерирует manifest/schema/release/checksums, browser-safe API references и OpenAPI 3.1.
+5. Публикует cloud dev, генерирует `flare/_generated/{api,references}.ts`. Backend-код не импортируется в browser.
+6. Записывает публичный dev URL в `.env.local`, сохраняя остальные variables: Astro `PUBLIC_FLARE_URL`, Expo `EXPO_PUBLIC_FLARE_URL`, иначе `VITE_FLARE_URL`.
+7. Backend watch ограничен source backend, сериализует builds/дедуплицирует неизменившийся hash; не деплоит backend от каждого frontend edit. Frontend запускается своей `bun run dev` командой отдельно.
 
-Advanced pipeline: `flare build --entry app.ts --outdir release`, `flare link --platform <runtime-url>/control --project <UUID>`, `flare dev --entry app.ts`, `flare deploy --env dev --release release`. General `platform init` остаётся незавершённым operator workflow; `db generate` не нужен и удалён. Локального dashboard нет. Local workerd в acceptance scripts — внутренний тест ядра, не зависимость установленного CLI и не основной developer flow. Сборка или тесты ничего не публикуют в облако.
-
-Авторизация dashboard использует нативный `ctx.access`, проверяет AUD конкретного Access приложения и получает platform-verified identity. JWT/OIDC приложений — отдельная граница. Новая установка имеет два Worker `flare-admin`/`flare-runtime`; не используются ресурсы старого kernel. Панель не делает background polling; static assets сейчас проходят Admin Worker для access/headers, поэтому такие посещения учитываются в Worker requests.
-
-## 6. Совместимость и оставшаяся приёмка
-
-Legacy SDK/CLI и обе демонстрации убраны из рабочего репозитория; восстановимые копии находятся вне него. В production build входит только пустой bootstrap. Минимальные тестовые приложения остаются в tests и не используются как production seed. В 0.3 legacy ABI 1–3 и SQL/Drizzle API удалены, системный prefix нового facet — `_flared_`. Установка/среда для новой версии должна быть чистой: совместимости с прежними хранилищами не обещаем. Локальная сборка не удаляет существующие облачные ресурсы или данные.
-
-Локальный kernel имеет тестовую конфигурацию без account ID; конфигурация существующей облачной приёмки хранится отдельно и не коммитится. В Git входят только шаблоны Admin/Runtime, а рабочие конфигурации остаются у оператора. Перед open source нужны независимая установка, лицензия и подтверждение registry scope.
-
-Обязательны: расследование зарегистрированного WebSocket timeout, повторные hibernation/recovery проверки, независимый production OIDC provider, полное draining/crash recovery релизов, provisioning и облачная проверка Secrets Store/egress, расширенная crash/load-проверка файлов/cron, реальные dashboard datasets, clean install → два проекта → dev/prod → frontend → upgrade, экспорт/restore и нагрузка 1 000 записей / 100 live клиентов / 30 минут. Latency/cost нового runtime не выводятся из коротких kernel проверок.
-
-Цены и лимиты сверяются с фактическим workload и актуальной документацией, не фиксируются как вечное обещание $5 за весь сервис. Основные ссылки: [Dynamic Workers / Facets](https://developers.cloudflare.com/dynamic-workers/usage/durable-object-facets/), [Static Assets](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/).
-
-## 7. Files и Schedules — реализованный минимум (11 октября 2026)
-
-- **Файлы:** приватный R2 binding `FILES`, отдельный bucket `flare-files`; Runtime также получает `DASHBOARD_URL` для точного origin онлайн-панели при файловых upload grants (не для API функций). Bytes не хранятся в SQLite. Supervisor хранит метаданные и временные bearer grants, привязанные к неизменяемому project/environment. Прямые публичные R2 URL не выдаются.
-- `ctx.files.generateUploadUrl({name,type,size})`, `getDownloadUrl(id)`, `list({cursor,limit})` → `{page,isDone,continueCursor}`, `delete(id)`. Upload grant одноразовый; download grant допускает повторное чтение до истечения пяти минут. Получение grant авторизует приложение через свою action; скачивание по grant не требует повторного JWT. Ссылка является секретной capability — не логировать и не передавать посторонним.
-- Серверные actions могут `upload(byteStream,type,{name,size})` и `download(id)`: native RPC streams → Runtime → R2. Размер известен заранее, максимум 10 MiB, `FixedLengthStream` проверяет точное число байтов без полного буфера. MVP MIME allowlist: plain text, PNG/JPEG/WebP, PDF, binary. Browser `fileMetadata()` сохраняет эти MIME; остальные форматы отправляет как binary с исходным именем. `uploadFile()` передаёт Blob без полного буфера, не отправляет cookies и не повторяет одноразовый grant. Таймаут/обрыв явно обозначаются как неоднозначный результат. Это не антивирус и не доказательство соответствия содержимого MIME. Download — attachment, nosniff, no-store. `Content-Length` проверяется, если передан; без него точный размер всё равно проверяет нативный stream. После успешного R2 commit неоднозначная ошибка подтверждения метаданных не удаляет объект: durable cleanup восстанавливает ready; повторный complete идемпотентен.
-- Предел среды: 1 000 файлов, 2 000 активных grants; список показывает последние 100. Pending/deleting загрузки имеют долговечный cleanup job. После interrupted upload готовый объект правильного размера восстанавливается, незавершённые удаляются. R2 и SQLite не являются одной транзакцией; recovery закрывает обычные окна сбоя, расширенная crash-приёмка остаётся обязательной.
-- **Одноразовые jobs:** mutation вызывает `ctx.jobs.schedule(path,args,{delaySeconds})`; запись outbox фиксируется в одной SQLite-транзакции с данными. Supervisor пробуждается нативным alarm через Lifecycle, передаёт due job в Queues, выполняется action закреплённого релиза. Action меняет данные через `runMutation`. Cron не заменяет очередь.
-- **Cron:** action вызывает `ctx.schedules.set({name,path,cron,args})`, `cancel(name)` или `list()`. Пять cron-полей, UTC, минимум минута, максимум 20 имён на среду. Scheduler владеет расписанием через Lifecycle; его callback формирует outbox → Queues. Новая конфигурация имеет собственный generation ID; reconcile отменяет orphan/старые расписания. Пауза не отменяет уже переданное в очередь задание. Точное время старта и отсутствие пропусков при длительном outage не обещаются; backlog catch-up не реализован.
-- `auth: "internal"` закрывает query/mutation/action для публичного HTTP/WS даже при подделанном JSON `internal:true`; вызвать их можно только scoped native capability/заданием. Для jobs рекомендуется internal action, без сохранённой пользовательской авторизации; требуемые user IDs передавайте валидируемыми args. Старый режим scheduled authenticated actions сохранён, но JWT может истечь до выполнения. Cron не принимает action с `auth:"required"`.
-- Queues **at-least-once**, текущий consumer: 3 retries + DLQ. Успешные receipts подавляют повторную доставку, но crash между внешним эффектом и receipt допускает повтор; внешняя идемпотентность обязательна. UI показывает queued/running/failed/completed и число попыток; failed не равнозначно окончательному DLQ. Pending outbox jobs можно отменить через mutation `ctx.jobs.cancel(id)` или dashboard; уже enqueued/running action отмена не останавливает. Replay и UI инспекции DLQ ещё не реализованы. Acked outbox удаляется; receipts/completed-or-failed summaries сохраняются 30 дней с bounded on-traffic cleanup. Release metadata защищает active/candidate/outbox/job references; R2 builds имеют scoped project/environment prefixes и удаляются вместе со старой metadata после проверки active/candidate/outbox/job references.
-- Dashboard Files: загрузка, метаданные, скачивание, удаление; изменения защищены owner/editor и prod confirmation, с аудитом. Schedules: delayed jobs, реальные delivery events, cron список/пауза. Cron создаётся через код action, не SQL-редактор или постоянный frontend timer. Новое R2 binding требуется в конфигурации core; это не Worker на проект.
-
-**Текущая приёмка 0.3:** 6 SQLite/FileStore/origin regression tests; текущий cloud dev — R2 streaming roundtrip и одноразовый grant, изоляция dev/prod, отзыв ссылки после удаления, Dynamic Worker RPC stream upload/download, закрытые internal функции, rollback данных вместе с outbox, задержка 5 секунд, retry после намеренной ошибки и реальный минутный cron с последующей паузой. Эти сервисные проверки не являются полной нагрузочной/production-приёмкой.
-
-### Application distribution
-
-`@auersperg/flare` is the only application-facing archive: portable SDK/type files and a separate lazy Bun CLI compiled directly from its own SDK/CLI source modules. There are no internal SDK/CLI registry dependencies. Client/server/React/native entry points remain isolated; React is optional. See [packaging](packaging.md).
-
-## 8. Native document API 0.3 — breaking rewrite
-
-`defineSchema({tasks:defineTable(z.object({...})).index("by_done",["done"])})` — один декларативный контракт для typed SDK, CLI, базы и dashboard. Typed declarations генерируются в `flare/_generated/server.ts` **до** сборки. Приложение использует `db.get/query/insert/patch/replace/delete`, а не SQL/ORM builders.
-
-Каждая logical table — отдельная native SQLite table с `_id` UUID, `_creationTime` и `_data` JSON. Это сознательный выбор для Convex-like document DX: вложенные значения и optional/defaulted поля без DDL на каждое поле. Поля индексов превращаются в native SQLite expression indexes (`json_extract`), equality/range/order/keyset выполняются в SQL. Не общая tenant JSON-таблица, не фильтрация всей базы в JavaScript и не полный Convex read-set engine. Цена JSON serialization и expression indexes требует замера; ускорение в миллисекундах пока не обещаем.
-
-- Закрытый object validator; до 100 таблиц, 64 полей, 20 индексов на таблицу, 1–4 scalar поля в индексе. Native SQL names не имеют case-insensitive коллизий.
-- До 64 KiB на document; максимум 100 records/page, 256 KiB результата data query, 8 KiB continuation cursor. Огромные indexed string keys могут превысить cursor budget; используйте компактные ключи/индексы. До 1000 database operations и 100 scheduled jobs на invocation.
-- Ввод/вывод функций — Standard Schema/JSON Schema; table validation общая для app CRUD и admin edits. Reads декодируют уже проверенные записи, без повторной table validation каждой строки; function output validation сохраняется.
-- Queries получают revocable read capability **без** raw SQL, write/session/storage. Mutation capability отзывается после завершения. Неожиданные unawaited writes/jobs должны завершиться и не могут обойти transaction.
-- Schema activation проверяет существующие документы; defaults нормализуются атомарно. Невалидные записи или удаление nonempty table отклоняют кандидата. Arbitrary SQL, скрытого destructively-reset и SQL journals нет. Изменение данных делается явной mutation.
-- Изменённые таблицы и их последние revisions фиксируются с данными. Supervisor сохраняет read dependencies subscriptions; unrelated writes не пересчитывают live. Изменение release вызывает повторную проверку независимо от данных. Recovery использует долговечную revision map, поэтому crash не теряет invalidation.
-- `ctx.jobs.cancel(id)` / dashboard Cancel удаляет только waiting outbox job; уже отправленную в Queue или выполняющуюся action не отменяет. Cancel внутри mutation транзакционен, job references проверяются за всеми pending pages.
-- После подтверждённого Queue enqueue outbox row удаляется; duplicate delivery проверяет receipt. Receipts и completed/failed job summaries имеют 30-day retention и bounded cleanup на входящем трафике, без periodic wake. Это окно дедупликации, не exactly-once внешнего эффекта.
-- Когда recovery завершён без due jobs, native Lifecycle job отменяется. Закрытие последнего socket отменяет auth-expiry wake. Cron/отложенное задание сохраняют только необходимые будущие alarms. Нет keep-warm, interval или фоново работающего сервера.
-- Dynamic roles имеют native limits `cpuMs:1000`, facet `subRequests:0`, action `subRequests:100`. Это ограничения отдельных вызовов, не глобальный потолок счёта. Tail пропускает пустые успешные события и ограничивает payload.
-
-## 9. Опциональные capabilities actions
-
-По умолчанию external egress и app secrets запрещены. Оператор добавляет `APP_CAPABILITIES` в Runtime vars, с mapping **immutable UUID/environment**, не short alias:
-
-```json
-{
-  "PROJECT_UUID/dev": {
-    "outbound": ["api.example.com"],
-    "secrets": { "PAYMENT_KEY": "APP_SECRET_PAYMENTS_DEV" }
-  }
-}
+```sh
+# Собрать текущий backend и подтвердить prod deployment:
+bunx --bun --package @auersperg/flare@0.3.2 flare deploy
+# Посмотреть проверенные dev releases:
+bunx --bun --package @auersperg/flare@0.3.2 flare releases --env dev
+# Активировать конкретную проверенную dev сборку в prod:
+bunx --bun --package @auersperg/flare@0.3.2 flare promote --env prod --hash HASH
 ```
 
-В Wrangler `vars.APP_CAPABILITIES` — JSON-строка. `APP_SECRET_PAYMENTS_DEV` — настоящий `secrets_store_secrets` binding с `store_id` и `secret_name`, не пароль в vars. `ctx.secrets.get("PAYMENT_KEY")` читает только этот mapping через native binding `.get()`; core signing key и общие R2/D1 bindings невозможно выбрать этим API. Dashboard write-only provisioning ещё не реализован; изменение bindings требует core deploy. [Secrets Store integration](https://developers.cloudflare.com/secrets-store/integrations/workers/).
+Advanced commands: `build`, `link`, `deploy --release`, `rollback`, `backup create|list|restore|delete|status`. Установка платформы отделена: `platform install|status|update`; legacy `platform init` отсутствует. `db generate` отсутствует и не нужен document API. Local workerd используется только acceptance tests ядра, не installed developer backend.
 
-Action `fetch()` проходит native `globalOutbound` gateway: exact reviewed public HTTPS host, без IP/localhost/wildcards/не-default ports/userinfo; TCP capability отсутствует. Redirect не следует автоматически; приложение делает отдельный разрешённый запрос. Запрос/ответ streaming bounded 1 MiB, deadline 10 s, platform headers убираются. Это trusted-team minimum, не универсальный SSRF sandbox для чужого кода; allowlisted DNS/endpoints должен проверять оператор. Query/mutation egress остаётся `null`. Stable loader key включает ABI/release/scope/compatibility date и digest non-secret policy, без request/user tokens. [Native egress](https://developers.cloudflare.com/dynamic-workers/usage/egress-control/), [native limits](https://developers.cloudflare.com/dynamic-workers/usage/limits/).
+## 14. Релизы и frontend
 
-JWKS используют bounded cache, single-flight refresh, импортированные Web Crypto keys. Unknown kid допускает refresh с минутным cooldown; нормальный срок cache — пять минут. Native Access и app OIDC остаются разными auth boundaries.
+App release — immutable facet/action code + manifest + document schema + checksums; identity SHA-256. Сборка происходит до пользовательских запросов. Core deployment и app release — разные события: замена core не переписывает retained app bundles, SDK update в `package.json` не меняет облачный backend без app deploy.
 
-## 10. Результаты и оставшиеся границы
+Activation выполняется через serial gate. При active actions/running jobs возвращает `CONFLICT`, а не обещает уже реализованный бесконечный graceful drain. Проверяет ожидаемый current hash, совместимость схемы, cron/job contracts. Candidate записывается долговечно; постоянный facet `app` перезапускается через `abort()`, **не delete**. После schema readiness active/candidate/history фиксируются; recovery продолжает interrupted activation. Это не единая транзакция между supervisor DB и facet DB.
 
-Актуальный список исправлений A–F, проверок и открытых product gates — [архитектурный аудит 0.3](architecture-audit-0.3.md). Не дублируем исторические hashes и counts как результаты текущего runtime.
+В Health показываются последние пять distinct successful backend hashes выбранной среды. Promote переносит exact dev code bundle в prod **без dev данных, users, files или config**. Rollback применяет retained совместимый code bundle, не data rewind. Исторического изолированного preview каждой версии нет.
 
-Текущий патч проверен 276 unit tests, 43 native checks и 16 короткими cloud checks; обновлены Admin/Runtime и test dev/prod. Проверены R2 streaming, Queues, rollback, реактивность, physical hibernation и загрузка через настоящий dashboard. 30.40-минутный cloud soak со 100 клиентами прошёл; точная стоимость и comparable latency baseline измеряются отдельно.
+```sh
+bunx --bun --package @auersperg/flare@0.3.2 flare promote \
+  --env prod --hash HASH --cmd "bun run build"
+# После успеха — native hosting deploy, например в приложении:
+bunx --no-install wrangler deploy
+```
 
-Публичная hashed UI статика asset-first; HTML/API/bootstrap защищены. Успешные queries не пишут SQL diagnostic history. Scoped R2 GC и catalog retention работают ограниченными пакетами на трафике, без постоянного timer. Native `sendBatch` и bounded consumer используют Queue retries/DLQ, а не собственный job server. `files.list({cursor,limit})` возвращает `{page,isDone,continueCursor}`; dashboard показывает по 50 файлов.
+Каждый CLI deploy проверяет expected active hash, не только flow с `--cmd`; `CONFLICT` не retry-ится автоматически. Невалидный environment или неподтверждённый prod deploy останавливается до scaffold/evaluation application code.
 
-Native RPC добавляет transport handles к object results. SDK потребляет JSON capability response через native `structuredClone` и освобождает handle; Streams/Response не проходят JSON adapter. Это проверено nested action→query regression. [RPC lifecycle](https://developers.cloudflare.com/workers/runtime-apis/rpc/lifecycle/).
+`--cmd` генерирует контракт нужной backend версии и запускает frontend build с целевым URL в child environment (`FLARE_URL`, `PUBLIC_FLARE_URL`, `VITE_FLARE_URL`, `NEXT_PUBLIC_FLARE_URL`, `EXPO_PUBLIC_FLARE_URL`) **до backend activation**. Dev `.env.local` не переписывается. При failed build backend не активируется, предыдущие generated `api.ts`/`references.ts` восстанавливаются. Network/не-JSON ошибки management API сохраняют HTTP status, если он известен; неоднозначный write требует проверки состояния, а не автоматического повтора.
 
-Only query/mutation/action exist. React `useQuery` и JS `onUpdate` используют первый WS snapshot без дополнительного HTTP query; HTTP `query` остаётся явным одноразовым чтением. Это Convex-like DX, не полный клон его read-set engine или atomic cross-query rendering.
+Frontend hosting deploy — отдельный следующий шаг application script/CI; Flare CLI не публикует frontend автоматически. Если он упал после backend activation, получился partial release. **Полный frontend/backend deploy последовательный, не атомарный**, без paired history/automatic paired rollback. Старые браузеры/mobile clients требуют backward-compatible contracts даже после успешного promote.
 
-Ограниченный логический backup/restore проверен (см. maintenance); unrestricted export/PITR, portable installer, dashboard secrets provisioning, DLQ replay, graceful release drain/crash proof, внешний OIDC и account-wide cost measurement остаются открытыми. Данные временной приёмки очищаются только после её завершения; Local/test IDs и настройки доступа сохраняются.
+## 15. Файлы
 
-## 11. Ограниченные backup/restore
+Bytes — private R2 `FILES`; metadata/state/grants — supervisor. Ключи ограничены scope и immutable file ID; raw shared R2 binding приложению не выдаётся.
 
-Private R2 capsule: exact backend release + native document snapshot + ready file bytes. Manifest SHA-256 и file MD5 проверяются при восстановлении; manifest публикуется последним. Никаких новых сервисов или periodic backup alarms. Supervisor gate удерживается на bounded maintenance window. Restore допускается только в другую пустую среду того же проекта, сохраняет access configuration и не переносит secrets/jobs/cron. Durable fence блокирует вызовы после сбоя, source pin блокирует удаление backup до завершения. Явный retry того же ID, без автоматического повторения writes.
+Actions: `ctx.files.upload/download/generateUploadUrl/getDownloadUrl/list/delete`. Browser upload получает grant через разрешённую функцию приложения, затем streaming POST в Runtime. Upload grant одноразовый; download grant reusable до expiry, пять минут. URL — bearer capability: не логировать/публиковать как обычную ссылку. File ownership проверяется application function до выдачи grant.
 
-Пять real-cloud backup checks PASS (111 документов, файл, exact release, corrupt-file fencing/retry); workerd forced-abort proof PASS. Это не promote и не rollback существующей базы. Лимиты, стоимость хранения и непроверенные disaster-recovery варианты — [maintenance](maintenance.md#on-demand-logical-backup-and-empty-target-recovery).
+Предел 10 MiB, declared exact size + FixedLengthStream; bytes не буферизуются целиком. MIME allowlist: plain text, PNG/JPEG/WebP, PDF, binary; остальные browser formats отправляются binary с исходным именем. Ready metadata подтверждается после успешной R2 записи; failures/expired uploads cleanup-ятся через долговечные recovery jobs. Это не антивирус и не межсервисная SQL+R2 транзакция.
 
-## Immutable release flow
+Dashboard upload использует тот же механизм, `DASHBOARD_URL` разрешает точный origin панели для grants. Pagination default 50/max 100, не чтение всех объектов на каждое открытие.
 
-Supervisor хранит пять последних уникальных успешных backend-сборок и дату первой публикации. Активация и запись успешной истории фиксируются в одной supervisor SQL-транзакции; это не распределённая транзакция с facet или frontend. Неуспешные candidates не входят в историю. Retention защищает последние пять, active/candidate и ссылки jobs/outbox, без периодического timer.
+## 16. Задания и расписания
 
-Promote переносит точный проверенный dev bundle в prod без повторной компиляции и без данных dev. Expected-active-hash защищает от конкурентного изменения prod. Rollback проверяет совместимость кода со схемой текущих документов и заданиями, но не откатывает данные. Health сразу показывает последние пять успешных релизов выбранной среды: Development releases или Production releases, без дополнительной кнопки и без interval polling.
+`ctx.jobs.schedule()` в mutation записывает outbox в той же transaction, что documents. `dueAt` хранится долговечно; supervisor alarm/Lifecycle будит среду по необходимости, не опрашивает каждую секунду.
 
-CLI `--cmd` собирает frontend до активации backend, передавая URL выбранной среды только дочернему процессу. Отдельный native Wrangler публикует frontend после backend; ошибки последнего шага явно означают partial release. Исторические изолированные preview и связанный каталог версий frontend/backend пока не реализованы. Проверка облачной истории/promotion/rollback входит в шестой disposable backup/release acceptance check.
+Due outbox → `JOBS.sendBatch` → после подтверждения enqueue удаление sent outbox → native Queue push consumer → action конкретного retained release. Producer соблюдает count/byte bounds. Consumer обрабатывает до четырёх сообщений одновременно, ack/retry каждого отдельно.
 
-## Built-in password authentication
+Установка: batch size 10, max batch timeout 1 second, max concurrency 4, max retries 3, отдельная DLQ. Receipts помогают bounded deduplication, но внешние эффекты **at-least-once**, не exactly-once. [Гарантии Cloudflare Queues](https://developers.cloudflare.com/queues/reference/delivery-guarantees/).
 
-Optional native supervisor SQLite stores users, salted password hashes, bounded sessions and on-traffic login counters, separately from the app facet. No auth/ORM dependency or additional Worker/DO binding. Native node:crypto scrypt N=16384/r=8/p=5 (16 MiB principal memory, bounded maxmem) matches an OWASP scrypt profile; the deployed Cloudflare proof exercises hashing, not just Bun. Random salts are 128-bit; opaque session tokens are 256-bit and only their SHA-256 identifiers are stored. Sessions last up to 12 hours, max five/user; no automatic refresh or always-on timer. Session verification uses native local SQL, not D1 or a third-party identity request.
+Cron — `ctx.schedules.set/cancel/list` в action, публичный Agents Scheduler, UTC, persistent конфигурация supervisor. Callback создаёт job для action, не исполняет произвольный код внутри собственного cron parser. Нативный push Queue consumer отличается от dashboard snapshot refresh.
 
-Auth defaults disabled for an environment. Owner enables Auth and public registration independently; registration never grants platform roles. Public POST /v1/auth/register, login, logout, me and change-password are origin-checked. Open registration/login have a global environment budget of 30/minute and five/minute per normalized login, in addition to the public edge limiter. Limits persist across restarts. Failed/unknown/blocked login responses do not expose user details. Passwords require 6–128 characters by operator choice; six-character passwords are weak for public accounts, and longer unique passphrases are recommended. Passwords/hashes are never returned by public or dashboard APIs and cannot be inspected through application db.
+Schedules — наблюдение ограниченного состояния jobs/cron, не строгий proof физически пустой DLQ. Автоматического DLQ redrive нет: восстановление требует разбора неизвестных внешних эффектов и явной reconciliation.
 
-Auth tab paginates 50 users, refreshes on demand, and permits owner-only create/reset/block/revoke/configuration with production confirmation, Access/CSRF checks and audit. Project-scoped CLI credentials cannot modify end-user authentication. Password changes revoke every session; explicit logout revokes its own session. Revoked socket identities are closed and also rechecked before delivery/calls; queries/actions receive the same ctx.auth. App functions still implement record/organization permissions; authentication is not automatic row-level security. External identities should be keyed by issuer+subject, not unverified client user IDs.
+## 17. Backup и удаление
 
-createPasswordAuth persists only the opaque session token and expiry in browser localStorage, namespaced by the complete project/environment URL. Call restore() before protected UI: it verifies /auth/me on the server before exposing a token or user. Connect onChange to client.refreshAuth; getUser() returns the already verified user without an extra request. Expired/revoked sessions are cleared; a network failure preserves storage for retry. Logout clears local state even when offline; browser storage events synchronize other tabs. No passwords, always-on polling, automatic write retries or credentials in URLs. Browser persistence remains JavaScript-readable, as with the Convex Auth browser pattern: prevent XSS and avoid untrusted scripts. This is a bounded 12-hour session, not an indefinite refresh-token flow. Server JS defaults to memory-only, and storage can be null or a custom synchronous adapter. Dispose removes listeners without revoking or deleting a durable session. No backend migration or additional KV/DO is required.
+### Backup
 
-Private logical backups now preserve user IDs/login/password hashes/blocked status but never active sessions. Only an empty target (including no users) can be restored. Authentication enablement/registration settings stay with the target and are not promoted or restored implicitly. Old capsules lacking accounts restore no users. Credential backups are sensitive private R2 objects, not downloadable through dashboard. No email verification, emailed recovery, MFA, refresh-token flow or automated abuse challenge is claimed. Owners can reset passwords; anonymous recovery is unavailable. Public synthetic demo data remains public even after adding login.
+Settings/CLI создаёт on-demand logical capsule в private R2 BUNDLES: exact app release, documents с IDs, ready file copies и salted password hashes/users. Manifest фиксируется последним, содержимое проверяется checksum. Это credential-sensitive backup, не публичный export.
+
+Bounds: 10 000 documents / 4 MiB logical data; до 100 files / 100 MiB file bytes. Не копируются active sessions, secrets, target origin/auth settings, cron и исторические jobs. Перед risky maintenance нужно pause/drain jobs/actions/uploads.
+
+Restore — owner-confirmed, только в **другую пустую среду того же проекта**, с durable fence/checkpoints; failed restore остаётся fenced для retry. Не in-place overwrite, не PITR, не off-account disaster recovery. Auth target включается/настраивается явно. Periodic backup daemon не включён. [Runbook](production-runbook.md#backup-and-restore).
+
+### Удаление проекта
+
+Owner через Access подтверждает UUID и exact name; удаляются **dev и prod**. Сначала durable catalog fence и credential revocation, затем fences обеих сред, затем scoped DO/facet/R2 cleanup и D1 finalization. Partial failure сохраняет состояние для повторного удаления. Alias reservations, audit и небольшие deletion tombstones намеренно остаются; общий namespace/queues/Access policy и другие проекты не удаляются.
+
+## 18. CI и npm publishing
+
+### 18.1 GitHub `ci.yml`
+
+Triggers: push main, pull_request, workflow_dispatch. Ubuntu 24.04, timeout 15 minutes; `contents: read`, checkout без persistent credentials; Actions pinned SHA. Concurrency по workflow/ref, старый run отменяется. Node 24 для Wrangler, Bun 1.4.3.
+
+```text
+checkout → setup Node/Bun
+  → bun install --frozen-lockfile --ignore-scripts
+  → bun run verify
+       build → type/astro checks → unit tests → format check
+       → verify-build (bundles/CSP/bootstrap)
+       → package-acceptance (real tarball, external disposable app)
+  → bun run test:kernel (local native workerd)
+  → bun audit --production --audit-level=high
+  → git diff --exit-code
+```
+
+CI **не имеет Cloudflare credentials**, не создаёт cloud resources, не деплоит core/customer apps и не публикует npm. Native kernel — локальная проверка, не облачная production certification. `git diff` ловит изменения tracked source от verification; secrets/configs не выдаются pull requests.
+
+### 18.2 GitHub `publish.yml`
+
+Отдельный manual workflow_dispatch, только `auersperg/flare`, ref main. Inputs: exact version из package manifest и dist-tag `next|latest`; environment `npm` (в текущей настройке репозитория — approval gate). Timeout 20 minutes, publishing concurrency сериализован и не cancel-ится новым run.
+
+Workflow проверяет имя/version/license MIT/private flag, повторяет verify/kernel/audit/clean diff, затем `bun pm pack --ignore-scripts` **только packages/flare**. Устанавливает pinned npm `12.1.0`; публикует tarball через `npm publish --access public --tag ... --provenance`.
+
+Publish job имеет `id-token: write`; npm Trusted Publisher связан с repo → `publish.yml` → environment `npm`. Постоянный npm publish token workflow не использует. Это [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/), не авторизация Cloudflare.
+
+Зафиксированный срез registry от 12.10.2026: публичный `@auersperg/flare@0.3.2` под `next`, `latest = 0.3.1`. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.4 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
+
+### 18.3 CI клиентского приложения
+
+Это pipeline отдельного application repository/Cloudflare Builds, **не `ci.yml` платформы**:
+
+```text
+install exact registry SDK → app checks
+  → Flare CLI deploy/promote с scoped FLARE_DEPLOY_TOKEN и --confirm UUID
+  → frontend build для target URL (через --cmd)
+  → native frontend hosting deploy
+  → inspect endpoint / login / query / subscription
+```
+
+Фактический порядок с `--cmd`: build выполняется внутри deploy/promote до activation; hosting — после. GitHub необязателен для local CLI release, но полезен для source review/CI/npm publishing. Cloudflare Builds token и Flare deploy credential — разные credentials, один не заменяет другой. Наличие core CI не означает, что все application Build integrations настроены/проверены.
+
+## 19. Эксплуатация и экономия
+
+### Установка и обновление core
+
+Новый managed lifecycle: `flare platform install|status|update` — [команды, state и recovery](platform-lifecycle.md). CLI использует проверенный payload своей версии, D1 installation ID/journal/revision lease и сохраняет namespace/resource IDs. `--dry-run` делает только чтения; destructive/legacy/undeclared upgrades запрещены. Сам installer не выполняет cloud acceptance или автоматические обновления.
+
+Ниже сохранён прежний ручной operator flow для существующей, **не автоматически adopted**, установки:
+
+Рабочие конфигурации находятся в ignored `.private/cloudflare/{admin,runtime,landing}.wrangler.json`; отслеживаемые examples в `packages/core` содержат placeholders, а не deploy-ready credentials.
+
+Для новой установки оператор создаёт D1/R2/Queues/DLQ, SQLite DO exports/namespace и Loader binding, применяет административные migrations, добавляет owner membership, signing secret, custom domains и Access application/policy. Admin/Runtime имеют взаимные service bindings: первоначальное provisioning требует временного Runtime bootstrap без отсутствующего Admin binding, затем Admin и финального Runtime. Смена имени Worker не должна незаметно пересоздавать DO namespace и терять данные.
+
+Для уже provisioned установки:
+
+```sh
+bun install --frozen-lockfile --ignore-scripts
+bun run verify
+bun run test:kernel
+# Сначала отдельно применить необходимые D1 migrations, если они изменились.
+bun run deploy:dashboard
+# Только при изменениях Runtime; build уже выполнен предыдущей командой:
+bunx --no-install wrangler deploy --config .private/cloudflare/runtime.wrangler.json
+# Landing — отдельный optional static deployment:
+bunx --no-install wrangler deploy --config .private/cloudflare/landing.wrangler.json
+```
+
+Эти команды явно изменяют облако и не являются частью обычного CI. `deploy:dashboard` не обновляет Runtime автоматически и не применяет D1 migrations. `bun run clean` удаляет только локальный reproducible output/reports/caches, не credentials, source, installed dependencies или cloud data; после него нужен новый build. Cloud acceptance использует отдельные disposable scopes и не должна направляться на данные заказчика.
+
+### Ресурсы при работе и простое
+
+Нет постоянно работающей VM, dashboard interval polling, автоматического backup timer или synthetic heartbeat. Auth/job/catalog cleanup идёт bounded on-traffic; alarms планируются для реальных delayed jobs, auth expiry, file recovery и cron. Созданный DO и открытый hibernating socket не означают непрерывное выполнение CPU; idle storage всё равно занимает квоту.
+
+Retention: job receipts 30 дней; catalog audit 90 дней; expired deploy credentials 14 дней grace; bounded cleanup до 1000 rows/category. Старые releases eligible после 30 дней, но последние пять successful, active/candidate и job/outbox references защищены. Static hashes кешируются; данные и credentials не public-cache-ятся.
+
+У core включены Workers Logs head sampling 100%; traces выключены. Native `DynamicTail` собирает bounded exceptions/console dynamic code, затем Workers Logs. Dashboard summaries: successful queries до 100 in-memory, исчезают при restart/hibernation; mutation/action/errors durable bounded history (до 200 persisted, UI максимум 100). Это экономит SQL writes успешных reads, но **не полный исторический журнал**.
+
+Analytics Engine/Analytics SQL bindings в текущей конфигурации нет. Нет собственного usage collector, always-on logging service или verified alert configuration. Error/billing данные читаются через native Cloudflare interfaces с необходимыми правами.
+
+Считать отдельно: Workers request/CPU, Dynamic daily-unique creations/startup CPU, DO request/duration/SQLite, D1 rows, R2 storage/operations, Queues operations, Logs и builds. Нельзя сложить разные requests в единую квоту или назвать `$5` cap. Стабильный loader ID предотвращает создание Dynamic Worker на каждый запрос, но тот же ID/code заново учитывается в новый день по [Dynamic Workers pricing](https://developers.cloudflare.com/dynamic-workers/pricing/).
+
+Ночная read-only проверка 12.10 не обнаружила непрерывного DO расхода в тихом окне. Полный historical Workers Logs и Billing недоступны текущему operator OAuth: точный invoice и причины всех старых exceptions не подтверждены. Частный отчёт остаётся в `.private/audits`; числа тестового workload не являются гарантией месячной стоимости.
+
+## 20. Проверки и оставшиеся границы
+
+### Что проверяет repository tooling
+
+Unit/regression: database/schema/runtime semantics, transaction rollback, capabilities, client/React subscriptions и auth rejection при reconnect, password/session persistence, file grants/streaming, jobs/queues, auth/origin/routing, backups, retention/deletion, dashboard presentation, packaging/cleanup, согласованность версий и локальных documentation links.
+
+Local native kernel: настоящее workerd/Lifecycle/facet RPC/SQLite/hibernation/recovery; fault injection есть только в test harness, не production bundles. Package acceptance устанавливает tarball вне workspace без symlink и компилирует отдельное ephemeral frontend приложение. Cloud acceptance scripts явные, создают disposable scopes и обязаны подтверждать cleanup; они не запускаются обычным `verify`.
+
+### Не выдаём за завершённые возможности
+
+- `platform install|status|update` реализованы в исходниках 0.3.4 и покрыты mock/package/local-native gates. На временной установке в существующем account владельца прошли реальный install, recovery после потери ответа финального deploy, native-data canary через packaged CLI/SDK, same-version no-op update, discovery без локального cache и scoped cleanup с совпадением исходного/итогового инвентаря. Отдельный реальный upgrade 0.3.3 → 0.3.4 подтвердил сохранность native-data, app release, DO namespace и resource identities, Access policy, старого developer JWT, password session, приватного файла и pending job. Вход владельца через настоящий Access проверен в браузере отдельно. Независимый account/full-scope-token platform CLI ещё не подтверждён. Legacy operator adoption и автоматическое reconciliation конфигурации не реализованы. Подробнее: [platform lifecycle](platform-lifecycle.md).
+- Полное graceful release draining и все concurrent crash cases: открытая приёмка; serial gate/conflict и recovery checkpoints не равны полной гарантии.
+- Access-authorized cross-client push dashboard invalidation: отсутствует.
+- Доступ к полным historical logs/billing/alerts: в текущем audit неполный.
+- External OIDC provider acceptance и optional Secrets Store/egress provisioning: отдельные cloud gates.
+- Customer-specific dashboard delegation, untrusted public code marketplace, automatic sharding, cross-project transactions: отсутствуют.
+- Automatic DLQ redrive, PITR, off-account disaster recovery, paired frontend/backend history/atomic rollout: отсутствуют.
+- 30-minute soak отменён по просьбе владельца; нельзя называть его пройденным. Для реальной нагрузки нужна отдельная проверка latency/throughput/cost.
+
+Dynamic Workers/Facets и используемые Agents modules опираются на beta/экспериментальные API. Версии зафиксированы, но обновление Cloudflare API может потребовать повторной native/cloud проверки. Успешные локальные tests или short cloud proofs не дают SLA и не доказывают отсутствие всех vulnerabilities.
+
+Приоритеты дальнейшей доработки и проверяемые критерии готовности — в [production gates](maintenance.md#remaining-production-gates). Они не считаются реализованными этой очисткой репозитория.
+
+## 21. Навигация по исходникам
+
+| Ответственность                                | Основные файлы                                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Admin API / permissions / audit                | `packages/core/src/admin.ts`, `security.ts`, `cli-login.ts`                                      |
+| Supervisor / loader / activation / service RPC | `packages/core/src/runtime.ts`                                                                   |
+| Native document DB / schema / app runtime      | `packages/flare/src/sdk/database.ts`, `schema.ts`, `cloudflare.ts`                               |
+| Function definitions / contexts                | `packages/flare/src/sdk/server.ts`                                                               |
+| Transport / auth persistence / React           | `packages/flare/src/sdk/client.ts`, `react.ts`, `protocol.ts`                                    |
+| Reactive invalidation/cache                    | `packages/core/src/reactivity.ts`                                                                |
+| Password auth                                  | `packages/core/src/auth.ts`                                                                      |
+| Release integrity / aliases                    | `packages/core/src/release.ts`, `routing.ts`                                                     |
+| Optional egress / secret capabilities          | `packages/core/src/capabilities.ts`                                                              |
+| Files / Queue delivery                         | `packages/core/src/files.ts`, `queue.ts`                                                         |
+| Backups / deletion / retention                 | `packages/core/src/backups.ts`, `project-deletion.ts`, `maintenance.ts`, `retention.ts`          |
+| Function summaries                             | `packages/core/src/observability.ts`                                                             |
+| CLI entry / cloud operations / build           | `packages/flare/src/cli/main.mjs`, `cloud.mjs`, `build.mjs`, `bundle.mjs`                        |
+| CLI discovery / login                          | `packages/flare/src/cli/project.mjs`, `login.mjs`                                                |
+| UI / data fetch lifecycle                      | `packages/core/dashboard/src/components/dashboard.tsx`, `common.tsx`, `lib/model.ts`             |
+| Build / acceptance                             | `scripts/build-packages.mjs`, `build-platform.mjs`, `verify-build.mjs`, `package-acceptance.mjs` |
+| Pipeline contracts                             | `.github/workflows/ci.yml`, `publish.yml`                                                        |
+
+[Cloudflare product catalogue](cloudflare-capability-map.md) — датированный справочник вариантов, не перечень подключённых bindings. [Краткое сопоставление](flare-architecture-map.md) — индекс этой карты. [Runbook](production-runbook.md) — обслуживание, [maintenance](maintenance.md) — инварианты и приоритеты production-доработки, [packaging](packaging.md) — дистрибуция. Устаревший отдельный audit удалён; сырые отчёты не подменяют текущий код, конфигурации и результаты проверки выбранного release.
+
+## 22. K2 — расширение, не текущий компонент
+
+**На момент фиксации K2 в Flare не подключён:** нет K2 binding/streams, `ctx.events`, client event subscription или cloud acceptance. Обсуждение добавления не считается реализацией.
+
+K2 public beta доступен на Workers Paid и даёт durable event log с независимыми subscriptions. Чтение сейчас pull/consume+batch ACK, at-least-once; нативные push Worker consumers в roadmap. Это отдельная роль от jobs Queue и мгновенных database subscriptions. [K2 docs](https://developers.cloudflare.com/k2/), [consume](https://developers.cloudflare.com/k2/features/consume/), [анонс](https://blog.cloudflare.com/cloudflare-k2-streams/).
+
+Предлагаемая, **ещё не реализованная** граница: transactional event outbox → native K2 publish → независимые серверные subscriptions, scope isolation и event-ID idempotency. Не заменять текущие queries/WebSockets или Queues; не создавать постоянный polling каждого browser. Consumer wake-up/latency/cost и доступ K2 API нужно определить/проверить перед подключением. Во время beta K2 billing выключен; Worker execution не становится бесплатным. [Pricing](https://developers.cloudflare.com/k2/platform/pricing/).

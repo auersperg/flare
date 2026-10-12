@@ -4,7 +4,7 @@
 
 Cloudflare-native reactive backend in your own account.
 
-**0.3 · breaking native-data preview.** One installation, multiple projects, isolated cloud `dev` / `prod`. The repository contains the platform, SDK, CLI and verification tools, not customer applications or demonstration frontends. It is not yet a complete Convex replacement or a public npm release.
+**0.3 · breaking native-data preview.** One installation, multiple projects, isolated cloud `dev` / `prod`. The repository contains the platform, SDK, CLI and verification tools, not customer applications or demonstration frontends. The SDK/CLI is publicly published on npm; the platform is not yet a complete Convex replacement or fully production-certified.
 
 ## Deployment
 
@@ -18,7 +18,7 @@ The application package is `@auersperg/flare`; its CLI binary remains `flare`. E
 
 - **Core:** shared Admin Worker + Astro/shadcn static dashboard, Runtime Worker, Dynamic Workers, supervisor Durable Objects and persistent SQLite `app` facets.
 - **SDK:** queries, live subscriptions, mutations, actions, React hooks, generated browser-safe TypeScript references and OpenAPI 3.1.
-- **CLI:** thin build/link/cloud-dev/deploy tooling. No local dashboard, backend emulator or Cloudflare administrative credentials in client bundles.
+- **CLI:** build/link/cloud-dev/deploy tooling and explicit account-authorized platform install/status/update. No local dashboard, backend emulator or Cloudflare administrative credentials in client bundles.
 
 The dashboard is **Cloudflare-hosted only**, protected by Cloudflare Access, and not required for application traffic. D1 holds the administrative catalogue/audit only; application data lives in its environment facet. R2 stores immutable releases; Queues deliver transactional outbox jobs. Frontends deploy independently.
 
@@ -36,9 +36,9 @@ New projects start **empty**, with no demo tables, functions or records. Define 
 
 One Bun workspace and lockfile. Installed dependencies, generated output and credentials are ignored. No `apps`/`examples` workspace or duplicated demo toolchain. The task fixture under tests is used only by explicit acceptance scripts; production builds do not consume it.
 
-[Architecture](docs/architecture.md) · [Package distribution](docs/packaging.md) · [Maintenance](docs/maintenance.md).
+[Complete architecture map — 2026-10-12: runtime, dashboard, SDK/CLI, CI and releases](docs/architecture.md) · [Package distribution](docs/packaging.md) · [Maintenance](docs/maintenance.md).
 
-[Cloudflare capability map — 2026-10-11](docs/cloudflare-capability-map.md) · [Flare implementation and resource map](docs/flare-architecture-map.md) · [Native architecture review](docs/architecture-audit-0.3.md).
+[Cloudflare capability catalogue — dated reference](docs/cloudflare-capability-map.md) · [Flare implementation index](docs/flare-architecture-map.md) · [Production runbook](docs/production-runbook.md).
 
 ## Build and verify
 
@@ -116,7 +116,7 @@ Schema changes validate existing documents and update native SQLite expression i
 
 **Breaking change:** only runtime ABI 4 and the native document API are supported. Old `tables`, Drizzle SQL declarations, `--migrations` and ABI 1–3 have been removed. Use a fresh environment/installation for this preview; rebuilding does not reset the existing cloud deployment, catalogue or databases. Do not deploy 0.3 over a 0.2 installation assuming compatibility.
 
-`platform init` is not implemented; `init` / `db generate` are unnecessary for the application flow. General platform provisioning remains an operator workflow. The SDK/CLI is published as `@auersperg/flare@next`; core/dashboard are non-published workspace packages. Local builds perform no cloud deployment.
+Source 0.3.4 adds `flare platform install|status|update` and a checksummed platform payload in the same npm archive. This remains a trusted-team preview, not accepted on a separate Cloudflare account. Check exact-version availability in the registry before installation. See [platform lifecycle](docs/platform-lifecycle.md) for prerequisites, confirmation, recovery and update limits. `init` / `db generate` remain unnecessary for applications. Core/dashboard remain private workspaces, not separate npm packages. Local builds perform no cloud deployment.
 
 ## Native data API
 
@@ -199,7 +199,7 @@ Every logical table is a native SQLite table of validated JSON documents with `_
 
 ## Dashboard
 
-Seven primary sections: **Health, Data, Schema, Functions, Files, Schedules, Logs**. Project/environment selection is in the header; Settings is under the gear, SDK setup under Health.
+Eight primary sections: **Health, Data, Schema, Functions, Files, Schedules, Auth, Logs**. Project/environment selection is in the header; Settings is under the gear, SDK setup under Health.
 
 - Real paginated data, typed add/edit forms, explicit NULL/defaults, revision checks, immutable primary keys, audit and production confirmation.
 - Add/Edit table prepares a document schema draft, not an immediate live schema write. Review and deploy schema with the application release.
@@ -207,11 +207,13 @@ Seven primary sections: **Health, Data, Schema, Functions, Files, Schedules, Log
 - Actual invocation summaries and job receipts, not simulated Tail/billing analytics. Files use private R2 with upload/download/delete; Schedules shows delayed outbox jobs, delivery attempts and native cron jobs. Refresh is on demand, never polling.
 - Owner/editor/viewer checks, verified Access identity, same-origin CSRF protections and strict build-generated CSP.
 
+Administrative views currently use snapshots, updated after their own writes and on focus/visibility return, without interval polling. Cross-client SDK changes do not yet push updates to every open dashboard view. K2 streams are discussed as a future event capability, not installed or exposed by the current SDK.
+
 ## Operations and boundaries
 
 Installation configuration stays local and is ignored by Git. Copy the examples from `packages/core/` into `.private/cloudflare/` and replace every placeholder with your own account, resource IDs, runtime URL and Access issuer/audience. These examples describe bindings, not an automatic installer. Existing installations preserve their resources; enabling Files adds the Runtime `FILES` R2 binding and `DASHBOARD_URL` for dashboard upload CORS. Never reset account routes, Access policies or secrets when adding these bindings.
 
-A fresh installation requires Workers Paid/Dynamic Workers availability, D1, R2, Queues/DLQ, a signing secret, Cloudflare Access and owner membership. Admin and Runtime refer to each other: use a temporary Runtime bootstrap without its Admin service binding before the first Admin deployment. `scripts/setup-cloud.mjs` handles this for the existing macOS operator workflow, but reads local Wrangler OAuth and is **not** a portable, production-approved installer. Do not treat copying examples or deploying Admin alone as a complete first installation.
+For new managed installations use [platform install](docs/platform-lifecycle.md), not the legacy script below. A fresh installation requires Workers Paid/Dynamic Workers availability, D1, R2, Queues/DLQ, a signing secret, Cloudflare Access and owner membership. Admin and Runtime refer to each other: use a temporary Runtime bootstrap without its Admin service binding before the first Admin deployment. `scripts/setup-cloud.mjs` handles this for the existing macOS operator workflow, but reads local Wrangler OAuth and is **not** a portable, production-approved installer. Do not treat copying examples or deploying Admin alone as a complete first installation.
 
 For an **already provisioned and protected installation**:
 
@@ -226,7 +228,7 @@ Commit only the configuration examples, never live installation files. `tests/ke
 
 Explicit cloud acceptance commands can create test resources/projects and write test data. They are not part of `verify`, and must not target customer production data. Production builds/cleanup perform no cloud operations.
 
-Dynamic Workers/Facets/Lifecycle depend on beta/experimental Cloudflare APIs. Supported scope is trusted applications/team members, not public untrusted multi-tenancy. Native scoped Secrets Store reads and a restricted action `globalOutbound` gateway are implemented but need operator bindings/policy and real-cloud acceptance. Dashboard secret provisioning, full analytics, unrestricted export/disaster recovery, complete release draining, portable installer and client-specific delegated membership remain unfinished. Protected functions accept enabled built-in password sessions or configured OIDC identities; application handlers enforce record permissions. Queues are at-least-once; ambiguous mutations are not automatically retried.
+Dynamic Workers/Facets/Lifecycle depend on beta/experimental Cloudflare APIs. Supported scope is trusted applications/team members, not public untrusted multi-tenancy. Native scoped Secrets Store reads and a restricted action `globalOutbound` gateway are implemented but need operator bindings/policy and real-cloud acceptance. Dashboard secret provisioning, full analytics, unrestricted export/disaster recovery, complete release draining, independent installer/cloud upgrade acceptance, legacy adoption and client-specific delegated membership remain unfinished. Protected functions accept enabled built-in password sessions or configured OIDC identities; application handlers enforce record permissions. Queues are at-least-once; ambiguous mutations are not automatically retried.
 
 No guarantee that $5 covers total usage or that Flare is cheaper/faster than Convex for every workload. The SDK/CLI package `@auersperg/flare` is MIT-licensed. The entire repository, including core and dashboard, is MIT-licensed. npm publication is a separate explicit release step.
 

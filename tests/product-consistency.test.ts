@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "bun:test";
@@ -14,7 +14,7 @@ describe("Flare product consistency", () => {
     ["flare", "@auersperg/flare"],
     ["core", "@flare/platform"],
   ])(
-    "names the %s package consistently and guards unpublished previews",
+    "aligns the %s package name/version and publication boundary",
     (folder, name) => {
       const pkg = JSON.parse(read(`packages/${folder}/package.json`));
       expect(pkg.name).toBe(name);
@@ -68,7 +68,9 @@ describe("Flare product consistency", () => {
       encoding: "utf8",
     });
     expect(output.status).toBe(0);
-    expect(output.stdout).toContain("Flare 0.3");
+    expect(output.stdout).toContain(
+      `Flare ${JSON.parse(read("packages/flare/package.json")).version} trusted-team preview`,
+    );
     expect(output.stdout).toContain("Cloudflare-only");
     expect(output.stdout).toContain("flare build");
     expect(read("packages/flare/src/cli/main.mjs")).not.toMatch(
@@ -111,6 +113,66 @@ describe("Flare product consistency", () => {
       /locally launched copy|optional local UI|reactive build|REACTIVE_KERNEL_URL/,
     );
     expect(JSON.parse(read("package.json")).name).toBe("flare-workspace");
+  });
+  it("derives public service metadata from manifests without obsolete stages", () => {
+    for (const role of ["admin", "runtime"]) {
+      const source = read(`packages/core/src/${role}.ts`);
+      expect(source).toContain('from "../package.json"');
+      expect(source).toContain("version: packageInfo.version");
+      expect(source).not.toMatch(/version:\s*["']\d+\.\d+\.\d+["']/);
+    }
+    expect(read("packages/core/src/admin.ts")).toContain(
+      'stage: "trusted-team-preview"',
+    );
+    expect(read("packages/flare/README.md")).not.toContain(
+      "Sessions are memory-only",
+    );
+    expect(read("packages/flare/README.md")).toContain("await auth.restore()");
+  });
+  it("keeps local documentation links and heading anchors resolvable", () => {
+    const files = [
+      "README.md",
+      "packages/core/README.md",
+      "packages/flare/README.md",
+      ...readdirSync(new URL("../docs/", import.meta.url))
+        .filter((name) => name.endsWith(".md"))
+        .map((name) => `docs/${name}`),
+    ];
+    const withoutCode = (source: string) =>
+      source.replace(/^```[^\n]*\n[\s\S]*?^```[^\n]*$/gm, "");
+    const anchors = (source: string) => {
+      const counts = new Map<string, number>();
+      return [...withoutCode(source).matchAll(/^#{1,6}\s+(.+)$/gm)].map(
+        ([, heading]) => {
+          const slug = heading
+            .trim()
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}_\- ]/gu, "")
+            .replace(/ /g, "-");
+          const count = counts.get(slug) ?? 0;
+          counts.set(slug, count + 1);
+          return count ? `${slug}-${count}` : slug;
+        },
+      );
+    };
+    for (const file of files) {
+      const base = new URL(`../${file}`, import.meta.url);
+      for (const [, href] of withoutCode(read(file)).matchAll(
+        /\[[^\]\n]*\]\(([^)\s]+)\)/g,
+      )) {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
+        const target = new URL(href, base);
+        const fragment = decodeURIComponent(target.hash.slice(1));
+        target.hash = "";
+        expect({ file, href, exists: existsSync(target) }).toEqual({
+          file,
+          href,
+          exists: true,
+        });
+        if (fragment)
+          expect(anchors(readFileSync(target, "utf8"))).toContain(fragment);
+      }
+    }
   });
 });
 
@@ -231,6 +293,23 @@ describe("Astro/shadcn dashboard", () => {
       read("packages/core/dashboard/src/components/dashboard.tsx"),
     ).toContain("key={`${project!.id}/${env}/${view}`}");
   });
+  it("resets changed function contracts and cancels runner preparation on navigation", () => {
+    const runner = read(
+      "packages/core/dashboard/src/components/functions-view.tsx",
+    );
+    expect(runner).toContain(
+      'key={active[0] + ":" + JSON.stringify(active[1])}',
+    );
+    expect(runner).toContain("pending.current?.abort()");
+    expect(runner).toContain("abort.signal,");
+    expect(runner).toContain(
+      "if (!alive.current || abort.signal.aborted) return",
+    );
+    expect(runner).toContain("if (!allowed || busy || pending.current) return");
+    expect(read("packages/core/dashboard/src/components/common.tsx")).toContain(
+      "? { ...previous, error: undefined, loading: true }",
+    );
+  });
 });
 
 describe("Dashboard delivery", () => {
@@ -255,6 +334,23 @@ describe("Dashboard delivery", () => {
 });
 
 describe("Production-only repository", () => {
+  it("keeps local credential configs out of tracked production source", () => {
+    const root = new URL("../", import.meta.url);
+    const result = spawnSync("git", ["ls-files", "-z"], {
+      cwd: fileURLToPath(root),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    for (const path of result.stdout.split("\0").filter(Boolean)) {
+      // Working-tree deletions remain in the index until the maintainer commits.
+      if (!existsSync(new URL(path, root)) || path.endsWith(".env.example"))
+        continue;
+      expect(path).not.toMatch(
+        /(^|\/)(?:\.private(?:\/|$)|\.env(?:$|[. ])|\.dev[^/]*\.vars)/,
+      );
+      expect(path).not.toBe("tests/kernel/wrangler.cloud.json");
+    }
+  });
   it("keeps formatting in the manifest and no duplicate product/config files at root", () => {
     expect(JSON.parse(read("package.json")).prettier).toEqual({
       plugins: ["prettier-plugin-astro"],
@@ -285,6 +381,7 @@ describe("Production-only repository", () => {
         path === "packages/flare/package.json" ? undefined : true,
       );
       expect(pkg.license).toBe("MIT");
+      expect(pkg.version).toBe(JSON.parse(read("package.json")).version);
     }
   });
   it("commits portable examples rather than operator configuration", () => {
@@ -293,6 +390,7 @@ describe("Production-only repository", () => {
       "/tests/kernel/wrangler.cloud.json",
       ".private/",
       ".dev.vars*",
+      ".dev*.vars*",
       ".env*",
     ])
       expect(ignore.split("\n")).toContain(path);
@@ -302,6 +400,18 @@ describe("Production-only repository", () => {
       );
       expect(config.account_id).toBe("YOUR_CLOUDFLARE_ACCOUNT_ID");
       expect(config.vars.RUNTIME_URL).toBe("https://api.example.com");
+      expect(config.workers_dev).toBe(false);
+      expect(config.preview_urls).toBe(false);
+      expect(config.routes).toEqual([
+        {
+          pattern: new URL(
+            role === "admin"
+              ? config.vars.DASHBOARD_URL
+              : config.vars.RUNTIME_URL,
+          ).hostname,
+          custom_domain: true,
+        },
+      ]);
       const example = new URL(
         `../packages/core/${role}.wrangler.example.json`,
         import.meta.url,

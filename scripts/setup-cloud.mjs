@@ -1,3 +1,6 @@
+// Legacy operator-only workflow retained for existing installations pending
+// independent cloud acceptance/adoption. New installations use platform install;
+// this file is deliberately not shipped in the npm payload.
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";

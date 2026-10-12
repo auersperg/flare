@@ -157,6 +157,39 @@ export async function generateApi(directory) {
   );
 }
 
+/** Only stages the local frontend build, never backend activation or write retries. */
+export async function withGeneratedApi(directory, build) {
+  const files = ["flare/_generated/api.ts", "flare/_generated/references.ts"];
+  const previous = await Promise.all(
+    files.map((file) =>
+      readFile(file).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+        return null;
+      }),
+    ),
+  );
+  try {
+    await generateApi(directory);
+    return await build();
+  } catch (error) {
+    try {
+      await Promise.all(
+        files.map((file, i) =>
+          previous[i] === null
+            ? rm(file, { force: true })
+            : writeFile(file, previous[i]),
+        ),
+      );
+    } catch (restoreError) {
+      throw new AggregateError(
+        [error, restoreError],
+        "Build failed and local client references could not be restored",
+      );
+    }
+    throw error;
+  }
+}
+
 export async function frontendEnvironment(url) {
   const pkg = JSON.parse(await readFile("package.json", "utf8"));
   const dependencies = { ...pkg.dependencies, ...pkg.devDependencies };
