@@ -17,7 +17,7 @@
 
 ## 4. Запросы
 
-Единственный Health resource принадлежит HealthView; ReleaseList принимает active как prop. History загружается только при раскрытии details. Обязательный pre-mutation read целевой среды сохранён для expected-hash/CAS, это не дубль первоначальной загрузки. Не добавлены query cache, polling, event bus или отдельный state framework. Backup UI тоже монтируется только при раскрытии Settings → Backups; восстановление и private copies не удаляются.
+Единственный Health resource принадлежит HealthView; ReleaseList принимает active как prop. History загружается только при раскрытии details. Обязательный pre-mutation read целевой среды сохранён для expected-hash/CAS, это не дубль первоначальной загрузки. Не добавлены query cache, polling, event bus или отдельный state framework. Backup UI тоже монтируется только при раскрытии Settings → Backups, без второго Manage/Close toggle; восстановление и private copies не удаляются.
 
 ## 5. Документация
 
@@ -29,8 +29,8 @@
 
 ## Проверки и выпуск
 
-- Targeted regression/type checks: PASS; удалённый функционал заменён проверками нового UX.
-- Clean frozen build, package/native acceptance и reproducibility: PASS. Archive SHA-256 `17e7ed76c7b647cb87a0051068281b3a12731ae3dd960c19b2697fe807839975`; platform digest `c2ae421b7cc9a62dc068cd5ed5789cdcedc588e8ba984d84bc4fed5f7851fe9c`.
+- Targeted regression/type checks: PASS, 398 tests / 0 failures; удалённый функционал заменён проверками нового UX.
+- Clean frozen build, package/native acceptance и reproducibility: PASS. Archive SHA-256 `0a7e3be367bbc9a95a681f15a922d40d0b6a55b87080c4110fb216cf58fdc659`; platform digest `e7c746146383646d2a33266f89c3a43ea0b1eff9167edbd9ccbeeb0f5432a15c`.
 - Cross-version 0.3.6 → 0.3.7: выполняется перед publication.
 - Protected npm publication под next, latest не менять: подтверждено владельцем, выполняется после gates.
 - Personal published-CLI update, owner UI, data/file/auth/resource preservation и no-op: выполняются после publication.

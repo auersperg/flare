@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { StatusBadge } from "./status-badge";
-import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import {
   Table,
   TableHeader,
@@ -22,24 +21,15 @@ type Backup = {
   state?: string;
 };
 export default function BackupsPanel(scope: Scope) {
-  const [open, setOpen] = useState(false);
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Backups</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-muted-foreground">
-          On-demand data, user accounts, files and backend code snapshots.
-          Restore only into an empty environment. Sessions, secrets and
-          schedules are not copied. No background polling.
-        </p>
-        <Button variant="outline" onClick={() => setOpen(!open)}>
-          {open ? "Close backups" : "Manage backups"}
-        </Button>
-        {open && <BackupList {...scope} />}
-      </CardContent>
-    </Card>
+    <div className="space-y-3 p-4 pt-0">
+      <p className="text-muted-foreground">
+        On-demand data, user accounts, files and backend code snapshots. Restore
+        only into an empty environment. Sessions, secrets and schedules are not
+        copied. No background polling.
+      </p>
+      <BackupList {...scope} />
+    </div>
   );
 }
 function BackupList(scope: Scope) {

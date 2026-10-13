@@ -346,6 +346,17 @@ describe("Minimal dashboard", () => {
     expect(health).not.toContain("Insights");
     expect(health).not.toContain("Historical analytics");
     expect(health).toContain("active={h.data.active}");
+    const settings = readFileSync(
+      "packages/core/dashboard/src/components/settings-view.tsx",
+      "utf8",
+    );
+    const backups = readFileSync(
+      "packages/core/dashboard/src/components/backups-panel.tsx",
+      "utf8",
+    );
+    expect(settings).toContain("{backupsOpen && <BackupsPanel");
+    expect(backups).not.toContain("Manage backups");
+    expect(backups).not.toContain("Close backups");
   });
   it("asks only for project details, not an artificial workspace", () => {
     const source = readFileSync(
