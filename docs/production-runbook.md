@@ -7,7 +7,7 @@ Flare is a self-hosted backend, not a managed service with an operator SLA. Use 
 ## Before admitting real users
 
 1. Complete local verification (`bun run verify`, `bun run test:kernel`, production dependency audit).
-2. Explicitly deploy the tested Core builds and apply catalog migrations. Record both Worker version IDs and the application release hash.
+2. Use the exact accepted CLI version: `platform status`, `platform update --dry-run`, then the confirmed managed update. The lifecycle applies catalog migrations and preserves resource identities. Do not directly deploy Core Workers over a managed installation. Record both Worker version IDs and the application release hash.
 3. Run short cloud acceptance on disposable scopes. Reports must say PASS **and** resourcesCleaned. A cancelled load test is not a passed soak test.
 4. Configure each application's origin allowlist and password-auth settings. Keep registration disabled unless needed. Password auth does not enforce record ownership: handlers must derive ownership from ctx.auth, never a user ID supplied by the client. Verify two distinct users cannot read or modify each other's records, including subscriptions.
 5. Make schema changes compatible with old clients. Test the frontend build against the chosen production URL before promotion. Backend/frontend publishing is sequential, not atomic; inspect both results.
@@ -17,6 +17,8 @@ The cloud scripts require the existing operator installation and Wrangler sessio
 
 ## Backup and restore
 
+- Accepted personal-project policy: RPO at most 24 hours, RTO at most one hour. This is an operator objective, not an automatic service guarantee; acceptance requires a completed restore rehearsal for the selected workload.
+- The owner operates a daily backup cadence and a backup before risky changes. Check that the newest **completed** capsule is less than 24 hours old; a scheduled intention or an incomplete capsule does not satisfy RPO. Keep recovery metadata privately, and explicitly remove old capsules only after checking a newer recovery point. No automatic backup or retention timer is installed.
 - Before a risky change: pause cron, drain pending/running/failed jobs and actions, finish uploads. Inspect the selected environment, then create an on-demand logical backup in Settings → Backups or `flare backup create --env prod`.
 - Record backup ID, source release hash, creation time, document/file counts and completion. Incomplete capsules cannot be used for restore. Verify recovery on an empty other environment before relying on it.
 - Current bounds: 10,000 documents / 4 MiB logical data; 100 files / 100 MiB. Password hashes are private credential data. Sessions, secrets, auth/origin configuration, cron and historical jobs are not copied.
@@ -29,6 +31,7 @@ The cloud scripts require the existing operator installation and Wrangler sessio
 - Schedules shows bounded job state; Logs shows recent application summaries, not complete Cloudflare telemetry. Health being ready is not proof that all jobs succeeded.
 - Investigate failed jobs and the native `flare-jobs` dead-letter queue. Keep the payload, job ID, environment and referenced release available. External effects are at-least-once: reconcile using the application's idempotency key before retrying.
 - Automatic DLQ redrive is not implemented. Never blindly replay a message with an unknown external outcome or silently discard messages. Fix the handler, confirm the retained release/contract, and perform explicit application-level reconciliation.
+- DLQ triage belongs to the installation owner: identify project/environment, job ID, release, due time and attempt history; compare the application's idempotency record and any downstream effect before replay. If the outcome is unknown, reconcile it first. Preserve the message and retained release until the case is resolved; never replay against another environment or normalize the payload to bypass validation.
 - On ambiguous mutation failure, read current state before retrying. The SDK deliberately does not retry writes automatically.
 - On a deployment conflict, wait for admitted actions/jobs to finish; retry with the expected active hash. Code rollback does not undo data or external effects.
 - Project deletion requires the owner and exact project name; it deletes dev **and** prod. Partial failure stays fenced for a repeat attempt. Shared queues, unrelated projects and account Access settings are not removed.
@@ -39,7 +42,17 @@ Use Cloudflare's account billing/usage for the actual subscription period, then 
 
 Track Workers requests/CPU, DO requests/duration, SQLite reads/writes/storage, D1 rows, Dynamic Worker daily creation units, R2 storage/operations, Queue operations and Logs events. Immutable loader IDs do not create a runtime per request. Hibernating sockets avoid continuous execution, but storage, active work and scheduled jobs are still billable.
 
-No always-on monitoring process, periodic dashboard poll, backup timer or synthetic production heartbeat is added. Native Cloudflare notifications/budget thresholds must be configured and verified by the operator; this runbook does not imply they are enabled. The $5 plan is a minimum, not a spending cap. Estimate a month from representative application traffic, separately from test workloads.
+No always-on monitoring process, periodic dashboard poll, backup timer or synthetic production heartbeat is added. Native Cloudflare rules are enabled for the owner:
+
+- Account-wide $10 usage-charge alert; Cloudflare accepted the test dispatch and the owner confirmed email receipt. This is not a Flare-only metric or a spending cap.
+- `Flare — Worker errors`: count native `logs.issues` occurrences for exactly `flare-admin` and `flare-runtime`, threshold ≥1, automatic one-minute window/evaluation, repeat at most hourly.
+- `Flare — jobs dead-lettered`: count `events.queuesMessages` operations for the personal `flare-jobs` queue with `outcome = 'dlq'`, with the same threshold/evaluation/repeat settings. This is sampled native telemetry for new dead-letter transitions, **not** a continuous DLQ backlog gauge or a guarantee to observe every event. Inspect the queue during incident triage even when no email has fired.
+
+Worker/DLQ rule configuration was read back, both test dispatches accepted by Cloudflare, and the owner confirmed receipt of both emails. Real fault-to-rule triggering was not tested against the personal panel; test dispatch does not certify metric coverage. Existing account policies were not modified. The $5 plan is not a spending cap. Estimate a month from representative application traffic, separately from test workloads. [Native Custom Alerts](https://developers.cloudflare.com/notifications/notification-available/) run inside Cloudflare; their scheduled metric evaluation is not application data polling.
+
+## Account credential renewal
+
+The current scoped platform token expires on 11 November 2026 at 22:59:59 UTC. Renew it before expiry with the same required account/zone scope, save the replacement only in the private local credential file (mode `0600`), and verify `platform status` before deleting the previous token. Do not add permissions for unrelated products. Expiry blocks administrative CLI requests, not execution of already deployed Workers, application sessions or service bindings. Tokens, signing keys and raw authenticated logs must not be committed or included in public reports.
 
 ## Release decision
 

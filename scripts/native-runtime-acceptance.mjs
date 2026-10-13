@@ -86,6 +86,22 @@ try {
       401,
     );
   });
+  await test("Native RPC keeps allowlists, argument guards and public error envelopes", async () => {
+    for (const op of ["constructor", "__proto__", "unknown"])
+      await assert.rejects(control(op), /INVALID_OPERATION/);
+    const r = await fetch(base + "/core", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + token,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ op: "readiness", args: null }),
+    });
+    assert.deepEqual(await r.json(), { ok: false, code: "INVALID_INPUT" });
+    const ready = await control("readiness");
+    assert.equal(ready.runtimeAbi, 4);
+    assert.equal(ready.protocol, 1);
+  });
   await test("Native core cold deployment and typed document schema", async () => {
     await control("configure", { scope, origins: [base], oidc: null });
     await control(
@@ -214,6 +230,89 @@ try {
     const rows = await call("tasks/list", "query");
     for (let i = 0; i < 12; i++)
       assert.equal(rows.filter((row) => row.title === `Batch ${i}`).length, 1);
+  });
+  await test("Running native Queue job fences activation and retains its committed mutation", async () => {
+    const title = "Running job " + crypto.randomUUID();
+    const job = await call("lab/scheduleBusy", "mutation", { title });
+    await wait(async () =>
+      (await admin("jobs")).recent.some(
+        (row) => row.id === job && row.state === "running",
+      ),
+    );
+    const active = (await admin("health")).active;
+    await assert.rejects(
+      admin("release-rollback", { hash: active, expected: active }),
+      /CONFLICT/,
+    );
+    await wait(async () =>
+      (await admin("jobs")).receipts.some((row) => row.id === job),
+    );
+    assert.equal(
+      (await call("tasks/list", "query")).filter((row) => row.title === title)
+        .length,
+      1,
+    );
+    assert.equal((await admin("health")).active, active);
+  });
+  await test("Authenticated scheduling preserves explicit owner arguments, never a session in internal jobs", async () => {
+    const target = crypto.randomUUID() + "/dev";
+    const auth = createPasswordAuth({ url: base + "/p/" + target });
+    let fixtureClient;
+    try {
+      await control("configure", {
+        scope: target,
+        origins: [base],
+        oidc: null,
+      });
+      await control(
+        "deploy",
+        target,
+        await build(
+          "tests/fixtures/production-app.ts",
+          join(directory, "production-jobs"),
+        ),
+      );
+      await control("admin", target, "auth-configure", {
+        enabled: true,
+        registration: true,
+      });
+      const user = await auth.register(
+        "fixture-owner",
+        "Native fixture acceptance passphrase 73!",
+      );
+      fixtureClient = createClient({
+        url: base + "/p/" + target,
+        getToken: auth.getToken,
+      });
+      const key = crypto.randomUUID();
+      const job = await fixtureClient.mutation(
+        reference("load/schedule", "mutation"),
+        { key },
+      );
+      await wait(
+        async () =>
+          (await control("admin", target, "jobs", {})).receipts.some(
+            (row) => row.id === job,
+          ),
+        25000,
+      );
+      const effect = await fixtureClient.query(
+        reference("effects/status", "query"),
+        { key },
+      );
+      assert.ok(effect.attempts >= 2);
+      assert.equal(effect.applications, 1);
+      await assert.rejects(
+        fixtureClient.mutation(reference("effects/attempt", "mutation"), {
+          key,
+          owner: user.id,
+        }),
+      );
+    } finally {
+      fixtureClient?.dispose();
+      auth.dispose();
+      await control("destroy", target);
+    }
   });
   await test("Native R2 streaming roundtrip and one-use upload grants", async () => {
     const blob = new Blob(["Native file bytes"], { type: "text/plain" });

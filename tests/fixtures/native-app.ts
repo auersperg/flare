@@ -150,6 +150,19 @@ export default defineApp({
       }),
     },
     jobs: {
+      busy: action({
+        auth: "internal",
+        input: z.object({ title: z.string() }),
+        output: z.string(),
+        handler: async (ctx, args) => {
+          const id = await ctx.runMutation(
+            reference<{ title: string }, string>("tasks/create", "mutation"),
+            args,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          return id;
+        },
+      }),
       objectQuery: query({
         auth: "public",
         input: empty,
@@ -187,6 +200,12 @@ export default defineApp({
       }),
     },
     lab: {
+      scheduleBusy: mutation({
+        auth: "public",
+        input: z.object({ title: z.string() }),
+        output: z.string(),
+        handler: ({ jobs }, args) => jobs.schedule("jobs/busy", args),
+      }),
       identity: query({
         auth: "required",
         input: empty,

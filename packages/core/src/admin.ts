@@ -7,7 +7,7 @@ declare const FLARE_DASHBOARD_CSP_HASHES: {
   styles: string[];
 };
 import { WorkerEntrypoint } from "cloudflare:workers";
-import type { ScopeConfig } from "./runtime.js";
+import type { RuntimeApi, RuntimeBinding } from "./rpc-contract.js";
 import {
   digest,
   uuid,
@@ -27,37 +27,23 @@ import type { ReleaseUpload } from "./release.js";
 import { applicationUrl, defaultAlias, projectAlias } from "./routing.js";
 type Role = "owner" | "editor" | "viewer";
 type Actor = { email: string; role: Role; projectId: string | null };
-type RuntimeApi = {
-  configure(config: ScopeConfig): Promise<void>;
-  deploy(
-    scope: string,
-    bundle: ReleaseUpload,
-    expected?: string,
-  ): Promise<{ hash: string; unchanged: boolean }>;
-  admin(scope: string, op: string, input: any): Promise<any>;
-  devIdentity(scope: string, subject: string): Promise<string>;
-  publishAlias(alias: string, projectId: string): Promise<void>;
-  destroy(scope: string): Promise<unknown>;
-  prepareDestroy(scope: string): Promise<unknown>;
-};
-interface Env {
-  CATALOG: D1Database;
-  RUNTIME: { command(op: string, args: any[]): Promise<RpcResult<any>> };
-  ASSETS: Fetcher;
-  RUNTIME_URL: string;
-  DASHBOARD_URL: string;
-  ACCESS_ISSUER: string;
-  ACCESS_AUD: string;
-  FLARE_INSTALLATION_ID?: string;
-  FLARE_PLATFORM_PAYLOAD?: string;
-}
-function runtime(env: Env): RuntimeApi {
-  return new Proxy({} as RuntimeApi, {
-    get:
-      (_target, key) =>
-      (...args: any[]) =>
-        env.RUNTIME.command(String(key), args).then(unwrap),
-  });
+import type { AdminEnv as Env } from "./bindings.js";
+function runtime(env: Env): Omit<RuntimeApi, "readiness"> {
+  return {
+    configure: (config) =>
+      env.RUNTIME.command("configure", [config]).then(unwrap),
+    deploy: (scope, bundle, expected) =>
+      env.RUNTIME.command("deploy", [scope, bundle, expected]).then(unwrap),
+    admin: (scope, op, input) =>
+      env.RUNTIME.command("admin", [scope, op, input]).then(unwrap),
+    devIdentity: (scope, subject) =>
+      env.RUNTIME.command("devIdentity", [scope, subject]).then(unwrap),
+    publishAlias: (alias, project) =>
+      env.RUNTIME.command("publishAlias", [alias, project]).then(unwrap),
+    destroy: (scope) => env.RUNTIME.command("destroy", [scope]).then(unwrap),
+    prepareDestroy: (scope) =>
+      env.RUNTIME.command("prepareDestroy", [scope]).then(unwrap),
+  };
 }
 const json = (data: unknown, status = 200) =>
   Response.json(data, {

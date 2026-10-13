@@ -67,39 +67,14 @@ import {
   eraseEnvironment,
   markEnvironmentDeleting,
 } from "./maintenance.js";
-export type ScopeConfig = {
-  scope: string;
-  origins: string[];
-  oidc: Oidc | null;
-};
-interface Env {
-  APP_CAPABILITIES?: string;
-  LOADER: WorkerLoader;
-  SUPERVISORS: DurableObjectNamespace;
-  BUNDLES: R2Bucket;
-  FILES?: R2Bucket;
-  JOBS: Queue;
-  DEV_SIGNING_KEY: string;
-  RUNTIME_URL: string;
-  DASHBOARD_URL?: string;
-  DEV_TOKEN_ISSUER?: string;
-  FLARE_INSTALLATION_ID?: string;
-  FLARE_PLATFORM_PAYLOAD?: string;
-  RATE_LIMITER: RateLimit;
-  ADMIN_API: {
-    request(request: Request): Promise<Response>;
-    readiness(): Promise<{
-      version: string;
-      installationId?: string;
-      platformPayload?: string;
-      runtime: {
-        version: string;
-        installationId?: string;
-        platformPayload?: string;
-      };
-    }>;
-  };
-}
+import type {
+  ScopeConfig,
+  SupervisorApi,
+  SupervisorBinding,
+  RuntimeApi,
+} from "./rpc-contract.js";
+export type { ScopeConfig } from "./rpc-contract.js";
+import type { RuntimeEnv as Env } from "./bindings.js";
 // A bounded per-isolate cache; cold aliases need one R2 read, not a catalog call.
 const registries = new WeakMap<R2Bucket, AliasRegistry>();
 function aliases(env: Env) {
@@ -110,43 +85,36 @@ function aliases(env: Env) {
   }
   return registry;
 }
-type SupervisorApi = Pick<
-  EnvironmentSupervisor,
-  | "authCommand"
-  | "application"
-  | "socketIdentity"
-  | "configuration"
-  | "configure"
-  | "publish"
-  | "activate"
-  | "admin"
-  | "authenticate"
-  | "consumeTicket"
-  | "ticket"
-  | "call"
-  | "job"
-  | "destroy"
-  | "prepareDestroy"
-  | "fileCommand"
-  | "scheduleCommand"
->;
 function getSupervisor(
   env: Env,
   scope: string,
 ): SupervisorApi & { fetch(request: Request): Promise<Response> } {
-  const stub = env.SUPERVISORS.getByName(scope) as unknown as {
-    dispatch(op: string, args: any[]): Promise<RpcResult<any>>;
-    fetch(request: Request): Promise<Response>;
+  const stub = env.SUPERVISORS.getByName(scope) as unknown as SupervisorBinding;
+  return {
+    fetch: (request) => stub.fetch(request),
+    authCommand: (...args) => stub.dispatch("authCommand", args).then(unwrap),
+    application: (...args) => stub.dispatch("application", args).then(unwrap),
+    socketIdentity: (...args) =>
+      stub.dispatch("socketIdentity", args).then(unwrap),
+    configuration: (...args) =>
+      stub.dispatch("configuration", args).then(unwrap),
+    configure: (...args) => stub.dispatch("configure", args).then(unwrap),
+    publish: (...args) => stub.dispatch("publish", args).then(unwrap),
+    activate: (...args) => stub.dispatch("activate", args).then(unwrap),
+    admin: (...args) => stub.dispatch("admin", args).then(unwrap),
+    authenticate: (...args) => stub.dispatch("authenticate", args).then(unwrap),
+    consumeTicket: (...args) =>
+      stub.dispatch("consumeTicket", args).then(unwrap),
+    ticket: (...args) => stub.dispatch("ticket", args).then(unwrap),
+    call: (...args) => stub.dispatch("call", args).then(unwrap),
+    job: (...args) => stub.dispatch("job", args).then(unwrap),
+    destroy: (...args) => stub.dispatch("destroy", args).then(unwrap),
+    prepareDestroy: (...args) =>
+      stub.dispatch("prepareDestroy", args).then(unwrap),
+    fileCommand: (...args) => stub.dispatch("fileCommand", args).then(unwrap),
+    scheduleCommand: (...args) =>
+      stub.dispatch("scheduleCommand", args).then(unwrap),
   };
-  return new Proxy(
-    {} as SupervisorApi & { fetch(request: Request): Promise<Response> },
-    {
-      get: (_target, key) =>
-        key === "fetch"
-          ? (request: Request) => stub.fetch(request)
-          : (...args: any[]) => stub.dispatch(String(key), args).then(unwrap),
-    },
-  );
 }
 type ConnectionAuth = {
   auth: Auth | null;
@@ -183,7 +151,7 @@ export class DynamicTail extends WorkerEntrypoint<Env, { scope: string }> {
   }
 }
 export class EnvironmentSupervisor extends DurableObject<Env> {
-  async dispatch(op: string, args: any[]): Promise<RpcResult<any>> {
+  async dispatch(op: string, args: unknown[]): Promise<RpcResult<unknown>> {
     return capture(async () => {
       await this.lifecycle.start();
       if (this.removed && !["destroy", "prepareDestroy"].includes(op)) {
@@ -212,7 +180,11 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         ].includes(op)
       )
         fail("INVALID_OPERATION");
-      return (this as any)[op](...args);
+      if (!Array.isArray(args)) fail("INVALID_INPUT");
+      const method = this[op as keyof SupervisorApi] as (
+        ...args: unknown[]
+      ) => unknown;
+      return method.apply(this, args);
     });
   }
 
@@ -1923,7 +1895,7 @@ export class AppCapability extends WorkerEntrypoint<Env, { scope: string }> {
   }
 }
 export class RuntimeControl extends WorkerEntrypoint<Env> {
-  async command(op: string, args: any[]): Promise<RpcResult<any>> {
+  async command(op: string, args: unknown[]): Promise<RpcResult<unknown>> {
     return capture(async () => {
       if (
         ![
@@ -1938,7 +1910,11 @@ export class RuntimeControl extends WorkerEntrypoint<Env> {
         ].includes(op)
       )
         fail("INVALID_OPERATION");
-      return (this as any)[op](...args);
+      if (!Array.isArray(args)) fail("INVALID_INPUT");
+      const method = this[op as keyof RuntimeApi] as (
+        ...args: unknown[]
+      ) => unknown;
+      return method.apply(this, args);
     });
   }
 

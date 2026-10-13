@@ -122,7 +122,7 @@ The native workerd harness forces supervisor abort at two real activation checkp
 
 Production rollout checklist:
 
-- Run `bun run verify`, `bun run test:kernel` and `bun audit --production --audit-level=high`; deploy the tested Admin/Runtime builds explicitly.
+- Run `bun run verify`, `bun run test:kernel`, native platform acceptance, reproducibility and the production audit. Install the exact accepted package; use managed `platform status/update --dry-run/update`, never direct Admin/Runtime deploy after adoption.
 - For each application configure only its frontend origins, built-in auth or OIDC issuer/audience, and required capabilities. Test unauthenticated, expired-token and cross-environment refusal before real user data.
 - Use `flare dev` for cloud dev; use a tested immutable hash with `flare promote --env prod --hash HASH --cmd "bun run build"`, followed by native frontend publishing. Inspect partial-release errors; do not rewind the database automatically.
 - Pause cron/drain jobs and create a logical backup before risky maintenance. Current restore requires an empty other environment and is not in-place recovery or off-account disaster recovery.
@@ -147,3 +147,5 @@ just because of their name. Maintained fixtures are under `tests/fixtures`.
 Installed dependencies, tracked sources/tests, live Wrangler configurations,
 installation state, credentials and nonempty CLI connections remain intact.
 Cleanup never contacts Cloudflare. Build again before packaging or deployment.
+
+The ordered maintenance transition and its acceptance criteria are tracked in [architecture improvement plan](architecture-improvement-plan.md).

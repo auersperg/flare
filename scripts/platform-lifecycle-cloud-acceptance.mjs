@@ -72,7 +72,9 @@ export async function initializeDisposableCanary(
   validateState(state, cf.account, state.name);
   assert.match(state.name, /^proof-[a-f0-9]{8}$/);
   assert.match(project, /^[a-f0-9-]{36}$/);
-  const name = state.workers.runtime.name.replace(/-runtime$/, "-canary");
+  const name =
+    state.workers.runtime.name.replace(/-runtime$/, "-canary-") +
+    project.slice(0, 8);
   assert.ok(
     !(await cf.list("workers/scripts")).some((w) => w.id === name),
     "Canary helper already exists; no implicit replacement",
@@ -127,7 +129,8 @@ export async function initializeDisposableCanary(
     const url = `https://${name}.${state.addresses.subdomain}.workers.dev`;
     let consecutive = 0;
     for (let attempt = 0; attempt < 30 && consecutive < 3; attempt++) {
-      const r = await fetch(url + "?ready=" + attempt, {
+      // Probe the exact URL used by POST, not a different query/cache key.
+      const r = await fetch(url, {
         headers: {
           authorization: "Bearer " + key,
           "cache-control": "no-cache",
@@ -275,7 +278,7 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
   assert.equal(cf.account, options.account);
   const scratch = await mkdtemp(join(tmpdir(), "flare-lifecycle-cloud-"));
   const name = `proof-${randomUUID().slice(0, 8)}`;
-  const local = join(scratch, "configuration");
+  const local = join(scratch, "configuration", "platform");
   const storeOptions = { directory: local };
   const reportPath = resolve(
     options.report ?? "artifacts/platform-lifecycle-cloud-acceptance.json",
@@ -335,9 +338,16 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
     return result.stdout.trim();
   };
   const test = async (title, work) => {
-    await work();
+    try {
+      await work();
+    } catch (error) {
+      report.tests.push({ title, status: "FAIL" });
+      await saveReport();
+      throw error;
+    }
     report.tests.push({ title, status: "PASS" });
     console.log(`PASS: ${title}`);
+    await saveReport();
   };
   const saveReport = async () => {
     await mkdir(join(reportPath, ".."), { recursive: true });
@@ -738,6 +748,22 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
         (await client.query(list, { limit: 50 })).some((r) => r._id === id),
       );
     });
+    if (dependencies.productionAcceptance) {
+      await test("Production workload, scoped recovery and external compiled CLI", async () => {
+        report.production = await dependencies.productionAcceptance({
+          cf,
+          state,
+          release: targetRelease ?? release,
+          scratch,
+          run,
+          configurationHome: join(scratch, "configuration"),
+          initialize: initializeDisposableCanary,
+          packageDirectory: targetRelease
+            ? join(scratch, "target/node_modules/@auersperg/flare")
+            : join(scratch, "node_modules/@auersperg/flare"),
+        });
+      });
+    }
     await test("Discover installation from D1 without the local cache", async () => {
       await rm(local, { recursive: true, force: true });
       const result = await platform(
@@ -763,6 +789,20 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
     client?.dispose();
     devClient?.dispose();
     passwordAuth?.dispose();
+    // Preserve secret-free hook evidence even when it throws and scratch cleanup succeeds.
+    if (dependencies.productionAcceptance) {
+      try {
+        report.production = JSON.parse(
+          await readFile(join(scratch, "production-acceptance.json"), "utf8"),
+        );
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          failure ??= error;
+          report.status = "FAIL";
+          report.error = "Unable to preserve production acceptance evidence";
+        }
+      }
+    }
     if (baseline && needsCleanup) {
       try {
         state ??= (
@@ -811,8 +851,17 @@ if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? "")).href) {
       report: { type: "string" },
       "from-archive": { type: "string" },
       archive: { type: "string" },
+      production: { type: "boolean", default: false },
     },
     strict: true,
   });
-  await runLifecycleCloudAcceptance(values);
+  await runLifecycleCloudAcceptance(
+    values,
+    values.production
+      ? {
+          productionAcceptance: (await import("./production-acceptance.mjs"))
+            .productionAcceptance,
+        }
+      : {},
+  );
 }

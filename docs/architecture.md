@@ -1,6 +1,6 @@
 # Flare — полная карта текущей архитектуры
 
-Зафиксировано **12 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Базовый commit до обновления документа: `8e4a451`. Версия исходников **0.3.5**, протокол **1**, runtime ABI **4**.
+Зафиксировано **12 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Базовый release commit: `6ec8e87`; последующая фиксация публикации: `6627523`. Working-tree candidate **0.3.6** (ещё не опубликован), protocol **1**, runtime ABI **4**. Текущий принятый npm/cloud release — **0.3.5**.
 
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
@@ -153,6 +153,8 @@ Astro сохраняет свой Vite pipeline. Wrangler используетс
 
 Version в Runtime `/health`, Admin `/api/session` и CLI help берётся из соответствующего package manifest; равенство workspace versions проверяется тестами. Admin stage — `trusted-team-preview`, не production-сертификация. Изменения working tree не означают новый npm release или cloud deployment.
 
+Внутренние service/DO RPC-контракты находятся в `packages/core/src/rpc-contract.ts` (type-only), native Env bindings — в `bindings.ts`. Клиенты используют явные adapters вместо динамического Proxy; wire `command/dispatch` и сериализуемые public error envelopes сохранены.
+
 ## 5. Control plane
 
 **Admin Worker** управляет проектами, окружениями, настройками, credentials, релизными операциями и dashboard API `/api/*`.
@@ -266,7 +268,7 @@ Cloudflare поддерживает сохранение соединений п
 
 Единственный dashboard — онлайн, Cloudflare Static Assets + Admin Worker + Access. Локального dashboard/SSR server/administrative callback server нет.
 
-UI: Astro static shell, React island, Tailwind CSS variables, shadcn Base Lyra/Stone/Geist/Lucide (`components.json`). UI primitives находятся в `components/ui`, общие typed forms/status/function badges — shared components. Data grid использует shadcn Table, а не перенесённый Convex grid или собственный внешний сервер таблиц.
+UI: Astro static shell, client-only React mount через bundled script, Tailwind CSS variables, shadcn Base Lyra/Stone/Geist/Lucide (`components.json`). UI primitives находятся в `components/ui`, общие typed forms/status/function badges — shared components. Data grid использует shadcn Table, а не перенесённый Convex grid или собственный внешний сервер таблиц.
 
 Header: project selector, Development/Production tabs. Sidebar: **Health, Data, Schema, Functions, Files, Schedules, Auth, Logs**. Settings — gear; SDK setup — из Health. Вторичные views lazy-loaded; root session/projects fetch параллелен, старые запросы отменяются при смене view/scope.
 
@@ -335,11 +337,11 @@ Mutation не повторяется автоматически при network f
 
 ## 13. CLI и developer flow
 
-npm registry проверен 12.10.2026: `next = 0.3.2`, `latest = 0.3.1`. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
+Зафиксированный registry release от 12.10.2026: `next = 0.3.5`, `latest = 0.3.1`. Dist-tags изменяемы; ниже exact version принятого release. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
 
 ```sh
-bun add @auersperg/flare@0.3.2
-bunx --bun --package @auersperg/flare@0.3.2 flare dev
+bun add @auersperg/flare@0.3.5
+bunx --bun --package @auersperg/flare@0.3.5 flare dev
 ```
 
 1. Первый `dev` scaffold-ит минимальный `flare/` и предлагает platform URL, если приложение ещё не linked.
@@ -352,11 +354,11 @@ bunx --bun --package @auersperg/flare@0.3.2 flare dev
 
 ```sh
 # Собрать текущий backend и подтвердить prod deployment:
-bunx --bun --package @auersperg/flare@0.3.2 flare deploy
+bunx --bun --package @auersperg/flare@0.3.5 flare deploy
 # Посмотреть проверенные dev releases:
-bunx --bun --package @auersperg/flare@0.3.2 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.5 flare releases --env dev
 # Активировать конкретную проверенную dev сборку в prod:
-bunx --bun --package @auersperg/flare@0.3.2 flare promote --env prod --hash HASH
+bunx --bun --package @auersperg/flare@0.3.5 flare promote --env prod --hash HASH
 ```
 
 Advanced commands: `build`, `link`, `deploy --release`, `rollback`, `backup create|list|restore|delete|status`. Установка платформы отделена: `platform install|status|update|adopt`; legacy `platform init` отсутствует. `db generate` отсутствует и не нужен document API. Local workerd используется только acceptance tests ядра, не installed developer backend.
@@ -370,7 +372,7 @@ Activation выполняется через serial gate. При active actions/
 В Health показываются последние пять distinct successful backend hashes выбранной среды. Promote переносит exact dev code bundle в prod **без dev данных, users, files или config**. Rollback применяет retained совместимый code bundle, не data rewind. Исторического изолированного preview каждой версии нет.
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.2 flare promote \
+bunx --bun --package @auersperg/flare@0.3.5 flare promote \
   --env prod --hash HASH --cmd "bun run build"
 # После успеха — native hosting deploy, например в приложении:
 bunx --no-install wrangler deploy
@@ -432,6 +434,7 @@ checkout → setup Node/Bun
        → verify-build (bundles/CSP/bootstrap)
        → package-acceptance (real tarball, external disposable app)
   → bun run test:kernel (local native workerd)
+  → bun scripts/platform-native-acceptance.mjs
   → bun audit --production --audit-level=high
   → git diff --exit-code
 ```
@@ -442,7 +445,7 @@ CI **не имеет Cloudflare credentials**, не создаёт cloud resourc
 
 Отдельный manual workflow_dispatch, только `auersperg/flare`, ref main. Inputs: exact version из package manifest и dist-tag `next|latest`; environment `npm` (в текущей настройке репозитория — approval gate). Timeout 20 minutes, publishing concurrency сериализован и не cancel-ится новым run.
 
-Workflow проверяет имя/version/license MIT/private flag, повторяет verify/kernel/audit/clean diff, затем `bun pm pack --ignore-scripts` **только packages/flare**. Устанавливает pinned npm `12.1.0`; публикует tarball через `npm publish --access public --tag ... --provenance`.
+Workflow проверяет имя/version/license MIT/private flag, повторяет verify/kernel/native-platform/reproducibility/audit/clean diff, затем проверяет SHA-256 **того же tarball packages/flare**, который независимо установлен и проверен package acceptance. Повторного repack перед публикацией нет. Устанавливает pinned npm `12.1.0`; публикует tarball через `npm publish --access public --tag ... --provenance`.
 
 Publish job имеет `id-token: write`; npm Trusted Publisher связан с repo → `publish.yml` → environment `npm`. Постоянный npm publish token workflow не использует. Это [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/), не авторизация Cloudflare.
 
@@ -550,3 +553,5 @@ Dynamic Workers/Facets и используемые Agents modules опирают
 K2 public beta доступен на Workers Paid и даёт durable event log с независимыми subscriptions. Чтение сейчас pull/consume+batch ACK, at-least-once; нативные push Worker consumers в roadmap. Это отдельная роль от jobs Queue и мгновенных database subscriptions. [K2 docs](https://developers.cloudflare.com/k2/), [consume](https://developers.cloudflare.com/k2/features/consume/), [анонс](https://blog.cloudflare.com/cloudflare-k2-streams/).
 
 Предлагаемая, **ещё не реализованная** граница: transactional event outbox → native K2 publish → независимые серверные subscriptions, scope isolation и event-ID idempotency. Не заменять текущие queries/WebSockets или Queues; не создавать постоянный polling каждого browser. Consumer wake-up/latency/cost и доступ K2 API нужно определить/проверить перед подключением. Во время beta K2 billing выключен; Worker execution не становится бесплатным. [Pricing](https://developers.cloudflare.com/k2/platform/pricing/).
+
+Порядок точечных улучшений без изменения инфраструктуры — [план перехода](architecture-improvement-plan.md). Статусы выполнения фиксируются в плане отдельно от этой карты реализации.
