@@ -20,6 +20,7 @@ export default function SettingsView({
 }: Scope & { onDeleted: () => void }) {
   const path = scopePath(scope.project, scope.env),
     r = useResource<Settings>(path + "/settings");
+  const [backupsOpen, setBackupsOpen] = useState(false);
   return (
     <div className="space-y-4 p-4">
       <h1 className="page-title">Settings</h1>
@@ -30,7 +31,15 @@ export default function SettingsView({
       {r.data && (
         <>
           <SettingsForm {...scope} settings={r.data} refresh={r.refresh} />
-          <BackupsPanel {...scope} />
+          <details
+            className="rounded-lg border"
+            onToggle={(event) => setBackupsOpen(event.currentTarget.open)}
+          >
+            <summary className="cursor-pointer p-4 font-medium">
+              Backups
+            </summary>
+            {backupsOpen && <BackupsPanel {...scope} />}
+          </details>
         </>
       )}
       {scope.session.role === "owner" && (

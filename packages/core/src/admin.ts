@@ -13,6 +13,7 @@ import {
   uuid,
   environment,
   origins,
+  projectCustomer,
   validateOidc,
   accessEmail,
   accessAssertion,
@@ -231,17 +232,18 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     if (a.projectId) fail("FORBIDDEN");
     writable(a);
     const input = await jsonBody(request);
-    for (const field of ["name", "customer"])
+    for (const field of ["name"])
       if (
         typeof input[field] !== "string" ||
         input[field].trim().length < 1 ||
         input[field].length > 100
       )
         fail("INVALID_INPUT");
+    const customerName = projectCustomer(input.customer);
     const customer = await env.CATALOG.prepare(
       "SELECT id FROM customers WHERE name=? COLLATE NOCASE LIMIT 1",
     )
-      .bind(input.customer.trim())
+      .bind(customerName)
       .first<{ id: string }>();
     const id = crypto.randomUUID(),
       customerId = customer?.id ?? crypto.randomUUID(),
@@ -265,7 +267,7 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
           : [
               env.CATALOG.prepare("INSERT INTO customers VALUES (?,?,?)").bind(
                 customerId,
-                input.customer.trim(),
+                customerName,
                 at,
               ),
             ]),

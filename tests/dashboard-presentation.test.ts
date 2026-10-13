@@ -2,11 +2,11 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { StatusBadge } from "../packages/core/dashboard/src/components/status-badge";
 import SettingsView from "../packages/core/dashboard/src/components/settings-view";
+import ReleasesPanel from "../packages/core/dashboard/src/components/releases-panel";
 import {
   FunctionBadge,
   functionColors,
 } from "../packages/core/dashboard/src/components/function-badge";
-import { schemaDraft } from "../packages/core/dashboard/src/lib/table-schema";
 import { describe, it, expect } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -285,57 +285,76 @@ describe("Standard JSON Schema field forms", () => {
     });
   });
 });
-describe("Document schema guidance", () => {
-  it("prepares schema declarations without SQL or journal", () => {
-    const create = schemaDraft("create", "notes", []);
-    expect(create.definition).toContain("defineTable");
-    expect(create.notes).toContain("No SQL");
-    const field = schemaDraft(
-      "add-column",
-      "description",
-      [{ name: "notes", columns: [{ name: "title" }] }],
-      "notes",
+
+describe("Minimal dashboard", () => {
+  it("renders native closed history without mounting the release table", () => {
+    const html = renderToStaticMarkup(
+      createElement(ReleasesPanel, {
+        project: {
+          id: "443eb045-22b8-4c1e-bfee-1eaf7b01a0f9",
+          name: "Test",
+          customer: "Team",
+        },
+        env: "prod",
+        session: {
+          role: "owner",
+          email: "owner@example.test",
+          runtime: "https://runtime.test",
+        },
+        active: "a".repeat(64),
+        refresh() {},
+      }),
     );
-    expect(field.definition).toContain("z.string().optional()");
+    expect(html).toContain("<details");
+    expect(html).toContain("<summary");
+    expect(html).toContain("Deployment history");
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain(" open");
   });
-  it.each([
-    "",
-    "x; DROP TABLE tasks",
-    "sqlite_schema",
-    "_flared_jobs",
-    "A",
-    "x".repeat(49),
-  ])("rejects invalid or reserved name %s", (name) => {
-    expect(() => schemaDraft("create", name, [])).toThrow();
-  });
-  it("rejects duplicate table/column names and missing tables", () => {
-    const tables = [{ name: "Notes", columns: [{ name: "Description" }] }];
-    expect(() => schemaDraft("create", "notes", tables)).toThrow("exists");
-    expect(() =>
-      schemaDraft("add-column", "description", tables, "Notes"),
-    ).toThrow("exists");
-    expect(() => schemaDraft("add-column", "value", tables, "missing")).toThrow(
-      "Select",
-    );
-  });
-  it("quotes preexisting identifiers without offering arbitrary SQL execution", () => {
-    expect(
-      schemaDraft(
-        "add-column",
-        "value",
-        [{ name: 'odd"name', columns: [] }],
-        'odd"name',
-      ).notes,
-    ).toContain("No ALTER TABLE");
-    const source = readFileSync(
-      new URL(
-        "../packages/core/dashboard/src/components/table-guide.tsx",
-        import.meta.url,
-      ),
+
+  it("removes the code-draft table builder from Data and Schema", () => {
+    for (const view of ["data-view", "overview"]) {
+      const source = readFileSync(
+        `packages/core/dashboard/src/components/${view}.tsx`,
+        "utf8",
+      );
+      expect(source).not.toContain("TableGuide");
+      expect(source).not.toContain("table-guide");
+    }
+    const data = readFileSync(
+      "packages/core/dashboard/src/components/data-view.tsx",
       "utf8",
     );
-    expect(source.replace(/\s+/g, " ")).toContain("not a database change");
-    expect(source).not.toMatch(/\bapi\(/);
-    expect(source).toContain("bunx --bun --package @auersperg/flare flare");
+    expect(data).toContain("Add row");
+    expect(data).toContain("Edit row");
+    expect(data).toContain("Delete row");
+  });
+  it("keeps one Health source and loads history only on disclosure", () => {
+    const source = readFileSync(
+      "packages/core/dashboard/src/components/releases-panel.tsx",
+      "utf8",
+    );
+    expect(source).not.toContain("useResource<{ active:");
+    expect(source).toContain("scope.active === release.hash");
+    expect(source).toContain("{open && (");
+    // Mutation admission deliberately re-reads the destination for the CAS guard.
+    expect(source).toContain('destination + "/health"');
+    const health = readFileSync(
+      "packages/core/dashboard/src/components/overview.tsx",
+      "utf8",
+    );
+    expect(health).not.toContain("Insights");
+    expect(health).not.toContain("Historical analytics");
+    expect(health).toContain("active={h.data.active}");
+  });
+  it("asks only for project details, not an artificial workspace", () => {
+    const source = readFileSync(
+      "packages/core/dashboard/src/components/dashboard.tsx",
+      "utf8",
+    );
+    expect(source).not.toContain("project-customer");
+    expect(source).not.toContain('customer: f.get("customer")');
+    expect(source).toContain("project-name");
+    expect(source).toContain("project-origins");
   });
 });

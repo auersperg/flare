@@ -1,8 +1,10 @@
 # Maintenance
 
-Current 0.3.6 managed installs use [platform lifecycle](platform-lifecycle.md); independent-account cloud acceptance remains pending; explicit standard-layout adoption is implemented in 0.3.5. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
+> Historical reference, archived October 13, 2026. Not the current installation/update guide. Use [platform lifecycle](../platform-lifecycle.md), [architecture](../architecture.md) and [runbook](../production-runbook.md).
 
-Operational invariants for the current source tree. [Architecture](architecture.md) is the canonical implementation map; [production runbook](production-runbook.md) is the release/recovery checklist. Package manifests and current verification output take precedence over dated reports. This guide intentionally does not retain obsolete application inventories, benchmark samples or test-count checkpoints.
+Current 0.3.6 managed installs use [platform lifecycle](../platform-lifecycle.md); independent-account cloud acceptance remains pending; explicit standard-layout adoption is implemented in 0.3.5. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
+
+Operational invariants for the current source tree. [Architecture](../architecture.md) is the canonical implementation map; [production runbook](../production-runbook.md) is the release/recovery checklist. Package manifests and current verification output take precedence over dated reports. This guide intentionally does not retain obsolete application inventories, benchmark samples or test-count checkpoints.
 
 ## Production-focused source tree
 
@@ -63,7 +65,7 @@ Record changes to app contracts, migration semantics, auth boundaries and beta A
 
 ## Remaining production gates
 
-Repository cleanup is not full production certification. Required gates depend on the application: representative workload/cost acceptance, an acceptable recovery policy, release draining under concurrent actions, and operational error/DLQ ownership. Native password auth is supported; an independent external OIDC provider is optional, not mandatory for password-only applications. Operator Secrets Store/egress provisioning, full analytics, extended files/cron crash/load acceptance, delegated client membership and independent installation/cloud update acceptance remain unfinished. Public licence/npm ownership matters for distribution, not use in this private account. Bounded same-project empty-target backup/restore is verified; off-account recovery, in-place restore and PITR are not implemented. Follow the [production runbook](production-runbook.md); do not treat an unperformed or cancelled soak as PASS.
+Repository cleanup is not full production certification. Required gates depend on the application: representative workload/cost acceptance, an acceptable recovery policy, release draining under concurrent actions, and operational error/DLQ ownership. Native password auth is supported; an independent external OIDC provider is optional, not mandatory for password-only applications. Operator Secrets Store/egress provisioning, full analytics, extended files/cron crash/load acceptance, delegated client membership and independent installation/cloud update acceptance remain unfinished. Public licence/npm ownership matters for distribution, not use in this private account. Bounded same-project empty-target backup/restore is verified; off-account recovery, in-place restore and PITR are not implemented. Follow the [production runbook](../production-runbook.md); do not treat an unperformed or cancelled soak as PASS.
 
 Prioritized next work; these are acceptance criteria, not features added by this cleanup:
 

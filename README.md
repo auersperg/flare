@@ -36,9 +36,7 @@ New projects start **empty**, with no demo tables, functions or records. Define 
 
 One Bun workspace and lockfile. Installed dependencies, generated output and credentials are ignored. No `apps`/`examples` workspace or duplicated demo toolchain. The task fixture under tests is used only by explicit acceptance scripts; production builds do not consume it.
 
-[Complete architecture map — 2026-10-12: runtime, dashboard, SDK/CLI, CI and releases](docs/architecture.md) · [Package distribution](docs/packaging.md) · [Maintenance](docs/maintenance.md).
-
-[Cloudflare capability catalogue — dated reference](docs/cloudflare-capability-map.md) · [Flare implementation index](docs/flare-architecture-map.md) · [Production runbook](docs/production-runbook.md).
+[Architecture](docs/architecture.md) · [Install and update](docs/platform-lifecycle.md) · [Production runbook](docs/production-runbook.md).
 
 ## Build and verify
 
@@ -202,7 +200,7 @@ Every logical table is a native SQLite table of validated JSON documents with `_
 Eight primary sections: **Health, Data, Schema, Functions, Files, Schedules, Auth, Logs**. Project/environment selection is in the header; Settings is under the gear, SDK setup under Health.
 
 - Real paginated data, typed add/edit forms, explicit NULL/defaults, revision checks, immutable primary keys, audit and production confirmation.
-- Add/Edit table prepares a document schema draft, not an immediate live schema write. Review and deploy schema with the application release.
+- Schema is defined in application code; the panel displays its active contract. Data editing remains available.
 - Shared yellow query / blue mutation / purple action badges; typed arguments, tabular results. Function execution is explicit, dev-only, not for viewers or internal functions.
 - Actual invocation summaries and job receipts, not simulated Tail/billing analytics. Files use private R2 with upload/download/delete; Schedules shows delayed outbox jobs, delivery attempts and native cron jobs. Refresh is on demand, never polling.
 - Owner/editor/viewer checks, verified Access identity, same-origin CSRF protections and strict build-generated CSP.
@@ -221,7 +219,7 @@ flare platform update --account ACCOUNT_ID --dry-run
 flare platform update --account ACCOUNT_ID
 ```
 
-The target is bundled with that CLI, not a moving tag. Do not deploy Admin/Runtime directly with Wrangler after adoption: it bypasses the D1 lease and makes the next update refuse configuration drift. `bun run update:platform` is the source-checkout shortcut and requires a prior build. Legacy `scripts/setup-cloud.mjs` and private Wrangler examples are operator-only, not the normal installation/update flow; setup refuses a managed catalogue. Landing/frontend hosting remains independent.
+The target is bundled with that CLI, not a moving tag. Do not deploy Admin/Runtime directly with Wrangler after adoption: it bypasses the D1 lease and makes the next update refuse configuration drift. `bun run update:platform` is the source-checkout shortcut and requires a prior build. The retired setup script and direct-deploy configuration examples are removed. The lifecycle CLI is the only supported platform installation/update path. Landing/frontend hosting remains independent.
 
 Commit only the configuration examples, never live installation files. `tests/kernel/wrangler.json` has no account ID and is for local native testing. For remote kernel testing, create a separate ignored `tests/kernel/wrangler.cloud.json` for disposable resources and explicitly select it when deploying. `scripts/set-kernel-secret.mjs` requires `FLARE_KERNEL_CONFIG`; acceptance scripts require `FLARE_KERNEL_URL`. `.private` retains installation checkpoints and test/signing credentials, never packaged or committed.
 
@@ -233,7 +231,7 @@ No guarantee that $5 covers total usage or that Flare is cheaper/faster than Con
 
 ## Release status
 
-Use 0.3 for a controlled, trusted-team installation only. Before treating it as a general production backend, complete the [production gates](docs/maintenance.md#remaining-production-gates): independent installation/optional external OIDC, release draining, workload-specific load/cost tests, extended disaster recovery and the unfinished service capabilities. No runtime architecture was replaced just to make repository checks pass.
+Use 0.3 for a controlled, trusted-team installation only. Before treating it as a general production backend, complete the limitations in the [runbook](docs/production-runbook.md): independent installation/optional external OIDC, release draining, workload-specific load/cost tests, extended disaster recovery and the unfinished service capabilities. No runtime architecture was replaced just to make repository checks pass.
 
 ## Backups
 
@@ -241,19 +239,19 @@ Settings → Backups and the CLI create private R2 capsules containing documents
 ready files and the exact backend release. Restore requires owner confirmation and
 an empty other environment of the same project. It is not in-place rollback or
 PITR. Limits and exclusions are in the
-[maintenance guide](docs/maintenance.md#on-demand-logical-backup-and-empty-target-recovery).
+[production runbook](docs/production-runbook.md).
 
 Current verification commands and production gates are documented in the
-[maintenance guide](docs/maintenance.md) and
+[production runbook](docs/production-runbook.md) and
 [production runbook](docs/production-runbook.md). Test reports are generated locally,
 ignored by Git and removed by `bun run clean`; historical test counts and project
 names are not a description of an operator's current installation.
 
 ## Release history and promotion
 
-Health → Development/Production releases shows the last five distinct successful backend builds and their contracts. `bunx --bun --package @auersperg/flare@next flare promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx --bun --package @auersperg/flare@next flare rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
+Health → Deployment history (collapsed by default) shows the last five distinct successful backend builds and their contracts. `bunx --bun --package @auersperg/flare@next flare promote --env prod --hash HASH` activates the exact tested dev bundle, without rebuilding or copying dev data. Compatible code rollback uses `bunx --bun --package @auersperg/flare@next flare rollback --env prod --hash HASH`; the database is not rewound. Both require confirmation and reject a concurrently changed target.
 
-`bunx --bun --package @auersperg/flare@next flare deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flare/README.md#immutable-releases) and [operational boundaries](docs/maintenance.md#version-history-and-application-publishing).
+`bunx --bun --package @auersperg/flare@next flare deploy --cmd "bun run build"` builds frontend references/URL before backend activation. An application-owned script can then publish frontend assets with native Wrangler. This is sequential, not atomic: a final hosting failure is an explicit partial release. Historical isolated previews and paired frontend/backend version history are not yet implemented. See [CLI release flow](packages/flare/README.md#immutable-releases) and [operational boundaries](docs/production-runbook.md).
 
 Operator checklist: [production runbook](docs/production-runbook.md). Short acceptance does not certify a monthly bill or an unperformed load test.
 
@@ -261,14 +259,4 @@ Operator checklist: [production runbook](docs/production-runbook.md). Short acce
 
 The root keeps only `package.json`, `bun.lock`, `tsconfig.json`, `README.md`, `LICENSE`,
 `.gitignore` and `.prettierignore`. Formatting settings live in `package.json`.
-Wrangler examples belong to `packages/core`; your active installation files stay
-in ignored `.private/cloudflare`, separate from published sources.
-
-```sh
-mkdir -p .private/cloudflare
-cp packages/core/admin.wrangler.example.json .private/cloudflare/admin.wrangler.json
-cp packages/core/runtime.wrangler.example.json .private/cloudflare/runtime.wrangler.json
-```
-
-Replace every placeholder before deployment. Example and operator configurations
-use the same native relative paths; no config-generation wrapper is required.
+Platform configurations are generated by the lifecycle CLI from its verified payload. Do not copy or maintain an independent Admin/Runtime deployment configuration. Existing private recovery artifacts stay ignored and are never shipped.

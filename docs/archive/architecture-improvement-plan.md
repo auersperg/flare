@@ -1,5 +1,7 @@
 # Flare: план перехода к более простой и поддерживаемой архитектуре
 
+> Historical reference, archived October 13, 2026. Not the current installation/update guide. Use [platform lifecycle](../platform-lifecycle.md), [architecture](../architecture.md) and [runbook](../production-runbook.md).
+
 **Дата:** 12 октября 2026 года.  
 **Исходная версия:** 0.3.5, protocol 1, runtime ABI 4.  
 **Базовый commit:** `6627523c18c74d6f24a242d89cf16ba462b83baa`.  
@@ -11,7 +13,7 @@
 
 **Не переписывать платформу. Не добавлять инфраструктуру ради рефакторинга.** Изменение принимается, только если оно уменьшает число источников истины, делает контракт явнее или закрывает проверяемый риск.
 
-Документ определяет порядок работ. [Архитектура](architecture.md) описывает реализацию, [platform lifecycle](platform-lifecycle.md) — установку/обновление, [maintenance](maintenance.md) и [runbook](production-runbook.md) — ограничения и эксплуатацию. Новые эксплуатационные инструкции следует согласовывать с ними, а не поддерживать несколько расходящихся копий.
+Документ определяет порядок работ. [Архитектура](../architecture.md) описывает реализацию, [platform lifecycle](../platform-lifecycle.md) — установку/обновление, [maintenance](maintenance.md) и [runbook](../production-runbook.md) — ограничения и эксплуатацию. Новые эксплуатационные инструкции следует согласовывать с ними, а не поддерживать несколько расходящихся копий.
 
 ### Уже сделано — не выполнять заново
 

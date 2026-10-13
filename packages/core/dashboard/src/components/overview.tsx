@@ -1,9 +1,8 @@
 import ReleasesPanel from "./releases-panel";
-import { RefreshCw, Activity } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { StatusBadge } from "./status-badge";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
-import { TableGuide } from "./table-guide";
 import { FunctionBadge } from "./function-badge";
 import { scalar, type FunctionDefinition } from "../lib/model";
 import { useResource, Status, Empty, Grid } from "./common";
@@ -59,65 +58,22 @@ export function HealthView({
               </div>
             </CardContent>
           </Card>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Live connections</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <strong className="text-2xl font-semibold tabular-nums">
-                  {h.data.connections}
-                </strong>
-                <p className="text-muted-foreground">
-                  Hibernating WebSocket connections
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Subscriptions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <strong className="text-2xl font-semibold tabular-nums">
-                  {h.data.subscriptions}
-                </strong>
-                <p className="text-muted-foreground">Active live queries</p>
-              </CardContent>
-            </Card>
-          </div>
           <ReleasesPanel
             project={project}
             env={env}
             session={session}
+            active={h.data.active}
             refresh={h.refresh}
           />
-          <h2 className="section-title">Insights</h2>
-          <Card>
-            <CardContent className="flex flex-col items-start gap-4">
-              <Activity
-                className={
-                  h.data.status === "ready"
-                    ? "size-6 text-emerald-500"
-                    : "size-6 text-amber-500"
-                }
-              />
-              <h2 className="flex items-center gap-2 text-base font-medium">
-                Runtime <StatusBadge status={h.data.status} />
-              </h2>
-              <p className="text-muted-foreground">
-                Historical analytics not configured.
-              </p>
-              <Button variant="outline" onClick={connect}>
-                Connect SDK
-              </Button>
-            </CardContent>
-          </Card>
+          <Button variant="outline" onClick={connect}>
+            Connect SDK
+          </Button>
         </>
       )}
     </div>
   );
 }
-export function SchemaView({ project, env, session }: Scope) {
+export function SchemaView({ project, env }: Scope) {
   const r = useResource<Schema>(scopePath(project, env) + "/schema");
   return (
     <div className="space-y-4 p-4">
@@ -134,9 +90,6 @@ export function SchemaView({ project, env, session }: Scope) {
           >
             <RefreshCw />
           </Button>
-          {r.data && (
-            <TableGuide tables={r.data.tables} env={env} role={session.role} />
-          )}
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -149,12 +102,6 @@ export function SchemaView({ project, env, session }: Scope) {
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="font-mono">{t.name}</CardTitle>
-              <TableGuide
-                tables={r.data!.tables}
-                env={env}
-                role={session.role}
-                table={t.name}
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-4">

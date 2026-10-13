@@ -1,6 +1,6 @@
 # Flare — полная карта текущей архитектуры
 
-Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Release commit: `602d57c`. Опубликованный и установленный в личной панели release **0.3.6**, protocol **1**, runtime ABI **4**; npm `next = 0.3.6`, `latest = 0.3.1`.
+Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и конфигурациям установки. Release commit: `602d57c`. Опубликованный и установленный в личной панели release **0.3.6**; source candidate **0.3.7** упрощает dashboard и удаляет retired setup. Protocol **1**, runtime ABI **4**; npm `next = 0.3.6`, `latest = 0.3.1`.
 
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
@@ -33,7 +33,7 @@
 
 Flare — собственный backend-as-a-service в Cloudflare аккаунте оператора: одна установка core обслуживает несколько приложений. Cloudflare хранит и исполняет backend; локально работают CLI, сборщик и frontend dev server. Постоянной Bun/Node VM нет.
 
-Иерархия управления: **установка → customer/workspace → project UUID → dev/prod**. Customer — группировка проектов, не отдельная инфраструктурная установка и не реализованная система делегированных прав заказчикам. Сейчас membership owner/editor/viewer относится к установке, а deploy credential ограничен проектом.
+Пользовательская иерархия: **установка → project UUID → dev/prod**. Поле customer/workspace больше не требуется в панели. Существующая каталоговая группировка сохранена для совместимости; при создании без customer используется `Default`, без отдельной инфраструктуры или делегированных прав. Сейчас membership owner/editor/viewer относится к установке, а deploy credential ограничен проектом.
 
 Каждая среда имеет независимые данные, пользователей/пароли/сессии, origin/auth настройки, active release, файлы, задания и подписки. Ключ backend-хранилища: `<project UUID>/<dev|prod>`. Переименование проекта или URL alias не меняет этот ключ.
 
@@ -103,7 +103,6 @@ flare/
 │       ├── migrations/    административные D1 migrations 0001–0006
 │       ├── bootstrap/     пустое приложение для нового проекта
 │       ├── landing/       static HTML заглушка
-│       ├── *.wrangler.example.json
 │       └── dist/          генерируемые Workers, dashboard и bootstrap
 ├── scripts/               сборка, упаковка, acceptance, cleanup
 ├── tests/                 unit/regression, fixtures и native workerd kernel
@@ -270,19 +269,19 @@ Cloudflare поддерживает сохранение соединений п
 
 UI: Astro static shell, client-only React mount через bundled script, Tailwind CSS variables, shadcn Base Lyra/Stone/Geist/Lucide (`components.json`). UI primitives находятся в `components/ui`, общие typed forms/status/function badges — shared components. Data grid использует shadcn Table, а не перенесённый Convex grid или собственный внешний сервер таблиц.
 
-Header: project selector, Development/Production tabs. Sidebar: **Health, Data, Schema, Functions, Files, Schedules, Auth, Logs**. Settings — gear; SDK setup — из Health. Вторичные views lazy-loaded; root session/projects fetch параллелен, старые запросы отменяются при смене view/scope.
+Header: project selector, Development/Production tabs. Создание проекта не требует workspace; Schema только отображает contract из кода. История releases и Backups доступны через нативные закрытые details и загружаются при раскрытии. Sidebar: **Health, Data, Schema, Functions, Files, Schedules, Auth, Logs**. Settings — gear; SDK setup — из Health. Вторичные views lazy-loaded; root session/projects fetch параллелен, старые запросы отменяются при смене view/scope.
 
-| Раздел    | Реальная работа                                                                                                                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Health    | Supervisor status, active hash, connections/subscriptions; последние пять backend releases выбранной среды; contract details и release operations |
-| Data      | Pagination, typed insert/edit/delete, expectedRevision конфликт, validators, audit, подтверждение prod; таблица занимает рабочую область          |
-| Schema    | Contract активного release; Add/Edit table готовит draft для application code, не изменяет облачную схему напрямую                                |
-| Functions | Manifest, цветные query/mutation/action badges, typed arguments/results; ручной запуск только dev, не viewer/internal                             |
-| Files     | Scoped R2 list, upload/download/delete через grants; pagination и cleanup состояния                                                               |
-| Schedules | Outbox/job state, попытки/receipts, UTC cron; не универсальная stream pub/sub консоль                                                             |
-| Auth      | User list/settings по read permissions; create/reset/block/revoke/configure только owner через Access; hashes/passwords не возвращаются           |
-| Logs      | Recent bounded invocation summaries; не весь Cloudflare Workers Logs dataset и не billing                                                         |
-| Settings  | Origin/OIDC, credentials, backups, owner-only deletion проекта                                                                                    |
+| Раздел    | Реальная работа                                                                                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Health    | Supervisor status, active hash, connections/subscriptions; история пяти backend releases выбранной среды раскрывается отдельно; contract details и release operations |
+| Data      | Pagination, typed insert/edit/delete, expectedRevision конфликт, validators, audit, подтверждение prod; таблица занимает рабочую область                              |
+| Schema    | Contract активного release, только просмотр; schema определяется в application code                                                                                   |
+| Functions | Manifest, цветные query/mutation/action badges, typed arguments/results; ручной запуск только dev, не viewer/internal                                                 |
+| Files     | Scoped R2 list, upload/download/delete через grants; pagination и cleanup состояния                                                                                   |
+| Schedules | Outbox/job state, попытки/receipts, UTC cron; не универсальная stream pub/sub консоль                                                                                 |
+| Auth      | User list/settings по read permissions; create/reset/block/revoke/configure только owner через Access; hashes/passwords не возвращаются                               |
+| Logs      | Recent bounded invocation summaries; не весь Cloudflare Workers Logs dataset и не billing                                                                             |
+| Settings  | Origin/OIDC, credentials, backups, owner-only deletion проекта                                                                                                        |
 
 **Реактивные приложения ≠ полностью push-reactive dashboard.** Admin views сейчас snapshots: read при открытии, после собственного изменения, при focus/visibility return; compact reload предусмотрен там, где нужен. Interval polling нет. Изменения другого SDK-клиента не инвалидируют все открытые Data/Auth/Files views автоматически: отдельный Access-authorized dashboard push channel ещё не реализован.
 
@@ -481,7 +480,7 @@ flare platform update --account ACCOUNT_ID --dry-run
 flare platform update --account ACCOUNT_ID
 ```
 
-CLI применяет additive migrations → Runtime → Admin → verification под D1 lease. Прямой Wrangler deploy этих Workers после adoption запрещён нормальным flow: это out-of-band drift, который следующий update откажется перезаписывать. Source shortcut `bun run update:platform` требует предварительного build и отдельных account credentials. Старый setup отказывает после появления managed D1 journal; private Wrangler configs остаются только историческими operator-артефактами, а landing/frontend hosting независим.
+CLI применяет additive migrations → Runtime → Admin → verification под D1 lease. Прямой Wrangler deploy этих Workers после adoption запрещён нормальным flow: это out-of-band drift, который следующий update откажется перезаписывать. Source shortcut `bun run update:platform` требует предварительного build и отдельных account credentials. Retired setup script и его direct-deploy examples удалены. Private recovery artifacts сохранены; landing/frontend hosting независим.
 
 `bun run clean` удаляет только локальный reproducible output/reports/caches, не credentials, source, installed dependencies или cloud data; после него нужен новый build. Cloud acceptance использует отдельные disposable scopes и не должна направляться на данные заказчика.
 
@@ -493,7 +492,7 @@ Retention: job receipts 30 дней; catalog audit 90 дней; expired deploy c
 
 У core включены Workers Logs head sampling 100%; traces выключены. Native `DynamicTail` собирает bounded exceptions/console dynamic code, затем Workers Logs. Dashboard summaries: successful queries до 100 in-memory, исчезают при restart/hibernation; mutation/action/errors durable bounded history (до 200 persisted, UI максимум 100). Это экономит SQL writes успешных reads, но **не полный исторический журнал**.
 
-Analytics Engine/Analytics SQL bindings в текущей конфигурации нет. Нет собственного usage collector, always-on logging service или verified alert configuration. Error/billing данные читаются через native Cloudflare interfaces с необходимыми правами.
+Analytics Engine/Analytics SQL bindings в текущей конфигурации нет. Нет собственного usage collector или always-on logging service. Для личной установки проверена доставка native Cloudflare Worker-error, DLQ-transition и budget alerts; фактический fault-to-alert trigger не проверялся. Error/billing данные читаются через native Cloudflare interfaces с необходимыми правами.
 
 Считать отдельно: Workers request/CPU, Dynamic daily-unique creations/startup CPU, DO request/duration/SQLite, D1 rows, R2 storage/operations, Queues operations, Logs и builds. Нельзя сложить разные requests в единую квоту или назвать `$5` cap. Стабильный loader ID предотвращает создание Dynamic Worker на каждый запрос, но тот же ID/code заново учитывается в новый день по [Dynamic Workers pricing](https://developers.cloudflare.com/dynamic-workers/pricing/).
 
@@ -501,7 +500,7 @@ Analytics Engine/Analytics SQL bindings в текущей конфигураци
 
 ## 20. Проверки и оставшиеся границы
 
-Переход A–G [плана улучшений](architecture-improvement-plan.md) завершён в согласованном scope. Exact registry 0.3.6 и personal 0.3.5 → 0.3.6 update проверены; четыре pre-update capsules завершены, данные/auth/file bytes/resource identities сохранены, Access owner login и повторный update no-op прошли. Старый primary Access hostname исправлен отдельно с сохранением audience/policies. Нагрузка p95 244/263 мс и recovery ~9.229 с относятся только к объявленному fixture-профилю; independent account/full graceful drain/off-account DR не заявляются.
+Переход A–G [плана улучшений](production-runbook.md) завершён в согласованном scope. Exact registry 0.3.6 и personal 0.3.5 → 0.3.6 update проверены; четыре pre-update capsules завершены, данные/auth/file bytes/resource identities сохранены, Access owner login и повторный update no-op прошли. Старый primary Access hostname исправлен отдельно с сохранением audience/policies. Нагрузка p95 244/263 мс и recovery ~9.229 с относятся только к объявленному fixture-профилю; independent account/full graceful drain/off-account DR не заявляются.
 
 ### Что проверяет repository tooling
 
@@ -518,11 +517,11 @@ Local native kernel: настоящее workerd/Lifecycle/facet RPC/SQLite/hiber
 - External OIDC provider acceptance и optional Secrets Store/egress provisioning: отдельные cloud gates.
 - Customer-specific dashboard delegation, untrusted public code marketplace, automatic sharding, cross-project transactions: отсутствуют.
 - Automatic DLQ redrive, PITR, off-account disaster recovery, paired frontend/backend history/atomic rollout: отсутствуют.
-- 30-minute soak отменён по просьбе владельца; нельзя называть его пройденным. Для реальной нагрузки нужна отдельная проверка latency/throughput/cost.
+- 30-minute soak отменён по просьбе владельца; нельзя называть его пройденным. Для других workload нужны отдельные проверки latency/throughput/cost; согласованный 10-minute fixture проверен отдельно, без заявления общего SLA.
 
 Dynamic Workers/Facets и используемые Agents modules опираются на beta/экспериментальные API. Версии зафиксированы, но обновление Cloudflare API может потребовать повторной native/cloud проверки. Успешные локальные tests или short cloud proofs не дают SLA и не доказывают отсутствие всех vulnerabilities.
 
-Приоритеты дальнейшей доработки и проверяемые критерии готовности — в [production gates](maintenance.md#remaining-production-gates). Они не считаются реализованными этой очисткой репозитория.
+Приоритеты дальнейшей доработки и проверяемые критерии готовности — в [production gates](production-runbook.md). Они не считаются реализованными этой очисткой репозитория.
 
 ## 21. Навигация по исходникам
 
@@ -546,7 +545,7 @@ Dynamic Workers/Facets и используемые Agents modules опирают
 | Build / acceptance                             | `scripts/build-packages.mjs`, `build-platform.mjs`, `verify-build.mjs`, `package-acceptance.mjs` |
 | Pipeline contracts                             | `.github/workflows/ci.yml`, `publish.yml`                                                        |
 
-[Cloudflare product catalogue](cloudflare-capability-map.md) — датированный справочник вариантов, не перечень подключённых bindings. [Краткое сопоставление](flare-architecture-map.md) — индекс этой карты. [Runbook](production-runbook.md) — обслуживание, [maintenance](maintenance.md) — инварианты и приоритеты production-доработки, [packaging](packaging.md) — дистрибуция. Устаревший отдельный audit удалён; сырые отчёты не подменяют текущий код, конфигурации и результаты проверки выбранного release.
+Три актуальных документа: эта карта реализации, [install/update flow](platform-lifecycle.md) и [runbook](production-runbook.md). Исторические отчёты и каталог Cloudflare находятся в `docs/archive/`, не являются вторым operating guide. Сырые acceptance reports не подменяют код и проверку выбранного release.
 
 ## 22. K2 — расширение, не текущий компонент
 
@@ -556,4 +555,4 @@ K2 public beta доступен на Workers Paid и даёт durable event log 
 
 Предлагаемая, **ещё не реализованная** граница: transactional event outbox → native K2 publish → независимые серверные subscriptions, scope isolation и event-ID idempotency. Не заменять текущие queries/WebSockets или Queues; не создавать постоянный polling каждого browser. Consumer wake-up/latency/cost и доступ K2 API нужно определить/проверить перед подключением. Во время beta K2 billing выключен; Worker execution не становится бесплатным. [Pricing](https://developers.cloudflare.com/k2/platform/pricing/).
 
-Порядок точечных улучшений без изменения инфраструктуры — [план перехода](architecture-improvement-plan.md). Статусы выполнения фиксируются в плане отдельно от этой карты реализации.
+Порядок точечных улучшений без изменения инфраструктуры — [план перехода](production-runbook.md). Статусы выполнения фиксируются в плане отдельно от этой карты реализации.

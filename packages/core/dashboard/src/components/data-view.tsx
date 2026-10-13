@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Database, Search, Plus, RefreshCw, ChevronRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "./ui/input-group";
-import { TableGuide } from "./table-guide";
 import { Badge } from "./ui/badge";
 import {
   Table,
@@ -82,11 +81,6 @@ export default function DataView(scope: Scope) {
               onChange={(e) => setFilter(e.target.value)}
             />
           </InputGroup>
-          <TableGuide
-            tables={tables}
-            env={scope.env}
-            role={scope.session.role}
-          />
         </div>
         <div className="space-y-1 px-2">
           {tables
@@ -110,7 +104,7 @@ export default function DataView(scope: Scope) {
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Status {...schema} />
         {active ? (
-          <DataTable key={active} {...scope} table={active} tables={tables} />
+          <DataTable key={active} {...scope} table={active} />
         ) : schema.data ? (
           <Empty title="No application tables in this release" />
         ) : null}
@@ -123,8 +117,7 @@ function DataTable({
   env,
   session,
   table,
-  tables,
-}: Scope & { table: string; tables: Schema["tables"] }) {
+}: Scope & { table: string }) {
   const [cursor, setCursor] = useState<string | undefined>(undefined),
     [modal, setModal] = useState<Modal>();
   const path = scopePath(project, env),
@@ -186,12 +179,6 @@ function DataTable({
           >
             <RefreshCw />
           </Button>
-          <TableGuide
-            tables={tables}
-            env={env}
-            role={session.role}
-            table={table}
-          />
           {write && (
             <Button
               disabled={!page || r.loading}

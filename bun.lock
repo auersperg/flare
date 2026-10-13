@@ -20,14 +20,14 @@
     },
     "packages/core": {
       "name": "@flare/platform",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "dependencies": {
         "agents": "0.28.0",
       },
     },
     "packages/core/dashboard": {
       "name": "@flare/dashboard",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "dependencies": {
         "@astrojs/react": "7.0.1",
         "@auersperg/flare": "workspace:*",
@@ -51,7 +51,7 @@
     },
     "packages/flare": {
       "name": "@auersperg/flare",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "bin": {
         "flare": "./dist/cli/flare.js",
       },

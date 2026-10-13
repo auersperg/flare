@@ -4,7 +4,7 @@ Current 0.3.6 managed installs use [platform lifecycle](platform-lifecycle.md). 
 
 Flare is a self-hosted backend, not a managed service with an operator SLA. Use the shared Cloudflare installation for trusted application code. Dev and prod have independent data, accounts, files and schedules. Promotion copies a backend release, not those resources.
 
-Personal installation: published 0.3.6 update and owner Access sign-in verified on October 13, 2026; four completed pre-update capsules retained. The declared fixture load/recovery/alert checks are documented in the [improvement plan](architecture-improvement-plan.md), not a general SLA.
+Personal installation: published 0.3.6 update and owner Access sign-in verified on October 13, 2026; four completed pre-update capsules retained. The declared fixture load/recovery/alert checks are documented in the [improvement plan](production-runbook.md), not a general SLA.
 
 ## Before admitting real users
 

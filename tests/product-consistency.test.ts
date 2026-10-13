@@ -134,7 +134,10 @@ describe("Flare product consistency", () => {
       "README.md",
       "packages/core/README.md",
       "packages/flare/README.md",
-      ...readdirSync(new URL("../docs/", import.meta.url))
+      ...readdirSync(new URL("../docs/", import.meta.url), {
+        recursive: true,
+        encoding: "utf8",
+      })
         .filter((name) => name.endsWith(".md"))
         .map((name) => `docs/${name}`),
     ];
@@ -213,16 +216,14 @@ describe("Astro/shadcn dashboard", () => {
       'maxLength={f.type === "password" ? 128 : undefined}',
     );
   });
-  it("shows releases inline only for the selected environment without standalone Refresh", () => {
+  it("keeps deployment history collapsed within the selected environment", () => {
     const releases = read(
       "packages/core/dashboard/src/components/releases-panel.tsx",
     );
-    expect(releases).toContain('"Development releases"');
-    expect(releases).toContain('"Production releases"');
+    expect(releases).toContain("Deployment history");
+    expect(releases).toContain("<details");
     expect(releases).toContain("scopePath(scope.project, scope.env)");
-    expect(releases).not.toMatch(
-      /Manage releases|Close releases|setSource|setOpen/,
-    );
+    expect(releases).not.toMatch(/Manage releases|Close releases|setSource/);
     for (const file of ["releases-panel", "backups-panel"])
       expect(
         read(`packages/core/dashboard/src/components/${file}.tsx`),
@@ -364,9 +365,9 @@ describe("Production-only repository", () => {
       "runtime.wrangler.example.json",
     ])
       expect(existsSync(new URL(`../${file}`, import.meta.url))).toBe(false);
-    const setup = read("scripts/setup-cloud.mjs");
-    expect(setup).toContain('".private/cloudflare/admin.wrangler.json"');
-    expect(setup).toContain('".private/cloudflare/runtime.wrangler.json"');
+    expect(
+      existsSync(new URL("../scripts/setup-cloud.mjs", import.meta.url)),
+    ).toBe(false);
   });
   it("keeps canonical repository metadata and publication guards", () => {
     for (const path of [
@@ -384,7 +385,7 @@ describe("Production-only repository", () => {
       expect(pkg.version).toBe(JSON.parse(read("package.json")).version);
     }
   });
-  it("commits portable examples rather than operator configuration", () => {
+  it("keeps the sole managed generator and no direct-deploy configuration copies", () => {
     const ignore = read(".gitignore");
     for (const path of [
       "/tests/kernel/wrangler.cloud.json",
@@ -394,45 +395,15 @@ describe("Production-only repository", () => {
       ".env*",
     ])
       expect(ignore.split("\n")).toContain(path);
-    for (const role of ["admin", "runtime"]) {
-      const config = JSON.parse(
-        read(`packages/core/${role}.wrangler.example.json`),
-      );
-      expect(config.account_id).toBe("YOUR_CLOUDFLARE_ACCOUNT_ID");
-      expect(config.vars.RUNTIME_URL).toBe("https://api.example.com");
-      expect(config.workers_dev).toBe(false);
-      expect(config.preview_urls).toBe(false);
-      expect(config.routes).toEqual([
-        {
-          pattern: new URL(
-            role === "admin"
-              ? config.vars.DASHBOARD_URL
-              : config.vars.RUNTIME_URL,
-          ).hostname,
-          custom_domain: true,
-        },
-      ]);
-      const example = new URL(
-        `../packages/core/${role}.wrangler.example.json`,
-        import.meta.url,
-      );
-      const operator = new URL(
-        `../.private/cloudflare/${role}.wrangler.json`,
-        import.meta.url,
-      );
-      const entry = new URL(`../packages/core/dist/${role}.js`, import.meta.url)
-        .href;
-      expect(new URL(config.main, example).href).toBe(entry);
-      expect(new URL(config.main, operator).href).toBe(entry);
-      if (role === "admin") {
-        expect(new URL(config.assets.directory + "/", operator).href).toBe(
-          new URL("../packages/core/dist/dashboard/", import.meta.url).href,
-        );
-        expect(
-          new URL(config.d1_databases[0].migrations_dir + "/", operator).href,
-        ).toBe(new URL("../packages/core/migrations/", import.meta.url).href);
-      }
-    }
+    for (const role of ["admin", "runtime"])
+      expect(
+        existsSync(
+          new URL(
+            `../packages/core/${role}.wrangler.example.json`,
+            import.meta.url,
+          ),
+        ),
+      ).toBe(false);
     expect(
       JSON.parse(read("tests/kernel/wrangler.json")).account_id,
     ).toBeUndefined();

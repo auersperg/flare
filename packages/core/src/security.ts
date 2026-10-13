@@ -386,3 +386,11 @@ export async function accessEmail(
     fail("UNAUTHORIZED");
   return identity.email.toLowerCase();
 }
+
+/** Optional grouping for existing API clients; new projects use one default workspace. */
+export function projectCustomer(value: unknown): string {
+  if (value === undefined) return "Default";
+  if (typeof value !== "string" || !value.trim() || value.length > 100)
+    fail("INVALID_INPUT");
+  return value.trim();
+}

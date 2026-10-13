@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { StatusBadge } from "./status-badge";
-import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import {
   Table,
   TableHeader,
@@ -18,32 +17,36 @@ import {
   DialogDescription,
 } from "./ui/dialog";
 import { useResource, Status, FormDialog, type Modal } from "./common";
-import { api, scopePath } from "../lib/model";
+import { api, scopePath, type Health } from "../lib/model";
 import { FunctionBadge } from "./function-badge";
 import type { Scope } from "./dashboard";
 type Release = { hash: string; at: number };
-export default function ReleasesPanel(scope: Scope & { refresh: () => void }) {
+type ReleaseScope = Scope & { active: Health["active"]; refresh: () => void };
+export default function ReleasesPanel(scope: ReleaseScope) {
+  const [open, setOpen] = useState(false);
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {scope.env === "dev" ? "Development releases" : "Production releases"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ReleaseList {...scope} />
-      </CardContent>
-    </Card>
+    <details
+      className="rounded-lg border"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer p-4 font-medium">
+        Deployment history
+      </summary>
+      {open && (
+        <div className="p-4 pt-0">
+          <ReleaseList {...scope} />
+        </div>
+      )}
+    </details>
   );
 }
 
-function ReleaseList(scope: Scope & { refresh: () => void }) {
+function ReleaseList(scope: ReleaseScope) {
   const [selected, setSelected] = useState<string>(),
     [modal, setModal] = useState<Modal>();
   const path = scopePath(scope.project, scope.env),
     target = scopePath(scope.project, scope.env);
-  const history = useResource<Release[]>(path + "/history"),
-    health = useResource<{ active: string }>(path + "/health");
+  const history = useResource<Release[]>(path + "/history");
   const writable = scope.session.role !== "viewer";
   const approve = async (hash: string, promote: boolean) => {
     const destination = promote ? scopePath(scope.project, "prod") : target;
@@ -60,7 +63,6 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
           { hash, expected: current.active, confirm: scope.project.id },
         );
         history.refresh();
-        health.refresh();
         scope.refresh();
       },
     });
@@ -68,10 +70,7 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
   const [error, setError] = useState<string>();
   return (
     <div className="space-y-3">
-      <Status
-        loading={history.loading || health.loading}
-        error={error || history.error || health.error}
-      />
+      <Status loading={history.loading} error={error || history.error} />
       <Table>
         <TableHeader>
           <TableRow>
@@ -86,7 +85,7 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
               <TableCell>{new Date(release.at).toLocaleString()}</TableCell>
               <TableCell>
                 <code className="text-xs">{release.hash.slice(0, 12)}</code>
-                {health.data?.active === release.hash && (
+                {scope.active === release.hash && (
                   <StatusBadge status="Active" />
                 )}
               </TableCell>
@@ -99,7 +98,7 @@ function ReleaseList(scope: Scope & { refresh: () => void }) {
                   >
                     View contracts
                   </Button>
-                  {writable && health.data?.active !== release.hash && (
+                  {writable && scope.active !== release.hash && (
                     <Button
                       variant="outline"
                       size="sm"

@@ -5,6 +5,7 @@ import {
   verifyDevToken,
   jsonBody,
   origins,
+  projectCustomer,
   uuid,
   validateOidc,
   capture,
@@ -318,4 +319,17 @@ it("fails closed on JWKS redirect without following it", async () => {
   expect(
     (fetch as unknown as Mock<typeof fetch>).mock.calls[0][1]?.redirect,
   ).toBe("manual");
+});
+
+describe("Simple project creation", () => {
+  it("defaults grouping without asking the user", () => {
+    expect(projectCustomer(undefined)).toBe("Default");
+    expect(projectCustomer(" Existing team ")).toBe("Existing team");
+  });
+  it.each([null, false, 7, {}, "", " ", "x".repeat(101)])(
+    "rejects invalid explicit grouping %p",
+    (value) => {
+      expect(() => projectCustomer(value)).toThrow("INVALID_INPUT");
+    },
+  );
 });

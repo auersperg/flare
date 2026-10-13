@@ -110,18 +110,6 @@ function DashboardApp() {
       content: (
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="project-customer">
-              Customer / workspace
-            </FieldLabel>
-            <Input
-              id="project-customer"
-              name="customer"
-              required
-              maxLength={100}
-              placeholder="Your team"
-            />
-          </Field>
-          <Field>
             <FieldLabel htmlFor="project-name">Project name</FieldLabel>
             <Input
               id="project-name"
@@ -159,7 +147,6 @@ function DashboardApp() {
         const f = new FormData(form);
         const created = await api<Project>("projects", {
           name: f.get("name"),
-          customer: f.get("customer"),
           alias: f.get("alias") || undefined,
           origins: [
             location.origin,
