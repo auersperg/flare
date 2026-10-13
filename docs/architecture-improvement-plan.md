@@ -3,7 +3,7 @@
 **Дата:** 12 октября 2026 года.  
 **Исходная версия:** 0.3.5, protocol 1, runtime ABI 4.  
 **Базовый commit:** `6627523c18c74d6f24a242d89cf16ba462b83baa`.  
-**Статус:** реализация. A–C выполнены; D–E проверены для согласованного fixture-профиля с ограничениями ниже. F сознательно пропущен. Опубликованная версия и личная панель остаются на 0.3.5. G ожидает отдельного подтверждения публикации.
+**Статус на 13 октября 2026 года:** переход завершён в согласованном scope. A–E проверены с ограничениями ниже; F сознательно пропущен. G выполнен: опубликованная `0.3.6` под `next`, личная панель обновлена обычным опубликованным CLI. `latest` остаётся `0.3.1`.
 
 ## 1. Цель и границы
 
@@ -140,12 +140,12 @@ SDK / app CLI → Runtime → EnvironmentSupervisor
 
 ### Перед запуском
 
-- [ ] Определить workload: число concurrent users/subscriptions, query/mutation rate, объём документов/файлов и jobs.
-- [ ] Зафиксировать длительность, допустимые latency/error thresholds и расход. Не выбирать произвольные «зелёные» пределы после теста.
-- [ ] Использовать отдельную disposable установку/проект на существующем аккаунте. Второй аккаунт для этой приёмки не требуется; его отсутствие записать как оставшееся ограничение.
-- [ ] Использовать точные source/target archives; CLI/SDK установить вне repository workspace. Для реального platform flow вызывать compiled CLI, а не считать injected source-engine test его заменой.
-- [ ] Зафиксировать начальный inventory и identities; credentials не выводить в отчёт.
-- [ ] Fault injection и имитацию внешних effects держать только в изолированном harness/fixture, не в production bundle.
+- [x] Определить workload: число concurrent users/subscriptions, query/mutation rate, объём документов/файлов и jobs.
+- [x] Длительность и latency/error thresholds согласованы до теста. Actual billing/cost threshold не проверены; это явное ограничение, а не произвольный PASS по расходу.
+- [x] Использовать отдельную disposable установку/проект на существующем аккаунте. Второй аккаунт для этой приёмки не требуется; его отсутствие записать как оставшееся ограничение.
+- [x] Использовать точные source/target archives; CLI/SDK установить вне repository workspace. Для реального platform flow вызывать compiled CLI, а не считать injected source-engine test его заменой.
+- [x] Зафиксировать начальный inventory и identities; credentials не выводить в отчёт.
+- [x] Fault injection и имитацию внешних effects держать только в изолированном harness/fixture, не в production bundle.
 
 ### Обязательная матрица
 
@@ -177,13 +177,13 @@ SDK / app CLI → Runtime → EnvironmentSupervisor
 
 ## 8. Этап E — recovery и incident ownership
 
-- [ ] Определить ответственного оператора, допустимые RPO/RTO и ограничения текущего logical backup.
-- [ ] Выполнить восстановление выбранного fixture workload в другую пустую среду того же проекта: сверить IDs, release, document values, file bytes и пользователей.
-- [ ] Явно проверить exclusions: active sessions, secrets, origin/auth settings, cron и jobs не восстанавливаются автоматически.
-- [ ] Настроить доступные native Cloudflare alerts/notifications для ошибок и выбранных usage thresholds; тестовым событием подтвердить доставку оператору. Наличие Logs не равно настроенным alerts.
-- [ ] Описать DLQ triage: scope/job/release, попытки, возможный external effect, проверка идемпотентности и условия явного replay/reconciliation.
-- [ ] Установить backup cadence и retention без добавления своего always-on daemon. Если автоматизация действительно нужна для RPO, выбирать отдельно доступную native возможность и проверять её результат.
-- [ ] Зафиксировать expiry/renewal scoped account token. Его истечение блокирует административные CLI-операции, а не само исполнение уже развёрнутого приложения.
+- [x] Определить ответственного оператора, допустимые RPO/RTO и ограничения текущего logical backup.
+- [x] Выполнить восстановление выбранного fixture workload в другую пустую среду того же проекта: сверить IDs, release, document values, file bytes и пользователей.
+- [x] Exclusions явно зафиксированы по backup contract: active sessions, secrets, origin/auth settings, cron и jobs не восстанавливаются автоматически; проверки не заявляют их перенос.
+- [x] Настроить доступные native Cloudflare alerts/notifications для ошибок и выбранных usage thresholds; тестовым событием подтвердить доставку оператору. Наличие Logs не равно настроенным alerts.
+- [x] Описать DLQ triage: scope/job/release, попытки, возможный external effect, проверка идемпотентности и условия явного replay/reconciliation.
+- [x] Установить backup cadence и retention без добавления своего always-on daemon. Если автоматизация действительно нужна для RPO, выбирать отдельно доступную native возможность и проверять её результат.
+- [x] Зафиксировать expiry/renewal scoped account token. Его истечение блокирует административные CLI-операции, а не само исполнение уже развёрнутого приложения.
 
 **Готово:** recovery rehearsal выполнен, alerts реально доставлены, оператор может выполнить incident procedure по runbook. PITR/off-account/in-place restore не заявляются готовыми и не добавляются без отдельной необходимости приложения.
 
@@ -195,11 +195,11 @@ SDK / app CLI → Runtime → EnvironmentSupervisor
 
 ### Делать только при явном выигрыше
 
-- [ ] Выделять по одному самостоятельному участку: release/activation orchestration, job/outbox handling, backup/restore orchestration или transport adapters.
-- [ ] Переиспользовать существующие `auth`, `files`, `backups`, `reactivity`, `queue`, `release`, `maintenance` helpers, а не создавать параллельные реализации.
-- [ ] Передавать только необходимые зависимости/операции. Не создавать «контекст со всем Supervisor», service container или универсальный plugin lifecycle.
-- [ ] Оставить durable state, concurrency ownership, sockets/alarms и fences у исходного Supervisor.
-- [ ] Не менять SQL schema, facet name, loader identity, scope key или ordering транзакций ради разбиения файла.
+- Выделять по одному самостоятельному участку: release/activation orchestration, job/outbox handling, backup/restore orchestration или transport adapters.
+- Переиспользовать существующие `auth`, `files`, `backups`, `reactivity`, `queue`, `release`, `maintenance` helpers, а не создавать параллельные реализации.
+- Передавать только необходимые зависимости/операции. Не создавать «контекст со всем Supervisor», service container или универсальный plugin lifecycle.
+- Оставить durable state, concurrency ownership, sockets/alarms и fences у исходного Supervisor.
+- Не менять SQL schema, facet name, loader identity, scope key или ordering транзакций ради разбиения файла.
 
 **Готово:** выбранный модуль проще читать/тестировать, native/crash regressions не изменились, нет новых bindings/services. Если перенос создаёт больше adapters и циклических зависимостей, пропустить F; production-приёмку не откладывать ради косметики.
 
@@ -255,9 +255,9 @@ git diff --check
 - [x] D: согласованный workload и failure cases проверены отдельными cloud/native reports; исправлен fixture, cleanup подтверждён. Это не общий SLA или полный cloud chaos/drain тест.
 - [x] E: recovery rehearsal, policy, тестовая alert delivery и DLQ ownership закрыты в описанных границах.
 - [x] F: выполнен только полезный модульный перенос либо записано решение пропустить его.
-- [ ] G: новая версия опубликована после отдельного подтверждения; личная панель обновлена через CLI и проверена.
-- [ ] Нет новых инфраструктурных сервисов, background polling, reset данных/namespaces или расширения account scope ради рефакторинга.
-- [ ] Оставшиеся ограничения явно записаны; успешные локальные gates не названы полной production certification.
+- [x] G: новая версия опубликована после отдельного подтверждения; личная панель обновлена через CLI и проверена.
+- [x] Нет новых инфраструктурных сервисов, background polling, reset данных/namespaces или расширения account scope ради рефакторинга.
+- [x] Оставшиеся ограничения явно записаны; успешные локальные gates не названы полной production certification.
 
 ## 13. Текущие доказательства и незакрытые пункты
 
@@ -273,6 +273,10 @@ git diff --check
 - Все первоначальные failures сохранены отдельно: прерывание, assets HTTP 500, fixture owner, неверный test-count (начальная ownership-запись), временный helper route HTTP 404. Никакой из этих отчётов не переписан в PASS. Readiness helper теперь проверяет тот же URL, который используется POST; mutating bootstrap не повторяется автоматически.
 - Backup cadence: ежедневный operator backup и обязательный backup перед рискованным изменением; automatic timer не установлен. RPO 24h зависит от выполнения этой процедуры оператором, а не от наличия разового backup.
 - Native account-wide budget alert $10 создан отдельно для оператора; Cloudflare принял test dispatch, владелец подтвердил получение email. Existing policy не изменена. Worker errors (только два personal Worker) и jobs dead-letter transitions (только personal queue) настроены, readback проверен и владелец подтвердил оба тестовых письма. Реальный fault-to-rule trigger на личной панели не выполнялся. DLQ telemetry sampled и не является непрерывным backlog gauge. Account-wide budget не подменяет Flare-only monitoring.
-- Независимый аккаунт, полный graceful drain и off-account DR остаются явно непроверенными. Публикация 0.3.6 и обновление панели ещё не выполнены.
+- Независимый аккаунт, полный graceful drain и off-account DR остаются явно непроверенными. Публикация 0.3.6 и обновление личной панели завершены; независимая установка не заявляется.
+
+- G: [защищённый workflow 38385348118](https://github.com/auersperg/flare/actions/runs/38385348118) и CI прошли на commit `602d57c`. Registry archive SHA-256 `515031f93043b8c7d0ea9771b25c2c863073bee0d47d67e85c22ea4fbed6c1ad` совпал с принятым архивом; все 63 установленных файла сверены вне repository. Проверены Node SDK imports и compiled CLI help.
+- Личная панель: четыре завершённых pre-update backup, внешний опубликованный CLI `status` → `update --dry-run` → подтверждённый `update` 0.3.5 → 0.3.6. Реальные readiness, owner Access login, оба проекта, четыре среды, все документы/schema/releases/users/auth settings/file metadata и SHA-256 file bytes сохранены. Повторные dry-run и подтверждённый update — no-op без новых Worker versions. Fixed-scope audit Worker удалён, временные credentials стёрты. Evidence: `artifacts/platform-036-registry-acceptance.json`, `artifacts/platform-036-personal-update-acceptance.json`.
+- Во время owner login обнаружен старый основной домен Access `dashboard.auer.wien` и ссылка на удалённый Worker. По отдельному запросу владельца основной destination исправлен на `dash.flare.auer.wien`; app ID/audience/policies/session/security settings сохранены. Однократное подтверждённое изменение конфигурации зафиксировано через существующий D1 lease/CAS; drift guard не отключался. Это operator repair, не новый generic reconciliation или альтернативный platform deploy.
 
 **Критерий остановки:** для выбранного приложения подтверждены корректность, восстановление и эксплуатация; контракты и normal flow понятны; полезные упрощения завершены. Не продолжать рефакторинг ради «идеальной архитектуры».

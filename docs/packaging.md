@@ -23,7 +23,7 @@ Applications use one registry dependency, without vendor archives or overrides:
 ```json
 {
   "dependencies": {
-    "@auersperg/flare": "0.3.5"
+    "@auersperg/flare": "0.3.6"
   }
 }
 ```
@@ -63,9 +63,9 @@ bun install --frozen-lockfile
 bun run test:kernel
 bun pm pack --cwd packages/flare --destination artifacts/packages/flare
 bun scripts/verify-package-artifact.mjs
-npm publish artifacts/packages/flare/auersperg-flare-0.3.5.tgz --dry-run --ignore-scripts --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.6.tgz --dry-run --ignore-scripts --access public --tag next
 # Only after reviewing the archive and authorizing the public release:
-npm publish artifacts/packages/flare/auersperg-flare-0.3.5.tgz --access public --tag next
+npm publish artifacts/packages/flare/auersperg-flare-0.3.6.tgz --access public --tag next
 ```
 
 The source package's `prepack` runs the full repository verification, including
@@ -102,3 +102,5 @@ by the first approved publication run of a new version.
 The 0.3.5 release adds `bun run test:platform:reproducible` before publication. Two frozen-lockfile builds at different absolute paths and the working-tree payload must have identical complete manifests. The private dashboard uses the workspace SDK and bounded Tailwind source discovery. There is no generated-output normalization or exception for differing payload digests.
 
 The owner-approved 0.3.5 `next` publication passed [workflow 38295968332](https://github.com/auersperg/flare/actions/runs/38295968332). Exact registry integrity, all installed package files and the platform payload were verified outside the repository. The registry archive is byte-identical to the accepted local tarball; its CLI confirmed the adopted personal panel with a same-release no-op. `latest` remains 0.3.1. Details and remaining independent-account limits are in [platform lifecycle](platform-lifecycle.md).
+
+Published 0.3.6 `next` was verified on October 13, 2026 through [workflow 38385348118](https://github.com/auersperg/flare/actions/runs/38385348118). Registry archive and all installed files match the accepted bytes; the personal panel was updated with that registry-installed CLI. `latest` remains 0.3.1. See the [current lifecycle evidence](platform-lifecycle.md#published-036-and-personal-update-verification).

@@ -1,8 +1,10 @@
 # Production runbook: trusted-team installation
 
-New source 0.3.5 managed installs use [platform lifecycle](platform-lifecycle.md). Disposable install/recovery/cleanup have been exercised in the owner's account; the real 0.3.3 → 0.3.4 update preserved data/auth/files/pending jobs and owner Access sign-in was checked separately in the browser. Independent-account fresh-install acceptance remains pending; standard-layout adoption was exercised on the existing personal panel with the external compiled 0.3.5 CLI, and the exact 0.3.4 → candidate 0.3.5 cloud update passed separately. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
+Current 0.3.6 managed installs use [platform lifecycle](platform-lifecycle.md). Disposable install/recovery/cleanup have been exercised in the owner's account; the real 0.3.3 → 0.3.4 update preserved data/auth/files/pending jobs and owner Access sign-in was checked separately in the browser. Independent-account fresh-install acceptance remains pending; standard-layout adoption was exercised on the existing personal panel with the external compiled 0.3.5 CLI, and the exact 0.3.4 → candidate 0.3.5 cloud update passed separately. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
 
 Flare is a self-hosted backend, not a managed service with an operator SLA. Use the shared Cloudflare installation for trusted application code. Dev and prod have independent data, accounts, files and schedules. Promotion copies a backend release, not those resources.
+
+Personal installation: published 0.3.6 update and owner Access sign-in verified on October 13, 2026; four completed pre-update capsules retained. The declared fixture load/recovery/alert checks are documented in the [improvement plan](architecture-improvement-plan.md), not a general SLA.
 
 ## Before admitting real users
 

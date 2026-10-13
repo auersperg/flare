@@ -1,6 +1,6 @@
 # Platform installation and updates
 
-Source release **0.3.5** implements `flare platform install|status|update|adopt`. The exact npm release **0.3.5** is available under `next` as of October 12, 2026; `latest` remains 0.3.1. Registry installation, payload integrity and compiled CLI/portable SDK imports were checked outside the repository. Prefer the exact version, not a moving tag. Fresh install, interrupted final-deploy recovery, control-plane readiness, a real CLI/SDK native-data canary, same-version no-op update, cache-free discovery and scoped cleanup have passed in a disposable installation on the owner's existing Cloudflare account. A second disposable run passed the genuine **0.3.3 → 0.3.4** update with data/auth/files/pending-job preservation; the owner also signed in through real Cloudflare Access in the existing authorized browser. This is not independent-account or full-scope-token platform CLI acceptance. Source/package tests, native local workerd and real Cloudflare acceptance are separate proofs.
+Current release **0.3.6** implements `flare platform install|status|update|adopt` (adoption introduced in 0.3.5). Exact npm **0.3.6** is available under `next` as of October 13, 2026; `latest` remains 0.3.1. Registry installation and personal 0.3.5 → 0.3.6 managed update are verified below. Independent-account acceptance remains untested.
 
 ## Prerequisites and authorization
 
@@ -16,8 +16,8 @@ Do not paste credentials into command arguments or commit them. Set `CLOUDFLARE_
 For the published preview:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.5 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
-bunx --bun --package @auersperg/flare@0.3.5 flare platform install --account ACCOUNT_ID --owner owner@example.com
+bunx --bun --package @auersperg/flare@0.3.6 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
+bunx --bun --package @auersperg/flare@0.3.6 flare platform install --account ACCOUNT_ID --owner owner@example.com
 ```
 
 For a source checkout, build and use the **compiled** CLI:
@@ -130,3 +130,11 @@ An earlier attempt stopped on Cloudflare Queue creation HTTP 500; it was not bli
 ## Published 0.3.5 verification
 
 The owner-approved [protected publication workflow](https://github.com/auersperg/flare/actions/runs/38295968332) passed all gates, including native platform acceptance, frozen-build reproducibility on Linux and the production dependency audit. The exact public registry tarball was then installed outside the repository: SHA-512 integrity and every one of its 63 files matched. Its SHA-256 is `03828763b988d0ec2f7ccf44e87a35f9cbd17a83a5e4979f56ed15e3ea965d3f`, identical to the locally accepted archive. The complete platform digest matches the adopted personal panel and cloud-upgrade target above. Portable Node SDK imports and compiled adoption help passed. The published CLI used one scoped token for real personal-installation status, dry-run update and confirmed same-release update: both updates were no-ops, Worker versions did not change and actual readiness remained healthy. Evidence: `artifacts/platform-035-registry-acceptance.json`. Registry `next` is 0.3.5; `latest` remains 0.3.1. No independent-account acceptance is claimed.
+
+## Published 0.3.6 and personal update verification
+
+On October 13, the owner-approved [protected publication workflow](https://github.com/auersperg/flare/actions/runs/38385348118) passed on source commit `602d57c`, including reproducibility, native gates and the production dependency audit. Registry `next` is 0.3.6; `latest` remains 0.3.1. SHA-512 integrity, all 63 externally installed files and SHA-256 `515031f93043b8c7d0ea9771b25c2c863073bee0d47d67e85c22ea4fbed6c1ad` match the accepted archive. Platform digest: `7693b5a3c9dfa589dea20618a0fcfe348841e9ffdf6beba78aecb200cd27256c`.
+
+Four completed logical capsules preceded the personal update. The registry-installed compiled CLI ran ordinary `platform status`, `platform update --dry-run` and `platform update --confirm ACCOUNT_ID`. Runtime and Admin readiness passed; all four environments retained application releases, schemas, documents, users/auth settings, file metadata and file byte hashes. Catalogue rows, namespaces, bindings/secrets and custom-domain identities were retained. Confirmed same-release update and dry-run were no-ops without further Worker versions. Owner sign-in and production data were checked in the actual dashboard. Evidence: `artifacts/platform-036-registry-acceptance.json` and `artifacts/platform-036-personal-update-acceptance.json`.
+
+Owner sign-in exposed an old primary Access hostname and a stale deleted-Worker destination. The owner's explicit repair request changed the primary destination to `dash.flare.auer.wien`, preserving app ID/audience/policies/session/security settings. The approved configuration change was checkpointed using the existing native installation lease/CAS after exact before/after validation. Drift enforcement was not disabled. This one-time operator repair does not add generic reconciliation or replace the normal CLI update flow. The temporary fixed-scope proof Worker was deleted and its ephemeral credentials erased.

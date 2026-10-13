@@ -1,6 +1,6 @@
 # Maintenance
 
-New source 0.3.5 managed installs use [platform lifecycle](platform-lifecycle.md); independent-account cloud acceptance remains pending; explicit standard-layout adoption is implemented in 0.3.5. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
+Current 0.3.6 managed installs use [platform lifecycle](platform-lifecycle.md); independent-account cloud acceptance remains pending; explicit standard-layout adoption is implemented in 0.3.5. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
 
 Operational invariants for the current source tree. [Architecture](architecture.md) is the canonical implementation map; [production runbook](production-runbook.md) is the release/recovery checklist. Package manifests and current verification output take precedence over dated reports. This guide intentionally does not retain obsolete application inventories, benchmark samples or test-count checkpoints.
 
