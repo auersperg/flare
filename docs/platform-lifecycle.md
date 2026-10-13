@@ -1,8 +1,10 @@
 # Platform installation and updates
 
-Current release **0.3.8** implements `flare platform install|status|update|adopt` (adoption introduced in 0.3.5). Exact npm **0.3.8** is available under `next` as of October 13, 2026; `latest` remains 0.3.1. Registry installation and the personal 0.3.7 → 0.3.8 managed update/resume/no-op are verified. Independent-account acceptance remains untested.
+Current release **0.3.9** implements `flare platform install|status|update|adopt` (adoption introduced in 0.3.5). Exact npm **0.3.9** is available under `next` as of October 13, 2026; `latest` remains 0.3.1. Registry installation and the personal 0.3.8 → 0.3.9 managed update/no-op are verified. Independent-account acceptance remains untested.
 
 0.3.8 adds operator capabilities config, semantic Access snapshots and read-only live status. See the [implementation and acceptance report](archive/implementation-0.3.8-report.md) for exact package/CI evidence and remaining cloud permission/recovery boundaries.
+
+0.3.9 checks the complete version/payload/installation/readiness/ABI/protocol contract consistently in status and update verification. Readiness failure diagnostics expose only HTTP status and mismatching field names, never response bodies or secret values. Current delivery evidence is in the [0.3.9 report](archive/release-0.3.9-report.md).
 
 ## Prerequisites and authorization
 
@@ -18,8 +20,8 @@ Do not paste credentials into command arguments or commit them. Set `CLOUDFLARE_
 For the published preview:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.8 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
-bunx --bun --package @auersperg/flare@0.3.8 flare platform install --account ACCOUNT_ID --owner owner@example.com
+bunx --bun --package @auersperg/flare@0.3.9 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
+bunx --bun --package @auersperg/flare@0.3.9 flare platform install --account ACCOUNT_ID --owner owner@example.com
 ```
 
 For a source checkout, build and use the **compiled** CLI:
@@ -78,7 +80,7 @@ flare platform update --account ACCOUNT_ID --dry-run
 flare platform update --account ACCOUNT_ID
 ```
 
-The target is the payload bundled with the running CLI, not a downloaded moving `latest` platform. Maintainers publish a new immutable package for different bytes. Same version/different digest, downgrades, protocol/ABI mismatch and undeclared version transitions are rejected. `upgradeFrom` is an explicit manifest allowlist. The published 0.3.8 supports the exact published 0.3.7 source only; preservation passed the cloud transition before publication and the ordinary published-CLI personal update afterwards. The first personal verification stopped after both Workers deployed; the same registry CLI completed `--resume` without redeploying. Four complete pre/post capsule pairs and read-only live state matched; a repeated confirmed update was unchanged. Archived releases are immutable; preserve their exact registry archives for future acceptance. Since 0.3.5, clean builds at different paths must produce identical full platform manifests.
+The target is the payload bundled with the running CLI, not a downloaded moving `latest` platform. Maintainers publish a new immutable package for different bytes. Same version/different digest, downgrades, protocol/ABI mismatch and undeclared version transitions are rejected. `upgradeFrom` is an explicit manifest allowlist. The published 0.3.9 supports the exact published 0.3.8 source only; preservation passed the cloud transition before publication and the ordinary published-CLI personal update afterwards. No personal resume was needed for 0.3.9; historical 0.3.8 resume evidence remains in its archived report. Four complete pre/post capsule pairs and read-only live state matched; a repeated confirmed update was unchanged. Archived releases are immutable; preserve their exact registry archives for future acceptance. Since 0.3.5, clean builds at different paths must produce identical full platform manifests.
 
 Updates apply additive D1 migrations, then Runtime and Admin, then verify. Previously applied migration files must remain byte-identical. Workers update sequentially, not atomically; compatible intermediate states and possible client reconnection are part of the release contract. There is no zero-downtime or full graceful job/action-drain guarantee in this preview.
 

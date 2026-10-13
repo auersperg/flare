@@ -1,10 +1,10 @@
 # Flare — полная карта текущей архитектуры
 
-Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и личной установке. Release source commit: `5c5d19a`. Опубликованный и установленный release **0.3.8**, protocol **1**, runtime ABI **4**; npm `next = 0.3.8`, `latest = 0.3.1`.
+Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и личной установке. Release source commit: `c9b7ea8`. Опубликованный и установленный release **0.3.9**, protocol **1**, runtime ABI **4**; npm `next = 0.3.9`, `latest = 0.3.1`.
 
 **0.3.8:** operator config, semantic Access snapshot, live status, dashboard invalidation и backup inventory реализованы и установлены. Registry archive и личный update/resume/no-op проверены; подробный [отчёт](archive/implementation-0.3.8-report.md) разделяет PASS и оставшиеся ограничения.
 
-Последующая [проверка важных пропусков](archive/follow-up-after-0.3.8.md) закрыла cloud restore/password/deletion gate отдельными fixtures. Дополнительные CLI readiness/diagnostics corrections пока в исходниках, не в immutable published 0.3.8; установка по-прежнему 0.3.8.
+Последующая [проверка важных пропусков](archive/follow-up-after-0.3.8.md) закрыла cloud restore/password/deletion gate отдельными fixtures. CLI readiness/diagnostics corrections выпущены в 0.3.9. Exact-registry upgrade с 0.3.8, четыре пары capsules/live snapshots и no-op проверены; см. [отчёт доставки](archive/release-0.3.9-report.md).
 
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
@@ -340,11 +340,11 @@ Mutation не повторяется автоматически при network f
 
 ## 13. CLI и developer flow
 
-Зафиксированный registry release от 13.10.2026: `next = 0.3.8`, `latest = 0.3.1`. Dist-tags изменяемы; ниже exact version принятого release. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
+Зафиксированный registry release от 13.10.2026: `next = 0.3.9`, `latest = 0.3.1`. Dist-tags изменяемы; ниже exact version принятого release. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
 
 ```sh
-bun add @auersperg/flare@0.3.8
-bunx --bun --package @auersperg/flare@0.3.8 flare dev
+bun add @auersperg/flare@0.3.9
+bunx --bun --package @auersperg/flare@0.3.9 flare dev
 ```
 
 1. Первый `dev` scaffold-ит минимальный `flare/` и предлагает platform URL, если приложение ещё не linked.
@@ -357,11 +357,11 @@ bunx --bun --package @auersperg/flare@0.3.8 flare dev
 
 ```sh
 # Собрать текущий backend и подтвердить prod deployment:
-bunx --bun --package @auersperg/flare@0.3.8 flare deploy
+bunx --bun --package @auersperg/flare@0.3.9 flare deploy
 # Посмотреть проверенные dev releases:
-bunx --bun --package @auersperg/flare@0.3.8 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.9 flare releases --env dev
 # Активировать конкретную проверенную dev сборку в prod:
-bunx --bun --package @auersperg/flare@0.3.8 flare promote --env prod --hash HASH
+bunx --bun --package @auersperg/flare@0.3.9 flare promote --env prod --hash HASH
 ```
 
 Advanced commands: `build`, `link`, `deploy --release`, `rollback`, `backup create|list|restore|delete|status`. Установка платформы отделена: `platform install|status|update|adopt`; legacy `platform init` отсутствует. `db generate` отсутствует и не нужен document API. Local workerd используется только acceptance tests ядра, не installed developer backend.
@@ -375,7 +375,7 @@ Activation выполняется через serial gate. При active actions/
 В Health показываются последние пять distinct successful backend hashes выбранной среды. Promote переносит exact dev code bundle в prod **без dev данных, users, files или config**. Rollback применяет retained совместимый code bundle, не data rewind. Исторического изолированного preview каждой версии нет.
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.8 flare promote \
+bunx --bun --package @auersperg/flare@0.3.9 flare promote \
   --env prod --hash HASH --cmd "bun run build"
 # После успеха — native hosting deploy, например в приложении:
 bunx --no-install wrangler deploy
@@ -454,7 +454,7 @@ Workflow проверяет имя/version/license MIT/private flag, повто�
 
 Publish job имеет `id-token: write`; npm Trusted Publisher связан с repo → `publish.yml` → environment `npm`. Постоянный npm publish token workflow не использует. Это [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/), не авторизация Cloudflare.
 
-Зафиксированный срез registry от 13.10.2026: публичный `@auersperg/flare@0.3.8` под `next`, `latest = 0.3.1`. Публикация через защищённый GitHub workflow с provenance завершена; registry tarball установлен вне repo с проверкой каждого файла, integrity, CLI/SDK и platform manifest. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.8 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
+Зафиксированный срез registry от 13.10.2026: публичный `@auersperg/flare@0.3.9` под `next`, `latest = 0.3.1`. Публикация через защищённый GitHub workflow с provenance завершена; registry tarball установлен вне repo с проверкой каждого файла, integrity, CLI/SDK и platform manifest. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.9 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
 
 ### 18.3 CI клиентского приложения
 
