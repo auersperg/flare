@@ -14,7 +14,11 @@ import {
   restoreData,
   emptyData,
 } from "../packages/flare/src/sdk/backup.js";
-import { BackupStore, backupPrefix } from "../packages/core/src/backups.js";
+import {
+  BackupStore,
+  BackupInventory,
+  backupPrefix,
+} from "../packages/core/src/backups.js";
 import { digest } from "../packages/core/src/security.js";
 import { stableJson } from "../packages/flare/src/sdk/protocol.js";
 const schema = defineSchema({
@@ -134,6 +138,77 @@ function bucket() {
   };
   return { r2, objects };
 }
+describe("Supervisor backup inventory", () => {
+  it("does not confuse UUID order with newest completed and survives restart/delete ambiguity", async () => {
+    const { db, storage } = await fixture(),
+      { r2, objects } = bucket();
+    const ids = [
+      "00000000-0000-4000-8000-000000000001",
+      "ffffffff-ffff-4fff-8fff-ffffffffffff",
+    ];
+    const now = Date.now();
+    for (const [i, id] of ids.entries())
+      await r2.put(backupPrefix(scope, id) + "manifest.json", "fixture", {
+        customMetadata: {
+          sha256: "verified",
+          at: String(now - i * 86400001),
+          release: "hash",
+          revision: "1",
+          rows: "2",
+          files: "0",
+        },
+      });
+    const store = new BackupStore(r2, undefined);
+    const inventory = new BackupInventory(storage as any, store, scope);
+    const page = await inventory.list();
+    expect(page.inventory).toBe("complete");
+    expect(page.latest?.id).toBe(ids[0]);
+    expect(page.page.map((r) => r.id)).toEqual(ids);
+    expect(page.recoveryPoint).toBe("within-24h");
+    expect(
+      (await new BackupInventory(storage as any, store, scope).list()).latest
+        ?.id,
+    ).toBe(ids[0]);
+    const old = r2.delete;
+    r2.delete = async (keys: any) => {
+      await old(keys);
+      throw Error("lost delete acknowledgement");
+    };
+    await expect(inventory.remove(ids[0])).rejects.toThrow();
+    r2.delete = old;
+    expect(objects.has(backupPrefix(scope, ids[0]) + "manifest.json")).toBe(
+      false,
+    );
+    const after = await inventory.list();
+    expect(after.latest?.id).toBe(ids[1]);
+    expect(after.recoveryPoint).toBe("overdue");
+    await expect(
+      inventory.list(
+        btoa(JSON.stringify({ scope: target, at: now, id: ids[1] })),
+      ),
+    ).rejects.toThrow("INVALID_CURSOR");
+    db.close();
+  });
+  it("marks a paginated legacy scan unknown until every page is incorporated", async () => {
+    const { db, storage } = await fixture();
+    let scans = 0;
+    const id = crypto.randomUUID(),
+      at = Date.now();
+    const store = {
+      list: async () => ({
+        page: [
+          { id, scope, at, hash: "fixture", revision: 0, rows: 0, files: 0 },
+        ],
+        cursor: ++scans === 1 ? "next" : null,
+      }),
+      completed: async () => true,
+    };
+    const inventory = new BackupInventory(storage as any, store as any, scope);
+    expect((await inventory.list()).recoveryPoint).toBe("unknown");
+    expect((await inventory.list()).latest?.id).toBe(id);
+    db.close();
+  });
+});
 async function bundle() {
   const manifest = {
       protocol: 1 as const,

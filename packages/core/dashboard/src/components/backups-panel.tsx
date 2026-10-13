@@ -38,7 +38,14 @@ function BackupList(scope: Scope) {
     [modal, setModal] = useState<Modal>();
   const path = scopePath(scope.project, source),
     target = scopePath(scope.project, scope.env);
-  const r = useResource<{ page: Backup[]; cursor: string | null }>(
+  const r = useResource<{
+    page: Backup[];
+    cursor: string | null;
+    inventory: string;
+    latest: Backup | null;
+    ageMs: number | null;
+    recoveryPoint: string;
+  }>(
     path + "/backups" + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""),
   );
   const state = useResource<{
@@ -111,6 +118,26 @@ function BackupList(scope: Scope) {
         loading={r.loading || state.loading}
         error={r.error || state.error}
       />
+      {r.data && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Recovery point: {r.data.recoveryPoint}.{" "}
+          {r.data.latest &&
+            `Latest completed: ${new Date(r.data.latest.at!).toLocaleString()} (${Math.floor((r.data.ageMs ?? 0) / 3600000)} hours old).`}{" "}
+          Manual daily backup required for the 24-hour objective; no automatic
+          schedule.
+          {r.data.inventory === "partial" && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCursor(null);
+                r.refresh();
+              }}
+            >
+              Continue inventory
+            </Button>
+          )}
+        </p>
+      )}
       {r.data && (
         <Table>
           <TableHeader>

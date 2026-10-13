@@ -2,7 +2,8 @@ import { mkdir, readFile, writeFile, rename, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { sha256 } from "./platform-release.mjs";
+import { validatePlatformConfig } from "./platform-config.mjs";
+import { configurationDigest } from "./platform-release.mjs";
 
 export const leaseMilliseconds = 15 * 60 * 1000;
 const identifier = /^[a-z][a-z0-9-]{0,19}$/;
@@ -33,6 +34,7 @@ export function validateState(state, account, name) {
     state.owner.length > 254
   )
     throw Error("Unsupported installation state or account/name mismatch");
+  if (state.config !== undefined) validatePlatformConfig(state.config);
   const prefix = `flare-${name}-${state.id.replaceAll("-", "").slice(0, 12)}`;
   const operator = state.origin === "operator";
   if (state.origin !== undefined && !operator)
@@ -374,16 +376,4 @@ export function settingsDigest(settings) {
   return configurationDigest(stable);
 }
 
-export function configurationDigest(value) {
-  const canonical = (item) => {
-    if (Array.isArray(item)) return item.map(canonical);
-    if (item && typeof item === "object")
-      return Object.fromEntries(
-        Object.keys(item)
-          .sort()
-          .map((key) => [key, canonical(item[key])]),
-      );
-    return item;
-  };
-  return sha256(JSON.stringify(canonical(value)));
-}
+export { configurationDigest } from "./platform-release.mjs";

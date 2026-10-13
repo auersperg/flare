@@ -13,6 +13,12 @@ import {
   configurationDigest,
   validateState,
 } from "./platform-state.mjs";
+import {
+  validatePlatformConfig,
+  readPlatformConfig,
+  accessSnapshot,
+} from "./platform-config.mjs";
+import { platformHealth } from "./platform-health.mjs";
 import { loadPlatformRelease, assertUpgrade } from "./platform-release.mjs";
 
 const steps = [
@@ -203,6 +209,9 @@ export function workerConfiguration(state, release, role, bootstrap = false) {
   return {
     ...common,
     worker_loaders: [{ binding: "LOADER" }],
+    ...(state.config
+      ? { secrets_store_secrets: validatePlatformConfig(state.config).secrets }
+      : {}),
     durable_objects: {
       bindings: [{ name: "SUPERVISORS", class_name: "EnvironmentSupervisor" }],
     },
@@ -247,6 +256,13 @@ export function workerConfiguration(state, release, role, bootstrap = false) {
     vars: {
       ...common.vars,
       DEV_TOKEN_ISSUER: "https://" + state.addresses.runtimeHost,
+      ...(state.config
+        ? {
+            APP_CAPABILITIES: JSON.stringify(
+              validatePlatformConfig(state.config).capabilities,
+            ),
+          }
+        : {}),
     },
   };
 }
@@ -262,22 +278,30 @@ async function confirm(options, state, plan, ask, log) {
     throw Error("Account confirmation required; no cloud changes were made");
 }
 async function assertAccess(cf, state) {
-  const app = await cf.api(`access/apps/${state.access.id}`);
+  const { app, digest } = await accessSnapshot(cf, state.access.id);
   const coversHost =
     app.domain === state.addresses.adminHost ||
     app.destinations?.some(
       (d) => d.type === "public" && d.uri === state.addresses.adminHost,
     );
+  if (!coversHost || app.aud !== state.access.aud)
+    throw Error(
+      "Access identity/host drift; explicit snapshot acceptance cannot change identities",
+    );
+  const expected = state.access.snapshot;
   if (
-    !coversHost ||
-    app.aud !== state.access.aud ||
-    (state.access.snapshot &&
-      configurationDigest(app) !== state.access.snapshot)
+    expected &&
+    (state.access.snapshotFormat === 2 ? digest : configurationDigest(app)) !==
+      expected
   )
     throw Error(
-      "Access application drift; refusing to change policies or audiences",
+      `Access application/policy drift. Review Cloudflare settings, then explicitly accept snapshot ${digest} using --accept-access; no policies were changed.`,
     );
+  // Baseline old installations only after their exact legacy snapshot passes.
+  state.access.snapshot = digest;
+  state.access.snapshotFormat = 2;
 }
+
 async function remoteWorker(cf, name) {
   try {
     return await cf.api(`workers/scripts/${name}/settings`);
@@ -926,13 +950,23 @@ async function runPlatform(options, dependencies = {}) {
   let state = discovered.state;
   if (operation === "status")
     return state
-      ? publicState(state, release.manifest, discovered.row)
+      ? {
+          ...publicState(state, release.manifest, discovered.row),
+          health: await platformHealth(
+            cf,
+            state,
+            dependencies.fetch ?? globalThis.fetch,
+          ),
+        }
       : {
           account,
           installation: name,
           status: "not-installed",
           target: release.manifest.version,
         };
+  const requestedConfig = options.config
+    ? await readPlatformConfig(options.config)
+    : null;
   const inventory = await preflight(cf);
   if (adoption && !state)
     state = await prepareOperator(
@@ -966,6 +1000,39 @@ async function runPlatform(options, dependencies = {}) {
       runtimeHost: options["runtime-host"],
     });
   }
+  const configChanged =
+    requestedConfig &&
+    configurationDigest(requestedConfig) !==
+      configurationDigest(validatePlatformConfig(state.config));
+  if (
+    state.operation &&
+    requestedConfig &&
+    configurationDigest(requestedConfig) !== state.operation.configDigest
+  )
+    throw Error(
+      "Pending config differs; resume with the original config or omit --config",
+    );
+  let accessChanged = false;
+  if (options["accept-access"]) {
+    if (
+      !/^[a-f0-9]{64}$/.test(options["accept-access"]) ||
+      operation !== "update" ||
+      state.operation
+    )
+      throw Error(
+        "Access snapshot acceptance requires an idle managed update and exact SHA256",
+      );
+    const actual = await accessSnapshot(cf, state.access.id);
+    if (actual.digest !== options["accept-access"])
+      throw Error(
+        "Access changed since review; read platform status and review the new snapshot",
+      );
+    accessChanged =
+      state.access.snapshotFormat !== 2 ||
+      state.access.snapshot !== actual.digest;
+    state.access.snapshot = actual.digest;
+    state.access.snapshotFormat = 2;
+  }
   if (
     state.operation &&
     (state.operation.kind !== operation ||
@@ -980,7 +1047,11 @@ async function runPlatform(options, dependencies = {}) {
     if (!state.operation) {
       await assertResources(cf, state, inventory);
       await assertNoDrift(cf, state);
-      if (state.installed.digest === release.manifest.digest)
+      if (
+        state.installed.digest === release.manifest.digest &&
+        !configChanged &&
+        !accessChanged
+      )
         return { ...publicState(state, release.manifest), unchanged: true };
       if (operation === "install" || adoption)
         throw Error(
@@ -998,6 +1069,8 @@ async function runPlatform(options, dependencies = {}) {
     from: state.installed?.version ?? state.adoptedFrom?.version ?? null,
     to: release.manifest.version,
     digest: release.manifest.digest,
+    configuration: requestedConfig ?? state.config ?? null,
+    acceptedAccessSnapshot: accessChanged ? state.access.snapshot : null,
     dashboard: "https://" + state.addresses.adminHost,
     runtime: "https://" + state.addresses.runtimeHost,
     steps:
@@ -1033,10 +1106,12 @@ async function runPlatform(options, dependencies = {}) {
     }
   if (options["dry-run"]) return plan;
   await confirm(options, state, plan, ask, log);
+  if (!state.operation && requestedConfig) state.config = requestedConfig;
   state.operation ??= {
     id: randomUUID(),
     kind: operation,
     targetDigest: release.manifest.digest,
+    configDigest: configurationDigest(validatePlatformConfig(state.config)),
     completed: [],
     phase: "catalog",
     previousVersions: { ...state.versions },

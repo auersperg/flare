@@ -2,6 +2,8 @@
 
 Current release **0.3.7** implements `flare platform install|status|update|adopt` (adoption introduced in 0.3.5). Exact npm **0.3.7** is available under `next` as of October 13, 2026; `latest` remains 0.3.1. Registry installation and personal 0.3.6 → 0.3.7 managed update are verified below. Independent-account acceptance remains untested.
 
+**Source 0.3.8:** adds operator capabilities config, semantic Access snapshots and read-only live status. Publication and personal rollout are tracked separately; 0.3.7 remains the last verified installed release until then.
+
 ## Prerequisites and authorization
 
 - Bun 1.4.3+ for Flare; Node 24.11+ for the pinned Wrangler subprocess, downloaded lazily by Bun when a platform operation needs it. SDK imports and application builds do not load Wrangler.
@@ -83,6 +85,41 @@ Updates apply additive D1 migrations, then Runtime and Admin, then verify. Previ
 Worker names, catalogue IDs, R2/Queue identities, supervisor namespace, `app` facets, projects, app releases, application data/auth/files and signing secrets are not replaced. Existing Access policies are not edited during updates. Out-of-band Worker configuration/version changes are refused rather than overwritten; arbitrary configuration adoption/reconciliation is not implemented yet. Additional unmanaged bindings/domains must not be added expecting the updater to merge them automatically.
 
 `platform update` does not update the SDK in application repositories or redeploy their frontends/backends. `flare deploy/promote/rollback` remain application commands. Platform Worker version IDs are retained for investigation, not a promise of automatic code/data rollback. No data rewind, destructive reverse migrations, unattended updates or updater service is installed.
+
+## Operator configuration and live status
+
+`platform status` keeps installation `status` separate from `health`. Probes are read-only and bounded: expected Runtime/catalog/Admin payload readiness, unauthenticated dashboard closure and semantic Access app/policy digest. Network/permission errors mean unavailable, not healthy/not-installed. Actual owner sign-in is still separate. There is no monitoring timer.
+
+`platform install/update --config operator.json` accepts only complete desired `capabilities` and native `secrets` references. Omission on update preserves managed config; an explicit empty `{}` removes grants. The same release can deploy a config change without replacing data/namespace. Interrupted operations resume with their stored config; supplying a different config is refused. This does not accept arbitrary Wrangler settings or out-of-band bindings.
+
+```json
+{
+  "capabilities": {
+    "00000000-0000-4000-8000-000000000001/prod": {
+      "outbound": ["api.example.com"],
+      "secrets": { "API_KEY": "APP_SECRET_API_KEY" }
+    }
+  },
+  "secrets": [
+    {
+      "binding": "APP_SECRET_API_KEY",
+      "store_id": "00000000000000000000000000000000",
+      "secret_name": "application-api-key"
+    }
+  ]
+}
+```
+
+Replace example project/store IDs with your own. Create the secret in Cloudflare Secrets Store with Workers scope first; Flare config contains only its reference, not its value. Binding permissions are enforced by Cloudflare; enabling this optional capability may require Secrets Store permissions beyond the base installation token. Only Runtime receives bindings; grants are project/environment scoped and outbound remains exact HTTPS hosts, bounded bodies/deadline, no redirects. App code never receives the account token.
+
+Access snapshots guard the app's security fields and separate policy list while excluding only known response timestamps. Unknown fields remain guarded. Legacy snapshots migrate only after the old exact hash matches; legacy drift requires explicit review. If an intentional Cloudflare Access change blocks update, inspect it in Cloudflare and take the current `health.access.snapshot` from `platform status`. Then run:
+
+```sh
+flare platform update --account ACCOUNT_ID --accept-access REVIEWED_SHA256 --dry-run
+flare platform update --account ACCOUNT_ID --accept-access REVIEWED_SHA256
+```
+
+This accepts exactly the reviewed app/policies under the existing installation CAS lease; it does not edit policies, change audience/issuer/host, accept Worker drift or disable protection. Another change before acceptance invalidates the digest. Keep an operator out of a pending update until it finishes; snapshot acceptance cannot hide an incomplete operation.
 
 ## Release and verification
 

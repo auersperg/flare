@@ -1,7 +1,7 @@
 {
   "name": "flare-workspace",
   "private": true,
-  "version": "0.3.7",
+  "version": "0.3.8",
   "type": "module",
   "workspaces": [
     "packages/flare",
@@ -19,7 +19,7 @@
     "test:cloud-kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs --cloud",
     "test:cloud-sdk": "bun scripts/sdk-cloud-acceptance.mjs",
     "build:platform": "bun run build",
-    "test:platform:cloud": "bun scripts/platform-acceptance.mjs",
+    "test:platform:cloud": "bun scripts/platform-lifecycle-cloud-acceptance.mjs --features",
     "test:platform:lifecycle:cloud": "bun scripts/platform-lifecycle-cloud-acceptance.mjs",
     "test:backup:cloud": "bun scripts/backup-acceptance.mjs",
     "format": "bun x --bun prettier --write .",
@@ -32,15 +32,15 @@
     "test:deletion:cloud": "bun scripts/project-deletion-acceptance.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20261010.1",
+    "@cloudflare/workers-types": "5.20261013.1",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "prettier": "3.9.10",
     "typescript": "6.0.2",
-    "wrangler": "4.149.0",
-    "prettier-plugin-astro": "1.1.0",
-    "@types/bun": "1.4.2",
+    "wrangler": "4.150.0",
+    "prettier-plugin-astro": "1.1.1",
+    "@types/bun": "1.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

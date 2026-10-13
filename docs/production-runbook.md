@@ -4,7 +4,7 @@ Current 0.3.7 managed installs use [platform lifecycle](platform-lifecycle.md). 
 
 Flare is a self-hosted backend, not a managed service with an operator SLA. Use the shared Cloudflare installation for trusted application code. Dev and prod have independent data, accounts, files and schedules. Promotion copies a backend release, not those resources.
 
-Personal installation: published 0.3.7 update and owner Access sign-in verified on October 13, 2026; four completed pre-update capsules retained. The declared fixture load/recovery/alert checks are documented in the [improvement plan](production-runbook.md), not a general SLA.
+Personal installation: published 0.3.7 update and owner Access sign-in verified on October 13, 2026; four completed pre-update capsules retained. Historical fixture load/recovery/alert checks are documented in the [archived improvement plan](archive/architecture-improvement-plan.md), not a general SLA.
 
 ## Before admitting real users
 
@@ -15,13 +15,14 @@ Personal installation: published 0.3.7 update and owner Access sign-in verified 
 5. Make schema changes compatible with old clients. Test the frontend build against the chosen production URL before promotion. Backend/frontend publishing is sequential, not atomic; inspect both results.
 6. Choose an acceptable recovery point/time and verify that the bounded empty-target restore meets it. Do not admit irreplaceable data if same-account R2 and empty-target-only recovery are insufficient.
 
-The cloud scripts require the existing operator installation and Wrangler session. They create only random disposable scopes; they never reset retained application projects. Temporary proof Workers have a random secret, fixed compiled-in scopes and are removed after the proof. They are not part of the production architecture or SDK.
+Historical operator-layout cloud scripts require an idle adopted installation, explicit `CLOUDFLARE_ACCOUNT_ID` and a scoped API token or supported Wrangler auth. They read managed discovery, not macOS OAuth files or a legacy resource descriptor. They create only random disposable scopes; they never reset retained application projects. Temporary proof Workers have a random secret, fixed compiled-in scopes and are removed after the proof. They are not part of the production architecture or SDK.
 
 ## Backup and restore
 
 - Accepted personal-project policy: RPO at most 24 hours, RTO at most one hour. This is an operator objective, not an automatic service guarantee; acceptance requires a completed restore rehearsal for the selected workload.
 - The owner operates a daily backup cadence and a backup before risky changes. Check that the newest **completed** capsule is less than 24 hours old; a scheduled intention or an incomplete capsule does not satisfy RPO. Keep recovery metadata privately, and explicitly remove old capsules only after checking a newer recovery point. No automatic backup or retention timer is installed.
 - Before a risky change: pause cron, drain pending/running/failed jobs and actions, finish uploads. Inspect the selected environment, then create an on-demand logical backup in Settings → Backups or `flare backup create --env prod`.
+- In source 0.3.8 the bounded metadata inventory orders completed capsules newest-first and shows latest age/recoveryPoint. If inventory is partial, continue inventory: unknown is not within-RPO. This is metadata freshness, not checksum/recovery validation.
 - Record backup ID, source release hash, creation time, document/file counts and completion. Incomplete capsules cannot be used for restore. Verify recovery on an empty other environment before relying on it.
 - Current bounds: 10,000 documents / 4 MiB logical data; 100 files / 100 MiB. Password hashes are private credential data. Sessions, secrets, auth/origin configuration, cron and historical jobs are not copied.
 - Restore only into the other **empty** environment of the same project. Select source and backup ID explicitly. A failed restore remains fenced; retry the same capsule after repairing the cause. Do not clear fences/pins or overwrite a populated prod environment.

@@ -1,3 +1,4 @@
+import { dashboardAllowed } from "./dashboard-live.js";
 import { collectCatalog } from "./retention.js";
 import packageInfo from "../package.json" with { type: "json" };
 import { authorizeProjectDeletion, deleteProject } from "./project-deletion.js";
@@ -363,6 +364,25 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     scope = `${projectId}/${which}`,
     op = match[3] ?? "health";
   if (request.method === "GET") {
+    if (op === "live") {
+      if (
+        a.projectId ||
+        request.headers.get("origin") !== url.origin ||
+        request.headers.get("upgrade")?.toLowerCase() !== "websocket"
+      )
+        fail("FORBIDDEN");
+      return env.RUNTIME.fetch(
+        new Request(`https://dashboard.internal/${scope}`, {
+          headers: {
+            upgrade: "websocket",
+            "x-flared-dashboard": JSON.stringify({
+              email: a.email,
+              expires: Date.now() + 600000,
+            }),
+          },
+        }),
+      );
+    }
     if (["release", "release-bundle"].includes(op)) {
       const hash = url.searchParams.get("hash");
       if (!hash || !/^[a-f0-9]{64}$/.test(hash)) fail("INVALID_INPUT");
@@ -586,6 +606,9 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
   fail("INVALID_OPERATION");
 }
 export class AdminControl extends WorkerEntrypoint<Env> {
+  dashboardAllowed(scope: string, email: string) {
+    return dashboardAllowed(this.env.CATALOG, scope, email);
+  }
   async readiness() {
     const row = await this.env.CATALOG.prepare(
       "SELECT installation_id FROM flare_installation WHERE singleton=1",
@@ -652,6 +675,8 @@ export default {
           "; style-src 'self' " +
           FLARE_DASHBOARD_CSP_HASHES.styles.join(" ") +
           "; connect-src 'self' " +
+          env.DASHBOARD_URL.replace("https:", "wss:") +
+          " " +
           env.RUNTIME_URL +
           " " +
           env.RUNTIME_URL.replace("https:", "wss:") +

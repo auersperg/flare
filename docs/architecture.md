@@ -2,6 +2,8 @@
 
 Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и личной установке. Release source commit: `f7baa56`. Опубликованный и установленный release **0.3.7**, protocol **1**, runtime ABI **4**; npm `next = 0.3.7`, `latest = 0.3.1`.
 
+**Исходники 0.3.8:** operator config, semantic Access snapshot, live status, dashboard invalidation и backup inventory описаны ниже; до публикации/обновления личная установка остаётся на 0.3.7.
+
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
 ## Содержание
@@ -131,8 +133,8 @@ flare/
 | -------------------------- | ----------------------------------------------------------------- |
 | Bun                        | `1.4.3`, package manager / CLI / compiler / tests                 |
 | Node                       | CI `24`; vendor Wrangler boundary, не runtime приложения          |
-| Wrangler                   | `4.149.0`                                                         |
-| Cloudflare Workers types   | `5.20261010.1`                                                    |
+| Wrangler                   | `4.150.0`                                                         |
+| Cloudflare Workers types   | `5.20261013.1`                                                    |
 | Workers compatibility date | `2026-10-10`; release validator требует эту дату                  |
 | Agents                     | `0.28.0`, только публичные Lifecycle/WebSockets/Scheduler modules |
 | Astro / Astro React        | `7.3.8` / `7.0.1`                                                 |
@@ -192,7 +194,7 @@ role = facet | action
 
 Request ID и пользовательский token не участвуют в ID. Код читается из R2, SHA-256 сверяется с manifest. Role-specific limits: CPU 1000 ms; facet subrequests 0; action subrequests 100. Активный metadata cache bounded: до четырёх releases / 4 MiB.
 
-Facet egress запрещён (`globalOutbound: null`). Actions работают отдельно, без прямой SQLite; получают узкий `AppCapability`. Outbound по умолчанию запрещён, разрешается operator policy только на exact HTTPS hosts, без implicit redirects/TCP; поток ограничен 1 MiB, deadline 10 секунд. Секреты выдаются только по scoped mapping в Secrets Store bindings, не как account API token. Provisioning и облачная приёмка optional capabilities остаются отдельными задачами.
+Facet egress запрещён (`globalOutbound: null`). Actions работают отдельно, без прямой SQLite; получают узкий `AppCapability`. Outbound по умолчанию запрещён, разрешается operator policy только на exact HTTPS hosts, без implicit redirects/TCP; поток ограничен 1 MiB, deadline 10 секунд. Секреты выдаются только по scoped mapping в Secrets Store bindings, не как account API token. Operator config задаёт scoped grants и existing Secrets Store references через `platform install/update --config`; journal не содержит secret values. Actual Secrets Store binding требует соответствующих Cloudflare permissions; облачная приёмка конкретной интеграции обязательна.
 
 ## 7. Данные и схема
 
@@ -283,7 +285,7 @@ Header: project selector, Development/Production tabs. Создание прое
 | Logs      | Recent bounded invocation summaries; не весь Cloudflare Workers Logs dataset и не billing                                                                             |
 | Settings  | Origin/OIDC, credentials, backups, owner-only deletion проекта                                                                                                        |
 
-**Реактивные приложения ≠ полностью push-reactive dashboard.** Admin views сейчас snapshots: read при открытии, после собственного изменения, при focus/visibility return; compact reload предусмотрен там, где нужен. Interval polling нет. Изменения другого SDK-клиента не инвалидируют все открытые Data/Auth/Files views автоматически: отдельный Access-authorized dashboard push channel ещё не реализован.
+**Dashboard остаётся snapshot UI, но получает push-invalidation.** Один Access/membership-authorized WebSocket выбранной среды проходит Admin → native Runtime service fetch → существующий hibernating Supervisor. Hint не содержит app records: открытые resources повторяют bounded reads. Reconnect resync, coalescing, 10-minute authorization lease и membership recheck перед hint; revoked access закрывает канал и скрывает предыдущие snapshots. Focus/manual refresh сохранены; interval polling и отдельного event bus нет. Это не transactional frontend stream: backend/query protocol остаётся отдельным.
 
 Static asset routing: `run_worker_first: ["/*", "!/_astro/*"]`. HTML/API проходит Admin auth/membership и security headers; hashed `/_astro/*` обслуживается native assets route с immutable caching. Bootstrap artifacts запрещены в публичном Admin fetch. Astro CSP hashes включаются в core build; `connect-src` ограничен dashboard/runtime; HTML `no-store`, no-referrer/nosniff. Edge Access policy должна защищать hostname независимо от asset routing.
 
@@ -419,6 +421,8 @@ Restore — owner-confirmed, только в **другую пустую сре�
 
 Owner через Access подтверждает UUID и exact name; удаляются **dev и prod**. Сначала durable catalog fence и credential revocation, затем fences обеих сред, затем scoped DO/facet/R2 cleanup и D1 finalization. Partial failure сохраняет состояние для повторного удаления. Alias reservations, audit и небольшие deletion tombstones намеренно остаются; общий namespace/queues/Access policy и другие проекты не удаляются.
 
+В source 0.3.8 Supervisor хранит rebuildable metadata index backups. Старые UUID prefixes обнаруживаются порциями по 20, без чтения file blobs. Пока inventory неполон, latest/recoveryPoint имеют unknown, а UI предлагает Continue inventory. Полная выдача — newest-first с keyset cursor; последняя завершённая manifest проверяется HEAD, возраст сравнивается с ручной 24-hour целью. Это не backup scheduler, PITR или гарантия восстановления; restore отдельно валидирует checksum и ограничения.
+
 ## 18. CI и npm publishing
 
 ### 18.1 GitHub `ci.yml`
@@ -470,7 +474,7 @@ install exact registry SDK → app checks
 
 Новый managed lifecycle: `flare platform install|status|update|adopt` — [команды, state и recovery](platform-lifecycle.md). CLI использует проверенный payload своей версии, D1 installation ID/journal/revision lease и сохраняет namespace/resource IDs. `--dry-run` делает только чтения; destructive/legacy/undeclared upgrades запрещены. Сам installer не выполняет cloud acceptance или автоматические обновления.
 
-Стандартную старую operator-установку переводят под CLI один раз через явный `platform adopt --owner EMAIL`: проверяются существующий owner, bindings, domains, Access, ресурсы и ABI; замены namespace/resources, сброса данных или ротации secret нет. После adoption D1 journal становится источником истины. Произвольный import/reconciliation нестандартной конфигурации не поддерживается.
+Стандартную старую operator-установку переводят под CLI один раз через явный `platform adopt --owner EMAIL`: проверяются существующий owner, bindings, domains, Access, ресурсы и ABI; замены namespace/resources, сброса данных или ротации secret нет. После adoption D1 journal становится источником истины. Произвольный import Worker конфигурации не поддерживается. Для Access имеется узкий explicit snapshot acceptance; для native app capabilities — operator config. Ни одно из них не сбрасывает Worker drift guards.
 
 Обычный flow managed-установки, с выбранной точной совместимой версией CLI:
 

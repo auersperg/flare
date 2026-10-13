@@ -1,11 +1,13 @@
 import {
   useEffect,
+  useContext,
   useId,
   useState,
   type ReactNode,
   type SubmitEvent,
 } from "react";
 import { Button } from "./ui/button";
+import { DashboardInvalidation } from "./dashboard-live";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import {
@@ -48,6 +50,8 @@ import { api, message, scalar, type Row } from "../lib/model";
 import { values, type Field } from "../lib/presentation";
 
 export function useResource<T>(path: string) {
+  const live = useContext(DashboardInvalidation);
+  const epoch = path.startsWith(live.scope + "/") ? live.epoch : 0;
   const [state, setState] = useState<{
     path: string;
     data?: T;
@@ -71,7 +75,7 @@ export function useResource<T>(path: string) {
           setState({ path, error: message(e), loading: false });
       });
     return () => abort.abort();
-  }, [path, version]);
+  }, [path, version, epoch]);
   useEffect(() => {
     let lastResume = 0;
     const resume = () => {

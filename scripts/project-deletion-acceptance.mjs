@@ -12,16 +12,8 @@ import {
   uploadFile,
 } from "../packages/flare/dist/sdk/client.js";
 import { cleanupCloudScopes } from "./lib/cloud-cleanup.mjs";
-const install = JSON.parse(
-  await readFile(".private/flare-install.json", "utf8"),
-);
-const oauth = (
-  await readFile(
-    process.env.HOME + "/Library/Preferences/.wrangler/config/default.toml",
-    "utf8",
-  )
-).match(/oauth_token\s*=\s*"([^"]+)"/)[1];
-const account = `https://api.cloudflare.com/client/v4/accounts/${install.account}`;
+import { loadCloudFixture } from "./lib/cloud-fixture.mjs";
+const { install, oauth, account, cloud } = await loadCloudFixture();
 const id = randomUUID(),
   customer = randomUUID(),
   token = randomBytes(32).toString("hex"),
@@ -45,19 +37,8 @@ let created = false,
   deleted = false,
   url,
   client;
-async function cf(path, body, method = body ? "POST" : "GET") {
-  const r = await fetch(`${account}/${path}`, {
-    method,
-    headers: {
-      authorization: "Bearer " + oauth,
-      "content-type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const x = await r.json();
-  if (!x.success) throw Error(JSON.stringify(x.errors));
-  return x.result;
-}
+const cf = (path, body, method = body ? "POST" : "GET") =>
+  cloud.api(path, body, method);
 const db = (sql, params = []) =>
   cf(`d1/database/${install.database}/query`, { sql, params });
 async function command(env, op, body) {

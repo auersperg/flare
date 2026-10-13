@@ -1,6 +1,7 @@
 import { PasswordAuth } from "./auth.js";
+import { dashboardIdentity, type DashboardIdentity } from "./dashboard-live.js";
 import packageInfo from "../package.json" with { type: "json" };
-import { BackupStore, backupPrefix } from "./backups.js";
+import { BackupInventory, BackupStore, backupPrefix } from "./backups.js";
 import { InvocationSummaries } from "./observability.js";
 import { queueBatches, consumeBatch } from "./queue.js";
 import { appPolicy, appSecret, outbound } from "./capabilities.js";
@@ -117,6 +118,7 @@ function getSupervisor(
   };
 }
 type ConnectionAuth = {
+  dashboard?: DashboardIdentity;
   auth: Auth | null;
   expires: number | null;
   windowAt?: number;
@@ -215,6 +217,16 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
           connection.close(1008, "Unauthorized");
           return;
         }
+        if (
+          state.dashboard &&
+          !(await this.env.ADMIN_API.dashboardAllowed(
+            this.config().scope,
+            state.dashboard.email,
+          ))
+        ) {
+          connection.close(1008, "Unauthorized");
+          return;
+        }
         connection.setState(state);
         await this.scheduleExpiry();
         connection.send('{"type":"ready"}');
@@ -222,6 +234,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       onMessage: async (connection, message) => {
         await this.serial(async () => {
           try {
+            if ((connection.state as ConnectionAuth)?.dashboard) {
+              connection.close(1002, "Read-only channel");
+              return;
+            }
             const auth = this.connectionAuth(connection),
               state = connection.state as ConnectionAuth;
             const now = Date.now();
@@ -681,6 +697,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       await this.arm();
       await this.recover();
     }
+    await this.dashboardHint();
     return { hash: metadata.release.hash, unchanged: false };
   }
   private async arm() {
@@ -775,7 +792,9 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     const times = [...this.sockets.getConnections()]
       .filter(
         (c) =>
-          c.id !== exclude && (c.state as ConnectionAuth | null)?.auth != null,
+          c.id !== exclude &&
+          ((c.state as ConnectionAuth | null)?.auth != null ||
+            !!(c.state as ConnectionAuth | null)?.dashboard),
       )
       .map((c) => (c.state as ConnectionAuth | null)?.expires ?? Date.now());
     if (!times.length) await this.lifecycle.jobs.cancel("expire");
@@ -787,8 +806,36 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         singleflight: true,
       });
   }
+  private async dashboardHint() {
+    const allowed = new Map<string, boolean>();
+    for (const c of this.sockets.getConnections()) {
+      const identity = (c.state as ConnectionAuth | null)?.dashboard;
+      if (!identity) continue;
+      try {
+        if (identity.expires <= Date.now()) {
+          c.close(1008, "Expired");
+          continue;
+        }
+        if (!allowed.has(identity.email))
+          allowed.set(
+            identity.email,
+            await this.env.ADMIN_API.dashboardAllowed(
+              this.config().scope,
+              identity.email,
+            ),
+          );
+        if (!allowed.get(identity.email)) c.close(1008, "Revoked");
+        else c.send('{"type":"invalidate"}');
+      } catch {
+        c.close(1008, "Unavailable");
+      }
+    }
+  }
   private async broadcast() {
-    const connections = [...this.sockets.getConnections()];
+    await this.dashboardHint();
+    const connections = [...this.sockets.getConnections()].filter(
+      (c) => !(c.state as ConnectionAuth | null)?.dashboard,
+    );
     // New subscribers receive their own current snapshot; no work is owed to absent clients.
     if (!connections.length) return;
     const cache = new SnapshotCache();
@@ -874,7 +921,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         for (const c of this.sockets.getConnections()) {
           const state = c.state as ConnectionAuth | null;
           if (!state) c.close(1008, "Expired");
-          else if (state.auth) {
+          else if (state.auth || state.dashboard) {
             if (state.expires === null || state.expires <= Date.now())
               c.close(1008, "Expired");
             else next = Math.min(next, state.expires);
@@ -1061,6 +1108,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         input.authorization?.slice(7) ?? null,
       );
       this.closeRevokedSockets();
+      await this.dashboardHint();
       return result;
     });
   }
@@ -1222,6 +1270,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   ) {
     if (kind !== "query" || outcome !== "ok") await this.prune();
     this.summaries.record({ at: Date.now(), path, kind, status: outcome, ms });
+    if (kind !== "query") await this.dashboardHint();
   }
   private async event(path: string, kind: string, outcome: string, ms: number) {
     await this.serial(async () => this.record(path, kind, outcome, ms));
@@ -1265,7 +1314,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     const store = new BackupStore(this.env.BUNDLES, this.env.FILES),
       scope = this.config().scope;
     const existing = await store.read(scope, id);
-    if (existing) return store.summary(existing);
+    if (existing) return this.backupInventory().record(store.summary(existing));
     this.assertQuiet();
     await this.finishActivation();
     const data = await this.facetAdmin("backup-export");
@@ -1293,17 +1342,26 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         size: Number(row.size),
         createdAt: Number(row.createdAt),
       }));
-    return store.create(
-      {
-        format: 1,
-        id,
-        scope,
-        at: Date.now(),
-        bundle,
-        data,
-        authUsers: this.passwords().backupUsers(),
-      },
-      files,
+    return this.backupInventory().record(
+      await store.create(
+        {
+          format: 1,
+          id,
+          scope,
+          at: Date.now(),
+          bundle,
+          data,
+          authUsers: this.passwords().backupUsers(),
+        },
+        files,
+      ),
+    );
+  }
+  private backupInventory() {
+    return new BackupInventory(
+      this.ctx.storage,
+      new BackupStore(this.env.BUNDLES, this.env.FILES),
+      this.config().scope,
     );
   }
   private async restoreBackup(input: { id: string; source: string }) {
@@ -1405,7 +1463,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   }
   async admin(op: string, input: any): Promise<any> {
     await this.lifecycle.start();
-    return this.serial(async () => {
+    const result = await this.serial(async () => {
       if (this.removed) fail("NOT_FOUND");
       if (op.startsWith("auth-")) {
         this.assertAvailable();
@@ -1469,10 +1527,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       }
       if (op === "backup-create") return this.createBackup(input.id);
       if (op === "backup-list")
-        return new BackupStore(this.env.BUNDLES, this.env.FILES).list(
-          this.config().scope,
-          input.cursor,
-        );
+        return this.backupInventory().list(input.cursor);
       if (op === "backup-pin") {
         const target = scopeForDeletion(input.target),
           scope = this.config().scope;
@@ -1509,10 +1564,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
             .toArray().length
         )
           fail("BACKUP_BUSY");
-        return new BackupStore(this.env.BUNDLES, this.env.FILES).remove(
-          this.config().scope,
-          input.id,
-        );
+        return this.backupInventory().remove(input.id);
       }
       if (op === "backup-restore") return this.restoreBackup(input);
       if (op === "backup-status") return this.restoreState();
@@ -1589,6 +1641,27 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         };
       fail("INVALID_OPERATION");
     });
+    if (
+      [
+        "auth-create",
+        "auth-password",
+        "auth-disable",
+        "auth-revoke",
+        "auth-configure",
+        "edit",
+        "file-upload",
+        "file-delete",
+        "job-cancel",
+        "cron-set",
+        "cron-cancel",
+        "backup-create",
+        "backup-delete",
+        "backup-restore",
+        "release-rollback",
+      ].includes(op)
+    )
+      await this.serial(() => this.dashboardHint());
+    return result;
   }
   async job(job: OutboxJob) {
     await this.lifecycle.start();
@@ -1601,6 +1674,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       return await promise;
     } finally {
       this.runningJobs.delete(job.id);
+      await this.serial(() => this.dashboardHint());
     }
   }
   private async executeJob(job: OutboxJob) {
@@ -1679,7 +1753,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   }
   async fileCommand(op: string, input: any): Promise<any> {
     await this.lifecycle.start();
-    return this.serial(async () => {
+    const result = await this.serial(async () => {
       if (
         input?.origin &&
         !fileOriginAllowed(
@@ -1700,6 +1774,9 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       if (op === "complete") return this.files().complete(input.id);
       fail("INVALID_OPERATION");
     });
+    if (["reserve", "delete", "complete"].includes(op))
+      await this.serial(() => this.dashboardHint());
+    return result;
   }
   private cronRows() {
     return this.ctx.storage.sql
@@ -1803,12 +1880,14 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   }
   async scheduleCommand(op: string, input: any) {
     await this.lifecycle.start();
-    return this.serial(async () => {
+    const result = await this.serial(async () => {
       if (op === "set") return this.setCron(input);
       if (op === "cancel") return this.cancelCron(input.name);
       if (op === "list") return this.cronRows();
       fail("INVALID_OPERATION");
     });
+    if (op !== "list") await this.serial(() => this.dashboardHint());
+    return result;
   }
 }
 export class AppCapability extends WorkerEntrypoint<Env, { scope: string }> {
@@ -1895,6 +1974,37 @@ export class AppCapability extends WorkerEntrypoint<Env, { scope: string }> {
   }
 }
 export class RuntimeControl extends WorkerEntrypoint<Env> {
+  async fetch(request: Request) {
+    try {
+      const url = new URL(request.url);
+      if (
+        url.host !== "dashboard.internal" ||
+        request.headers.get("upgrade")?.toLowerCase() !== "websocket"
+      )
+        fail("FORBIDDEN");
+      const scope = scopeForDeletion(url.pathname.slice(1));
+      const identity = dashboardIdentity(
+        JSON.parse(request.headers.get("x-flared-dashboard") ?? "null"),
+      );
+      if (!(await this.env.ADMIN_API.dashboardAllowed(scope, identity.email)))
+        fail("FORBIDDEN");
+      return getSupervisor(this.env, scope).fetch(
+        new Request("https://dashboard.internal/", {
+          headers: {
+            upgrade: "websocket",
+            "x-flared-identity": stableJson({
+              auth: null,
+              expires: identity.expires,
+              dashboard: identity,
+            }),
+          },
+        }),
+      );
+    } catch (error) {
+      const result = status(error);
+      return Response.json({ error: result.code }, { status: result.status });
+    }
+  }
   async command(op: string, args: unknown[]): Promise<RpcResult<unknown>> {
     return capture(async () => {
       if (

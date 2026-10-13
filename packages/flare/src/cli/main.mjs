@@ -17,7 +17,7 @@ else if (command === "platform") {
     const operation = args.shift();
     if (["help", "--help"].includes(operation)) {
       console.log(
-        "flare platform install|status|update|adopt [--account <ID>] [--name <name>]\ninstall: [--owner <email>] [--dashboard-host <host> --runtime-host <host>] [--subdomain <workers.dev prefix>]\nadopt: --owner <email> (existing standard flare-admin/flare-runtime/flare-catalog; default installation only)\ninstall/update/adopt: [--dry-run] [--confirm <account ID>] [--resume]\nUses the platform payload bundled with this CLI release. Never updates applications or runs a local dashboard. Requires separate Cloudflare account permissions; FLARE_DEPLOY_TOKEN is not an account token.",
+        "flare platform install|status|update|adopt [--account <ID>] [--name <name>]\ninstall: [--owner <email>] [--dashboard-host <host> --runtime-host <host>] [--subdomain <workers.dev prefix>]\nadopt: --owner <email> (existing standard flare-admin/flare-runtime/flare-catalog; default installation only)\ninstall/update: [--config <operator JSON>]\nupdate: [--accept-access <reviewed snapshot SHA256>]\ninstall/update/adopt: [--dry-run] [--confirm <account ID>] [--resume]\nUses the platform payload bundled with this CLI release. Never updates applications or runs a local dashboard. Requires separate Cloudflare account permissions; FLARE_DEPLOY_TOKEN is not an account token.",
       );
     } else {
       if (!["install", "status", "update", "adopt"].includes(operation))
@@ -39,9 +39,18 @@ else if (command === "platform") {
                 "confirm",
                 "dry-run",
                 "resume",
+                "config",
               ]
             : operation === "update"
-              ? ["account", "name", "confirm", "dry-run", "resume"]
+              ? [
+                  "account",
+                  "name",
+                  "confirm",
+                  "dry-run",
+                  "resume",
+                  "config",
+                  "accept-access",
+                ]
               : ["account", "name"];
       for (let i = 0; i < args.length; i++) {
         const key = args[i]?.slice(2);

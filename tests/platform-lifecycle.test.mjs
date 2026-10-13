@@ -30,6 +30,7 @@ import {
   settingsDigest,
 } from "../packages/flare/src/cli/platform-state.mjs";
 import {
+  WRANGLER_VERSION,
   payloadFiles,
   sha256,
   manifestDigest,
@@ -70,7 +71,7 @@ async function fixture(version = "0.3.3", extraMigration = false) {
     protocol: 1,
     runtimeAbi: 4,
     compatibilityDate: "2026-10-10",
-    wranglerVersion: "4.149.0",
+    wranglerVersion: WRANGLER_VERSION,
     upgradeFrom: version === "0.3.3" ? [] : ["0.3.3"],
     files: [],
   };
@@ -211,6 +212,8 @@ class Cloud {
       }
       return this.ok(app);
     }
+    if (/^access\/apps\/[^/]+\/policies$/.test(path))
+      return this.ok(this.apps.get(path.split("/")[2])?.policies ?? []);
     if (path.startsWith("access/apps/"))
       return this.apps.has(path.slice(12))
         ? this.ok(this.apps.get(path.slice(12)))
@@ -466,6 +469,100 @@ async function testContext(fn) {
 }
 
 describe("Platform lifecycle", () => {
+  it("journals same-release config updates, preserves them without --config and resumes lost acknowledgements", async () =>
+    testContext(async ({ cloud, install, deps, directory }) => {
+      await install();
+      const before = cloud.state();
+      const path = join(directory, "operator.json");
+      const config = {
+        capabilities: {
+          ["00000000-0000-4000-8000-000000000001/dev"]: {
+            outbound: ["api.example.com"],
+          },
+        },
+      };
+      await writeFile(path, JSON.stringify(config));
+      const count = cloud.mutationCount();
+      await platform(
+        { operation: "update", account, config: path, "dry-run": true },
+        deps,
+      );
+      expect(cloud.mutationCount()).toBe(count);
+      expect(cloud.state().config).toBeUndefined();
+      cloud.deploymentFailure = "-runtime-";
+      await expect(
+        platform(
+          { operation: "update", account, config: path, confirm: account },
+          deps,
+        ),
+      ).rejects.toThrow();
+      const pending = cloud.state();
+      expect(pending.operation.configDigest).toBeDefined();
+      await platform(
+        { operation: "update", account, confirm: account, resume: true },
+        deps,
+      );
+      const after = cloud.state();
+      expect(
+        after.config.capabilities["00000000-0000-4000-8000-000000000001/dev"]
+          .outbound,
+      ).toEqual(["api.example.com"]);
+      expect(after.supervisorNamespace).toBe(before.supervisorNamespace);
+      expect(
+        (await platform({ operation: "update", account }, deps)).unchanged,
+      ).toBe(true);
+    }));
+  it("ignores Access timestamps, refuses policy drift and accepts only an explicitly reviewed exact snapshot", async () =>
+    testContext(async ({ cloud, install, deps }) => {
+      await install();
+      const state = cloud.state(),
+        app = cloud.apps.get(state.access.id);
+      app.updated_at = "metadata-only";
+      expect(
+        (await platform({ operation: "update", account }, deps)).unchanged,
+      ).toBe(true);
+      app.policies[0].decision = "deny";
+      const count = cloud.mutationCount();
+      await expect(
+        platform({ operation: "update", account, confirm: account }, deps),
+      ).rejects.toThrow("drift");
+      expect(cloud.mutationCount()).toBe(count);
+      const status = await platform({ operation: "status", account }, deps);
+      expect(status.health.access.status).toBe("drift");
+      const snapshot = status.health.access.snapshot;
+      await expect(
+        platform(
+          {
+            operation: "update",
+            account,
+            "accept-access": "0".repeat(64),
+            confirm: account,
+          },
+          deps,
+        ),
+      ).rejects.toThrow("changed");
+      await platform(
+        {
+          operation: "update",
+          account,
+          "accept-access": snapshot,
+          "dry-run": true,
+        },
+        deps,
+      );
+      expect(cloud.mutationCount()).toBe(count);
+      await platform(
+        {
+          operation: "update",
+          account,
+          "accept-access": snapshot,
+          confirm: account,
+        },
+        deps,
+      );
+      expect(cloud.state().access.snapshot).toBe(snapshot);
+      expect(app.policies[0].decision).toBe("deny"); // CLI never writes policies.
+    }));
   it("packages immutable payload files and detects corruption, unsafe paths and extras", async () => {
     const f = await fixture();
     try {

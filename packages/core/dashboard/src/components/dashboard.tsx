@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { DashboardLive } from "./dashboard-live";
 import {
   Shield,
   Activity,
@@ -288,34 +289,39 @@ function DashboardApp() {
           {loading ? (
             <Status loading />
           ) : scope ? (
-            <Suspense fallback={<Status loading />}>
-              <div
-                key={`${project!.id}/${env}/${view}`}
-                className={view === "data" ? "h-full min-h-0" : "min-h-full"}
-              >
-                {view === "health" ? (
-                  <HealthView {...scope} connect={() => navigate("sdk")} />
-                ) : view === "data" ? (
-                  <DataView {...scope} />
-                ) : view === "schema" ? (
-                  <SchemaView {...scope} />
-                ) : view === "functions" ? (
-                  <FunctionsView {...scope} />
-                ) : view === "files" ? (
-                  <FilesView {...scope} />
-                ) : view === "schedules" ? (
-                  <SchedulesView {...scope} />
-                ) : view === "auth" ? (
-                  <AuthView {...scope} />
-                ) : view === "logs" ? (
-                  <LogsView {...scope} />
-                ) : view === "settings" ? (
-                  <SettingsView {...scope} onDeleted={projectDeleted} />
-                ) : (
-                  <SdkView {...scope} />
-                )}
-              </div>
-            </Suspense>
+            <DashboardLive
+              key={`${project!.id}/${env}`}
+              scope={`projects/${project!.id}/${env}`}
+            >
+              <Suspense fallback={<Status loading />}>
+                <div
+                  key={`${project!.id}/${env}/${view}`}
+                  className={view === "data" ? "h-full min-h-0" : "min-h-full"}
+                >
+                  {view === "health" ? (
+                    <HealthView {...scope} connect={() => navigate("sdk")} />
+                  ) : view === "data" ? (
+                    <DataView {...scope} />
+                  ) : view === "schema" ? (
+                    <SchemaView {...scope} />
+                  ) : view === "functions" ? (
+                    <FunctionsView {...scope} />
+                  ) : view === "files" ? (
+                    <FilesView {...scope} />
+                  ) : view === "schedules" ? (
+                    <SchedulesView {...scope} />
+                  ) : view === "auth" ? (
+                    <AuthView {...scope} />
+                  ) : view === "logs" ? (
+                    <LogsView {...scope} />
+                  ) : view === "settings" ? (
+                    <SettingsView {...scope} onDeleted={projectDeleted} />
+                  ) : (
+                    <SdkView {...scope} />
+                  )}
+                </div>
+              </Suspense>
+            </DashboardLive>
           ) : !error ? (
             <div className="p-4">
               <h1 className="page-title">Select a project</h1>

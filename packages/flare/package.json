@@ -1,6 +1,6 @@
 {
   "name": "@auersperg/flare",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "license": "MIT",
   "type": "module",
   "description": "Flare client, server declarations and development CLI",

@@ -55,6 +55,7 @@ export type RpcValue<
   : never;
 
 export interface RuntimeBinding {
+  fetch(request: Request): Promise<Response>;
   command<Operation extends keyof RuntimeApi>(
     operation: Operation,
     args: RpcArgs<RuntimeApi, Operation>,

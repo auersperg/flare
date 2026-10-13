@@ -36,6 +36,10 @@ export class BackupStore {
     private bucket: R2Bucket,
     private files: R2Bucket | undefined,
   ) {}
+  async completed(scope: string, id: string) {
+    return !!(await this.bucket.head(backupPrefix(scope, id) + "manifest.json"))
+      ?.customMetadata?.sha256;
+  }
   async read(scope: string, id: string): Promise<Backup | null> {
     const object = await this.bucket.get(
       backupPrefix(scope, id) + "manifest.json",
@@ -210,5 +214,158 @@ export class BackupStore {
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
     return { deleted: true, id };
+  }
+}
+
+type BackupSummary = ReturnType<BackupStore["summary"]>;
+/** Rebuildable metadata index in the owning Supervisor, not another backup
+ * service. Legacy UUID capsules are discovered 20 at a time; incomplete scans
+ * never advertise an authoritative recovery point. No timer or blob reads. */
+export class BackupInventory {
+  constructor(
+    private storage: DurableObjectStorage,
+    private store: BackupStore,
+    private scope: string,
+  ) {
+    storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS backup_inventory (id INTEGER PRIMARY KEY,cursor TEXT,complete INTEGER NOT NULL)",
+    );
+    storage.sql.exec(
+      "INSERT OR IGNORE INTO backup_inventory VALUES (1,NULL,0)",
+    );
+    storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS backup_index (id TEXT PRIMARY KEY,at INTEGER NOT NULL,summary TEXT NOT NULL)",
+    );
+    storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS backup_index_at ON backup_index(at DESC,id DESC)",
+    );
+  }
+  async record(summary: BackupSummary) {
+    this.storage.sql.exec(
+      "INSERT OR REPLACE INTO backup_index VALUES (?,?,?)",
+      summary.id,
+      summary.at,
+      JSON.stringify(summary),
+    );
+    await this.storage.sync();
+    return summary;
+  }
+  async remove(id: string) {
+    // Manifest deletion may succeed while blob cleanup loses its response.
+    // Never keep advertising a deleted recovery point during that ambiguity.
+    this.storage.sql.exec("DELETE FROM backup_index WHERE id=?", id);
+    this.storage.sql.exec(
+      "UPDATE backup_inventory SET cursor=NULL,complete=0 WHERE id=1",
+    );
+    await this.storage.sync();
+    return this.store.remove(this.scope, id);
+  }
+  async list(cursor?: string) {
+    if (cursor && (typeof cursor !== "string" || cursor.length > 2048))
+      fail("INVALID_CURSOR");
+    let before: { at: number; id: string; scope: string } | undefined;
+    if (cursor) {
+      try {
+        before = JSON.parse(atob(cursor));
+      } catch {
+        fail("INVALID_CURSOR");
+      }
+      if (
+        !before ||
+        before.scope !== this.scope ||
+        !Number.isSafeInteger(before.at) ||
+        before.at < -1
+      )
+        fail("INVALID_CURSOR");
+      uuid(before.id);
+    }
+    const checkpoint = this.storage.sql
+      .exec("SELECT cursor,complete FROM backup_inventory WHERE id=1")
+      .one();
+    if (!checkpoint.complete) {
+      const result = await this.store.list(
+        this.scope,
+        checkpoint.cursor == null ? undefined : String(checkpoint.cursor),
+      );
+      // Commit progress only after all metadata reads succeeded. Restart is safe.
+      for (const item of result.page)
+        this.storage.sql.exec(
+          "INSERT OR REPLACE INTO backup_index VALUES (?,?,?)",
+          item.id,
+          "at" in item ? item.at : -1,
+          JSON.stringify(item),
+        );
+      this.storage.sql.exec(
+        "UPDATE backup_inventory SET cursor=?,complete=? WHERE id=1",
+        result.cursor,
+        result.cursor ? 0 : 1,
+      );
+      await this.storage.sync();
+    }
+    const complete = !!this.storage.sql
+      .exec("SELECT complete FROM backup_inventory WHERE id=1")
+      .one().complete;
+    const rows = before
+      ? this.storage.sql
+          .exec(
+            "SELECT * FROM backup_index WHERE at<? OR (at=? AND id<?) ORDER BY at DESC,id DESC LIMIT 21",
+            before.at,
+            before.at,
+            before.id,
+          )
+          .toArray()
+      : this.storage.sql
+          .exec("SELECT * FROM backup_index ORDER BY at DESC,id DESC LIMIT 21")
+          .toArray();
+    const page = rows.slice(0, 20).map((r) => JSON.parse(String(r.summary)));
+    const last = rows[19];
+    const newest = complete
+      ? this.storage.sql
+          .exec(
+            "SELECT summary FROM backup_index WHERE at>=0 ORDER BY at DESC,id DESC LIMIT 1",
+          )
+          .toArray()[0]
+      : undefined;
+    const latest = newest
+      ? (JSON.parse(String(newest.summary)) as BackupSummary)
+      : null;
+    if (latest && !(await this.store.completed(this.scope, latest.id))) {
+      this.storage.sql.exec("DELETE FROM backup_index WHERE id=?", latest.id);
+      this.storage.sql.exec(
+        "UPDATE backup_inventory SET cursor=NULL,complete=0 WHERE id=1",
+      );
+      await this.storage.sync();
+      return {
+        page: page.filter((r) => r.id !== latest.id),
+        cursor: null,
+        inventory: "partial",
+        latest: null,
+        recoveryPoint: "unknown",
+        ageMs: null,
+      };
+    }
+    return {
+      page,
+      cursor:
+        rows.length > 20
+          ? btoa(
+              JSON.stringify({
+                scope: this.scope,
+                at: Number(last.at),
+                id: String(last.id),
+              }),
+            )
+          : null,
+      inventory: complete ? "complete" : "partial",
+      latest,
+      recoveryPoint: !complete
+        ? "unknown"
+        : !latest
+          ? "missing"
+          : Date.now() - latest.at > 86400000
+            ? "overdue"
+            : "within-24h",
+      ageMs: latest ? Math.max(0, Date.now() - latest.at) : null,
+    };
   }
 }

@@ -202,10 +202,10 @@ Eight primary sections: **Health, Data, Schema, Functions, Files, Schedules, Aut
 - Real paginated data, typed add/edit forms, explicit NULL/defaults, revision checks, immutable primary keys, audit and production confirmation.
 - Schema is defined in application code; the panel displays its active contract. Data editing remains available.
 - Shared yellow query / blue mutation / purple action badges; typed arguments, tabular results. Function execution is explicit, dev-only, not for viewers or internal functions.
-- Actual invocation summaries and job receipts, not simulated Tail/billing analytics. Files use private R2 with upload/download/delete; Schedules shows delayed outbox jobs, delivery attempts and native cron jobs. Refresh is on demand, never polling.
+- Actual invocation summaries and job receipts, not simulated Tail/billing analytics. Files use private R2 with upload/download/delete; Schedules shows delayed outbox jobs, delivery attempts and native cron jobs. Open views refresh on scoped push hints, own changes, focus or manual refresh, never interval polling.
 - Owner/editor/viewer checks, verified Access identity, same-origin CSRF protections and strict build-generated CSP.
 
-Administrative views currently use snapshots, updated after their own writes and on focus/visibility return, without interval polling. Cross-client SDK changes do not yet push updates to every open dashboard view. K2 streams are discussed as a future event capability, not installed or exposed by the current SDK.
+Administrative views remain bounded snapshots. In source 0.3.8, an Access/membership-authorized WebSocket for the selected environment invalidates open resources after changes from other clients. It reuses the existing hibernating Supervisor; reconnect resyncs, and revoked membership closes the channel. No interval polling, extra Worker or event bus. K2 remains a future capability, not a current SDK API.
 
 ## Operations and boundaries
 

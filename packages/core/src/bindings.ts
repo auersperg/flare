@@ -28,5 +28,5 @@ export interface RuntimeEnv extends PlatformIdentity {
   DASHBOARD_URL?: string;
   DEV_TOKEN_ISSUER?: string;
   RATE_LIMITER: RateLimit;
-  ADMIN_API: Pick<AdminControl, "request" | "readiness">;
+  ADMIN_API: Pick<AdminControl, "request" | "readiness" | "dashboardAllowed">;
 }

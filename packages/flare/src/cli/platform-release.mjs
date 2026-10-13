@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 
 export const PLATFORM_FORMAT = 1;
-export const WRANGLER_VERSION = "4.149.0";
+export const WRANGLER_VERSION = "4.150.0";
 export const sha256 = (value) =>
   createHash("sha256").update(value).digest("hex");
 export const manifestDigest = ({ digest: _digest, ...manifest }) =>
@@ -44,7 +44,7 @@ export async function loadPlatformRelease(
     manifest.protocol !== 1 ||
     manifest.runtimeAbi !== 4 ||
     manifest.stateFormat !== 1 ||
-    manifest.wranglerVersion !== WRANGLER_VERSION ||
+    ![WRANGLER_VERSION, "4.149.0"].includes(manifest.wranglerVersion) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(manifest.compatibilityDate ?? "") ||
     !Array.isArray(manifest.upgradeFrom) ||
     manifest.upgradeFrom.some(
@@ -125,4 +125,18 @@ export function assertUpgrade(installed, target) {
     throw Error(
       "Same platform version has different bytes. Publish a new version; refusing an in-place replacement.",
     );
+}
+
+export function configurationDigest(value) {
+  const canonical = (item) => {
+    if (Array.isArray(item)) return item.map(canonical);
+    if (item && typeof item === "object")
+      return Object.fromEntries(
+        Object.keys(item)
+          .sort()
+          .map((key) => [key, canonical(item[key])]),
+      );
+    return item;
+  };
+  return sha256(JSON.stringify(canonical(value)));
 }

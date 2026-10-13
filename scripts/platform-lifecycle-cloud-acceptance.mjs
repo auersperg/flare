@@ -31,7 +31,7 @@ import {
   sha256,
 } from "../packages/flare/src/cli/platform-release.mjs";
 
-async function inventory(cf) {
+export async function inventory(cf) {
   const [workers, databases, queues, r2, apps, domains, subdomain, namespaces] =
     await Promise.all([
       cf.list("workers/scripts"),
@@ -180,10 +180,23 @@ export async function cleanupDisposableInstallation(cf, state, baseline) {
   const ownWorkers = Object.values(state.workers).map((w) => w.name);
   // Never force-delete a disposable Worker if another installation has bound it.
   for (const worker of workers.filter((w) => !ownWorkers.includes(w.id))) {
-    const settings = await cf.api(`workers/scripts/${worker.id}/settings`);
+    let settings;
+    try {
+      settings = await cf.api(`workers/scripts/${worker.id}/settings`);
+    } catch (error) {
+      // The list can retain a just-deleted/undeployed stub. A verified 404
+      // has no active bindings; don't delete that unrelated stub or treat it
+      // as a dependency. Auth/network failures still stop cleanup.
+      if (error.status === 404) continue;
+      throw error;
+    }
     assert.ok(
       !settings.bindings?.some(
-        (b) => b.type === "service" && ownWorkers.includes(b.service),
+        (b) =>
+          (b.type === "service" && ownWorkers.includes(b.service)) ||
+          (b.type === "durable_object_namespace" &&
+            state.supervisorNamespace &&
+            b.namespace_id === state.supervisorNamespace),
       ),
       "Another Worker depends on the disposable installation; cleanup stopped",
     );
@@ -764,6 +777,22 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
         });
       });
     }
+    if (dependencies.featuresAcceptance) {
+      await test("Native capabilities, dashboard push and backup freshness", async () => {
+        report.features = await dependencies.featuresAcceptance({
+          cf,
+          state,
+          release: targetRelease ?? release,
+          scratch,
+          run,
+          configurationHome: join(scratch, "configuration"),
+          project: report.applicationCanary.project,
+          packageDirectory: targetRelease
+            ? join(scratch, "target/node_modules/@auersperg/flare")
+            : join(scratch, "node_modules/@auersperg/flare"),
+        });
+      });
+    }
     await test("Discover installation from D1 without the local cache", async () => {
       await rm(local, { recursive: true, force: true });
       const result = await platform(
@@ -786,6 +815,13 @@ export async function runLifecycleCloudAcceptance(options, dependencies = {}) {
     if (/^[A-Z][A-Z0-9_]{0,63}$/.test(error.code ?? ""))
       report.errorCode = error.code;
   } finally {
+    try {
+      report.features ??= JSON.parse(
+        await readFile(join(scratch, "features-acceptance.json"), "utf8"),
+      );
+    } catch (error) {
+      if (error.code !== "ENOENT") report.featureEvidence = "UNAVAILABLE";
+    }
     client?.dispose();
     devClient?.dispose();
     passwordAuth?.dispose();
@@ -852,16 +888,23 @@ if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? "")).href) {
       "from-archive": { type: "string" },
       archive: { type: "string" },
       production: { type: "boolean", default: false },
+      features: { type: "boolean", default: false },
     },
     strict: true,
   });
-  await runLifecycleCloudAcceptance(
-    values,
-    values.production
+  await runLifecycleCloudAcceptance(values, {
+    ...(values.production
       ? {
           productionAcceptance: (await import("./production-acceptance.mjs"))
             .productionAcceptance,
         }
-      : {},
-  );
+      : {}),
+    ...(values.features
+      ? {
+          featuresAcceptance: (
+            await import("./platform-features-cloud-acceptance.mjs")
+          ).platformFeaturesAcceptance,
+        }
+      : {}),
+  });
 }

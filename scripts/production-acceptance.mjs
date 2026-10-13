@@ -560,6 +560,7 @@ export async function productionAcceptance({
         name: helper.name,
         account_id: state.account,
         main: source,
+        find_additional_modules: false,
         compatibility_date: release.manifest.compatibilityDate,
         workers_dev: true,
         preview_urls: false,
