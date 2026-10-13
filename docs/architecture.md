@@ -1,8 +1,8 @@
 # Flare — полная карта текущей архитектуры
 
-Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и личной установке. Release source commit: `f7baa56`. Опубликованный и установленный release **0.3.7**, protocol **1**, runtime ABI **4**; npm `next = 0.3.7`, `latest = 0.3.1`.
+Зафиксировано **13 октября 2026 года** по исходникам, manifests, CI workflows и личной установке. Release source commit: `5c5d19a`. Опубликованный и установленный release **0.3.8**, protocol **1**, runtime ABI **4**; npm `next = 0.3.8`, `latest = 0.3.1`.
 
-**Исходники 0.3.8:** operator config, semantic Access snapshot, live status, dashboard invalidation и backup inventory описаны ниже; до публикации/обновления личная установка остаётся на 0.3.7.
+**0.3.8:** operator config, semantic Access snapshot, live status, dashboard invalidation и backup inventory реализованы и установлены. Registry archive и личный update/resume/no-op проверены; подробный [отчёт](archive/implementation-0.3.8-report.md) разделяет PASS и оставшиеся ограничения.
 
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
@@ -338,11 +338,11 @@ Mutation не повторяется автоматически при network f
 
 ## 13. CLI и developer flow
 
-Зафиксированный registry release от 13.10.2026: `next = 0.3.7`, `latest = 0.3.1`. Dist-tags изменяемы; ниже exact version принятого release. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
+Зафиксированный registry release от 13.10.2026: `next = 0.3.8`, `latest = 0.3.1`. Dist-tags изменяемы; ниже exact version принятого release. Для воспроизводимого flow ниже exact version, не случайный dist-tag:
 
 ```sh
-bun add @auersperg/flare@0.3.7
-bunx --bun --package @auersperg/flare@0.3.7 flare dev
+bun add @auersperg/flare@0.3.8
+bunx --bun --package @auersperg/flare@0.3.8 flare dev
 ```
 
 1. Первый `dev` scaffold-ит минимальный `flare/` и предлагает platform URL, если приложение ещё не linked.
@@ -355,11 +355,11 @@ bunx --bun --package @auersperg/flare@0.3.7 flare dev
 
 ```sh
 # Собрать текущий backend и подтвердить prod deployment:
-bunx --bun --package @auersperg/flare@0.3.7 flare deploy
+bunx --bun --package @auersperg/flare@0.3.8 flare deploy
 # Посмотреть проверенные dev releases:
-bunx --bun --package @auersperg/flare@0.3.7 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.8 flare releases --env dev
 # Активировать конкретную проверенную dev сборку в prod:
-bunx --bun --package @auersperg/flare@0.3.7 flare promote --env prod --hash HASH
+bunx --bun --package @auersperg/flare@0.3.8 flare promote --env prod --hash HASH
 ```
 
 Advanced commands: `build`, `link`, `deploy --release`, `rollback`, `backup create|list|restore|delete|status`. Установка платформы отделена: `platform install|status|update|adopt`; legacy `platform init` отсутствует. `db generate` отсутствует и не нужен document API. Local workerd используется только acceptance tests ядра, не installed developer backend.
@@ -373,7 +373,7 @@ Activation выполняется через serial gate. При active actions/
 В Health показываются последние пять distinct successful backend hashes выбранной среды. Promote переносит exact dev code bundle в prod **без dev данных, users, files или config**. Rollback применяет retained совместимый code bundle, не data rewind. Исторического изолированного preview каждой версии нет.
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.7 flare promote \
+bunx --bun --package @auersperg/flare@0.3.8 flare promote \
   --env prod --hash HASH --cmd "bun run build"
 # После успеха — native hosting deploy, например в приложении:
 bunx --no-install wrangler deploy
@@ -421,7 +421,7 @@ Restore — owner-confirmed, только в **другую пустую сре�
 
 Owner через Access подтверждает UUID и exact name; удаляются **dev и prod**. Сначала durable catalog fence и credential revocation, затем fences обеих сред, затем scoped DO/facet/R2 cleanup и D1 finalization. Partial failure сохраняет состояние для повторного удаления. Alias reservations, audit и небольшие deletion tombstones намеренно остаются; общий namespace/queues/Access policy и другие проекты не удаляются.
 
-В source 0.3.8 Supervisor хранит rebuildable metadata index backups. Старые UUID prefixes обнаруживаются порциями по 20, без чтения file blobs. Пока inventory неполон, latest/recoveryPoint имеют unknown, а UI предлагает Continue inventory. Полная выдача — newest-first с keyset cursor; последняя завершённая manifest проверяется HEAD, возраст сравнивается с ручной 24-hour целью. Это не backup scheduler, PITR или гарантия восстановления; restore отдельно валидирует checksum и ограничения.
+В 0.3.8 Supervisor хранит rebuildable metadata index backups. Старые UUID prefixes обнаруживаются порциями по 20, без чтения file blobs. Пока inventory неполон, latest/recoveryPoint имеют unknown, а UI предлагает Continue inventory. Полная выдача — newest-first с keyset cursor; последняя завершённая manifest проверяется HEAD, возраст сравнивается с ручной 24-hour целью. Это не backup scheduler, PITR или гарантия восстановления; restore отдельно валидирует checksum и ограничения.
 
 ## 18. CI и npm publishing
 
@@ -452,7 +452,7 @@ Workflow проверяет имя/version/license MIT/private flag, повто�
 
 Publish job имеет `id-token: write`; npm Trusted Publisher связан с repo → `publish.yml` → environment `npm`. Постоянный npm publish token workflow не использует. Это [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/), не авторизация Cloudflare.
 
-Зафиксированный срез registry от 13.10.2026: публичный `@auersperg/flare@0.3.7` под `next`, `latest = 0.3.1`. Публикация через защищённый GitHub workflow с provenance завершена; registry tarball установлен вне repo с проверкой каждого файла, integrity, CLI/SDK и platform manifest. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.7 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
+Зафиксированный срез registry от 13.10.2026: публичный `@auersperg/flare@0.3.8` под `next`, `latest = 0.3.1`. Публикация через защищённый GitHub workflow с provenance завершена; registry tarball установлен вне repo с проверкой каждого файла, integrity, CLI/SDK и platform manifest. Dist-tags изменяемы: перед установкой проверять registry или использовать exact version. Доступность exact версии 0.3.8 с platform payload проверять отдельно в registry. Working-tree изменения не включаются задним числом в опубликованный immutable package; для их публикации нужна новая version. Core/dashboard приватны только в смысле npm publication; их исходники публичны и MIT.
 
 ### 18.3 CI клиентского приложения
 
@@ -516,9 +516,9 @@ Local native kernel: настоящее workerd/Lifecycle/facet RPC/SQLite/hiber
 
 - `platform install|status|update|adopt` реализованы в исходниках 0.3.5 и покрыты mock/package/local-native gates. На временной установке в существующем account владельца прошли реальный install, recovery после потери ответа финального deploy, native-data canary через packaged CLI/SDK, same-version no-op update, discovery без локального cache и scoped cleanup с совпадением исходного/итогового инвентаря. Отдельный реальный upgrade 0.3.3 → 0.3.4 подтвердил сохранность native-data, app release, DO namespace и resource identities, Access policy, старого developer JWT, password session, приватного файла и pending job. Вход владельца через настоящий Access проверен в браузере отдельно. Дополнительно прошли exact-registry 0.3.4 → frozen 0.3.5 cloud upgrade с одним scoped token, сохранностью data/auth/files/pending job и полной cleanup, а также adoption личной панели через external compiled CLI. Независимый account/fresh platform CLI install ещё не подтверждён. Явный adoption стандартной operator-установки реализован в 0.3.5; произвольное reconciliation конфигурации не реализовано. Подробнее: [platform lifecycle](platform-lifecycle.md).
 - Полное graceful release draining и все concurrent crash cases: открытая приёмка; serial gate/conflict и recovery checkpoints не равны полной гарантии.
-- Access-authorized cross-client push dashboard invalidation: отсутствует.
+- Dashboard push реализован и проверен на физических local/cloud WebSockets, reconnect и membership revocation. Это invalidation + bounded reads, не второй query engine; browser smoke личной панели подтвердил connected и ready.
 - Доступ к полным historical logs/billing/alerts: в текущем audit неполный.
-- External OIDC provider acceptance и optional Secrets Store/egress provisioning: отдельные cloud gates.
+- External OIDC provider acceptance остаётся отдельной проверкой. Managed egress/Secrets Store config реализован; cloud egress и native Secrets Store binding проверены. Real cloud Secrets Store acceptance не выполнен: текущий token получает 403.
 - Customer-specific dashboard delegation, untrusted public code marketplace, automatic sharding, cross-project transactions: отсутствуют.
 - Automatic DLQ redrive, PITR, off-account disaster recovery, paired frontend/backend history/atomic rollout: отсутствуют.
 - 30-minute soak отменён по просьбе владельца; нельзя называть его пройденным. Для других workload нужны отдельные проверки latency/throughput/cost; согласованный 10-minute fixture проверен отдельно, без заявления общего SLA.
@@ -549,7 +549,7 @@ Dynamic Workers/Facets и используемые Agents modules опирают
 | Build / acceptance                             | `scripts/build-packages.mjs`, `build-platform.mjs`, `verify-build.mjs`, `package-acceptance.mjs` |
 | Pipeline contracts                             | `.github/workflows/ci.yml`, `publish.yml`                                                        |
 
-Переход 0.3.6 → published 0.3.7 подтверждён exact-archive cloud proof и личным CLI update; namespaces/data/auth/files сохранены, UI/no-op проверены.
+Переход 0.3.7 → published 0.3.8 подтверждён exact-archive cloud transition и личным CLI update/resume; четыре пары pre/post capsules подтвердили сохранность данных, code/schema, private user hashes и file metadata/bytes. Namespace/resources/Access сохранены, live status/no-op прошли. UI owner session, connected/ready и newest-first backup inventory подтверждены отдельно. Дополнительный cloud recovery drill не завершился; native restore/fence/checksum gates прошли.
 
 Три актуальных документа: эта карта реализации, [install/update flow](platform-lifecycle.md) и [runbook](production-runbook.md). Исторические отчёты и каталог Cloudflare находятся в `docs/archive/`, не являются вторым operating guide. Сырые acceptance reports не подменяют код и проверку выбранного release.
 
@@ -561,4 +561,4 @@ K2 public beta доступен на Workers Paid и даёт durable event log 
 
 Предлагаемая, **ещё не реализованная** граница: transactional event outbox → native K2 publish → независимые серверные subscriptions, scope isolation и event-ID idempotency. Не заменять текущие queries/WebSockets или Queues; не создавать постоянный polling каждого browser. Consumer wake-up/latency/cost и доступ K2 API нужно определить/проверить перед подключением. Во время beta K2 billing выключен; Worker execution не становится бесплатным. [Pricing](https://developers.cloudflare.com/k2/platform/pricing/).
 
-Порядок точечных улучшений без изменения инфраструктуры — [план перехода](production-runbook.md). Статусы выполнения фиксируются в плане отдельно от этой карты реализации.
+Проверенные точечные улучшения без новой инфраструктуры — в [отчёте 0.3.8](archive/implementation-0.3.8-report.md); текущие operational limits — в [runbook](production-runbook.md).

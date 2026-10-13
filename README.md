@@ -114,7 +114,7 @@ Schema changes validate existing documents and update native SQLite expression i
 
 **Breaking change:** only runtime ABI 4 and the native document API are supported. Old `tables`, Drizzle SQL declarations, `--migrations` and ABI 1–3 have been removed. Use a fresh environment/installation for this preview; rebuilding does not reset the existing cloud deployment, catalogue or databases. Do not deploy 0.3 over a 0.2 installation assuming compatibility.
 
-Published 0.3.7 includes `flare platform install|status|update|adopt` and a checksummed platform payload in the same npm archive. This remains a trusted-team preview, not accepted on a separate Cloudflare account. As of October 13, 2026, `next` is 0.3.7 and the personal panel has passed the ordinary published-CLI update from 0.3.6; `latest` remains 0.3.1. Pin exact versions for repeatable installation. See [platform lifecycle](docs/platform-lifecycle.md) for prerequisites, confirmation, recovery and update limits. `init` / `db generate` remain unnecessary for applications. Core/dashboard remain private workspaces, not separate npm packages. Local builds perform no cloud deployment.
+Published 0.3.8 includes `flare platform install|status|update|adopt` and a checksummed platform payload in the same npm archive. This remains a trusted-team preview, not accepted on a separate Cloudflare account. As of October 13, 2026, `next` is 0.3.8 and the personal panel has passed the ordinary published-CLI update from 0.3.7; `latest` remains 0.3.1. Pin exact versions for repeatable installation. See [platform lifecycle](docs/platform-lifecycle.md) for prerequisites, confirmation, recovery and update limits. `init` / `db generate` remain unnecessary for applications. Core/dashboard remain private workspaces, not separate npm packages. Local builds perform no cloud deployment.
 
 ## Native data API
 
@@ -205,7 +205,7 @@ Eight primary sections: **Health, Data, Schema, Functions, Files, Schedules, Aut
 - Actual invocation summaries and job receipts, not simulated Tail/billing analytics. Files use private R2 with upload/download/delete; Schedules shows delayed outbox jobs, delivery attempts and native cron jobs. Open views refresh on scoped push hints, own changes, focus or manual refresh, never interval polling.
 - Owner/editor/viewer checks, verified Access identity, same-origin CSRF protections and strict build-generated CSP.
 
-Administrative views remain bounded snapshots. In source 0.3.8, an Access/membership-authorized WebSocket for the selected environment invalidates open resources after changes from other clients. It reuses the existing hibernating Supervisor; reconnect resyncs, and revoked membership closes the channel. No interval polling, extra Worker or event bus. K2 remains a future capability, not a current SDK API.
+Administrative views remain bounded snapshots. In 0.3.8, an Access/membership-authorized WebSocket for the selected environment invalidates open resources after changes from other clients. It reuses the existing hibernating Supervisor; reconnect resyncs, and revoked membership closes the channel. No interval polling, extra Worker or event bus. K2 remains a future capability, not a current SDK API.
 
 ## Operations and boundaries
 

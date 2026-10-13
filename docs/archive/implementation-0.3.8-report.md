@@ -1,6 +1,8 @@
-# Flare 0.3.8 implementation and acceptance
+# Flare 0.3.8 — выполненные улучшения и end-to-end приёмка
 
-October 13, 2026. This report records the follow-up to the [0.3.7 architecture review](architecture-review-0.3.7.md). The canonical guides remain architecture, platform lifecycle and production runbook.
+13 октября 2026. Результат исполнения [архитектурного разбора 0.3.7](architecture-review-0.3.7.md). Source release commit: `5c5d19a3e77c745a502b587291b6c7b6cd7e555f`. Это отчёт конкретной версии, не дополнительное руководство эксплуатации.
+
+**Выпущен `@auersperg/flare@0.3.8` под `next`; личная панель обновлена обычным опубликованным CLI с 0.3.7. `latest` оставлен на 0.3.1.** Основные изменения выполнены без новой инфраструктуры; непроверенные границы перечислены отдельно, не помечены PASS.
 
 ## Implemented
 
@@ -10,7 +12,7 @@ October 13, 2026. This report records the follow-up to the [0.3.7 architecture r
 | Access drift           | Semantic snapshot includes the app and separate policy list; ignores only known response timestamps and guards unknown fields. Exact reviewed SHA acceptance is explicit; identities and Worker drift checks remain locked. Legacy migration first validates the old exact hash.                                                                                                                                  | Metadata-only update, real security/policy drift denial, stale digest refusal, read-only plan and confirmed acceptance without policy writes. Personal legacy state live probe passed before rollout.                                                                  |
 | Live status            | Installation checkpoint is separate from bounded, read-only Runtime/catalog/Admin readiness, closed dashboard and Access evidence. Failures report unavailable/not verified, not healthy or absent.                                                                                                                                                                                                               | Mock outage/mismatch/public dashboard/policy drift plus native mutual service readiness and real-cloud ready status. Owner browser login remains a separate check.                                                                                                     |
 | Backup freshness       | Rebuildable metadata index lives in the existing Supervisor SQLite. Legacy UUID prefixes scan 20 at a time; incomplete inventory never advertises a definitive latest recovery point. Newest-first keyset pages, manifest HEAD, latest age and manual 24-hour objective. No daemon or auto-delete.                                                                                                                | Native SQLite ordering, restart, interrupted-delete/cross-scope cursor cases; physical native and cloud capsule completion/freshness. Restore checksum/fence recovery retested in native kernel.                                                                       |
-| Dashboard push         | One Access/membership-authorized channel for the selected environment, reusing native service fetch and hibernating Supervisor sockets. Record-free hints refresh existing bounded resources; coalescing/reconnect resync, bounded lease, revocation closure, confirmed HTTP rejection clears old views. No new Worker/queue/event bus or interval polling.                                                       | Real local and cloud sockets receive another client's mutation; real D1 membership deletion closes before the next hint. Client coalescing/cleanup/HTTP denial cases. Personal UI verification follows registry rollout.                                               |
+| Dashboard push         | One Access/membership-authorized channel for the selected environment, reusing native service fetch and hibernating Supervisor sockets. Record-free hints refresh existing bounded resources; coalescing/reconnect resync, bounded lease, revocation closure, confirmed HTTP rejection clears old views. No new Worker/queue/event bus or interval polling.                                                       | Real local and cloud sockets receive another client's mutation; real D1 membership deletion closes before the next hint. Client coalescing/cleanup/HTTP denial cases. Personal owner browser session: connected and ready.                                             |
 | Maintenance and legacy | Shared explicit account/auth/managed-discovery context for retained operator harnesses. Removed the old platform acceptance script requiring a private signing key; cloud command now uses lifecycle/features proof. Cleanup safely distinguishes a 404 undeployed/deleted stub from a real dependency and guards service/DO dependencies. Self-contained temporary helpers do not scan/upload unrelated modules. | Lifecycle regression/native gates and account inventory equality after cleanup. Private recovery artifacts and historical capsules retained.                                                                                                                           |
 | Toolchain              | Wrangler 4.150.0, Workers types 5.20261013.1, Bun types 1.4.3, Astro Prettier plugin 1.1.1. Node 24 and TypeScript 6 remain pinned. Historical 4.149.0 payloads remain recognized for exact upgrade acceptance.                                                                                                                                                                                                   | Full build/type/format/package/native/reproducibility checks; production audit found no known vulnerabilities in 477 packages.                                                                                                                                         |
 
@@ -28,10 +30,49 @@ Raw reports, package archives, temporary state and credential-bearing diagnostic
 
 ## Delivery and remaining boundaries
 
-Registry publication and the personal rollout are recorded below only after completion. Existing app code, data, users, files, policies and resource identities are not to be replaced by the platform update.
+- [Source CI](https://github.com/auersperg/flare/actions/runs/38429808947) — success; [protected publication](https://github.com/auersperg/flare/actions/runs/38430241470) — success. Опубликован принятый archive без repack; approval protections сохранены.
+- Registry archive установлен вне repo. SHA и каждый package file совпали с кандидатом; CLI и Node SDK imports прошли. `next = 0.3.8`, `latest = 0.3.1`.
+- Обновлена `https://dash.flare.auer.wien` обычным exact-registry CLI, не прямым deploy. Первый verify остановился после deploy обоих Workers. Операция осталась в D1 phase verify; тот же CLI с `--resume` завершил проверку **без повторного deploy**. Причина первого verification failure не установлена; успешный resume не скрывает его.
+- Четыре завершённые pre-update capsules сопоставлены с четырьмя post-update verification capsules: code/bundle, schema, documents/IDs/timestamps/revisions, private user hashes, file metadata и bytes hashes совпали. Scoped live reads подтвердили counts и active code. Capsules сохранены; app records не менялись для проверки.
+- Namespace/resource identities и Access AUD/host сохранены. Повторные dry-run и confirmed update — unchanged; live status — ready.
+- Runtime Worker version: `cf81934b-de5c-41fa-add9-264dd891a23d`; Admin: `ad6ba55c-57bf-4e34-83d1-91ade93df138`.
+- Настоящий browser owner session, Health ready и `Live updates: connected` подтверждены. Settings/Backups показывает newest-first список, завершённую копию 13 октября 18:47 и `within-24h`. В production records ничего не создавалось/удалялось ради UI проверки.
+- Временные private proof Workers удалены, их случайные временные секреты стёрты; cleanup PASS. Scoped platform token не расширялся. Скриншот Health сохранён локально: `artifacts/personal-panel-038-updated.jpg`, не в публичном Git repository.
 
 Real cloud Secrets Store acceptance requires a suitably scoped credential; the current one receives 403. No broader token was silently created. Native binding/protocol execution is verified, but does not prove cloud permission/entitlement.
 
 Backups remain opt-in/on-demand with a manually operated daily objective. Latest completed metadata is not proof of checksum integrity or a guarantee of RPO/RTO. Independent-account install, full graceful drain, off-account recovery and a new load SLA remain outside the verified scope. The failed additional cloud recovery drill is not PASS; native restore/fence/checksum tests passed.
 
-The remaining architectural decisions from the review are intentionally retained: two shared Workers, D1 control plane, isolated Supervisor/facet storage, native RPC, outbox/Queues, table-level reactivity, separate auth boundaries, private streamed files, immutable code releases, one package/lockfile and three canonical guides. No ORM, schema UI, parallel scheduler, telemetry platform or generic RPC framework was introduced.
+## Остальные решения исходного списка
+
+По каждому слою принято минимальное решение; «оставить» означает осознанно сохранить рабочую границу, а не забыть пункт.
+
+| Решение                              | Итог                                                                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Один публичный пакет SDK/CLI/payload | Сохранён; Core не входит в frontend imports.                                                                                        |
+| Два Workers Admin/Runtime            | Сохранены control/data plane; нет Worker на каждое приложение. Landing независим.                                                   |
+| D1 каталог/membership                | Сохранён только control plane, не дубль app database.                                                                               |
+| Supervisor + persistent AppFacet     | Native facet и отдельная SQLite среды сохранены; VM/sharding framework не добавлен.                                                 |
+| Scoped Actions                       | Boundary сохранена, configuration gap закрыт operator config; cloud Secrets Store не принят из-за 403.                              |
+| Document API/schema/indexes          | Сохранены schema в коде/keyset pagination. ORM и schema UI не добавлены.                                                            |
+| Native RPC/adapters                  | Существующие контракты сохранены. Generic codegen framework и массовый refactor каждого `any` не заявляются.                        |
+| Две serial gates                     | Сохранены разные владельцы состояния и async boundaries.                                                                            |
+| App live queries                     | Table-level invalidation/hibernating sockets сохранены, read-set/cache cluster не добавлены.                                        |
+| Dashboard snapshots                  | Дополнены push-инвалидацией; bounded reads остаются источником records.                                                             |
+| Три auth boundaries                  | Access owner, project CLI credential и app auth не объединены одним token.                                                          |
+| Password auth                        | Trusted-team механизм сохранён. Минимум 6 символов остаётся текущим ограничением; consumer recovery/MFA не добавлены автоматически. |
+| Private files                        | Приватный R2/scoped grants/streaming сохранены, public bucket не введён.                                                            |
+| Outbox/Queues/retries/DLQ            | Durable jobs сохранены. Fire-and-forget и replay неоднозначных external effects не добавлены.                                       |
+| Scheduler/alarm                      | Существующий lifecycle сохранён, отдельного always-on scheduler нет.                                                                |
+| Immutable app releases               | Promote/rollback сохранены; code rollback не равен data rollback.                                                                   |
+| Platform lifecycle                   | Один journal/lease/explicit resume сохранён; config/status/Access flow улучшен, unattended updater отсутствует.                     |
+| Bounded backups                      | On-demand capsules/fence/pins сохранены, freshness исправлена; backup/retention daemon отсутствует.                                 |
+| Health/Logs/alerts                   | Bounded summaries и native Cloudflare telemetry сохранены; собственная billing/observability платформа не создана.                  |
+| React SDK/client                     | Общий client сохранён, Redux/event bus/второй query cache не добавлены.                                                             |
+| Astro + React                        | Client-only shell сохранён. Vite migration без измеримой пользы не выполнена.                                                       |
+| Lockfile/toolchain/releases          | Один lockfile/pinned toolchain, проверенные patch updates; исторические npm версии не перепакованы.                                 |
+| Acceptance scripts                   | Общая обвязка упрощена; fixed scopes/assertions сценариев сохранены.                                                                |
+| Три canonical docs/архив             | Guides синхронизированы с 0.3.8, неправильная self-link исправлена; история не второй operating guide.                              |
+| Default/persisted names              | Совместимые FK/wire/resource identities сохранены. Удалять данные или переименовывать `_flared_*` ради «zero legacy» не нужно.      |
+
+**Итог:** согласованный implementation scope выпущен и установлен; update/resume/status/no-op проверены на личной панели. Архитектура осталась минимальной. Пользоваться можно в заявленном trusted-team preview scope, но все возможные production guarantees не закрыты. Текущие инструкции — [architecture](../architecture.md), [platform lifecycle](../platform-lifecycle.md), [runbook](../production-runbook.md).
