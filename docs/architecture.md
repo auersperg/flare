@@ -553,6 +553,8 @@ Dynamic Workers/Facets и используемые Agents modules опирают
 
 Переход 0.3.7 → published 0.3.8 подтверждён exact-archive cloud transition и личным CLI update/resume; четыре пары pre/post capsules подтвердили сохранность данных, code/schema, private user hashes и file metadata/bytes. Namespace/resources/Access сохранены, live status/no-op прошли. UI owner session, connected/ready и newest-first backup inventory подтверждены отдельно. Дополнительный cloud recovery drill не завершился; native restore/fence/checksum gates прошли.
 
+Для создания отдельного приложения агентом используйте [app guide](build-an-app.md) и [шаблон AGENTS.md](templates/AGENTS.md); они описывают consumer flow, не второй контракт платформы.
+
 Три актуальных документа: эта карта реализации, [install/update flow](platform-lifecycle.md) и [runbook](production-runbook.md). Исторические отчёты и каталог Cloudflare находятся в `docs/archive/`, не являются вторым operating guide. Сырые acceptance reports не подменяют код и проверку выбранного release.
 
 ## 22. K2 — расширение, не текущий компонент

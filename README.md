@@ -65,6 +65,8 @@ Dashboard: Astro 7.3.8, React 19.3.0, actual shadcn `bKGijeGe` preset (Base UI L
 
 ## Application development
 
+**Building a new app with an AI agent?** Start with the [application guide](docs/build-an-app.md) and copy the [app AGENTS.md template](docs/templates/AGENTS.md) into its separate repository. The guide includes tested per-user handlers, SDK boundaries, realtime, dev/prod delivery and acceptance criteria.
+
 Customer code belongs in **a separate application**, not a platform workspace. The user-facing package is **`@auersperg/flare`**: client, server declarations and CLI in one installation. SDK/CLI live inside `packages/flare/src`, not separate source workspaces. The `@auersperg/flare` archive contains portable SDK JavaScript/types and a separate lazy-loaded Bun CLI; no `@flare/sdk` / `@flare/cli` archives, overrides or symlinks are required. React is an optional peer dependency. Browser imports cannot reach the CLI/compiler.
 
 npm preview installation (`next` tag):
@@ -117,6 +119,8 @@ Schema changes validate existing documents and update native SQLite expression i
 Published 0.3.9 includes `flare platform install|status|update|adopt` and a checksummed platform payload in the same npm archive. This remains a trusted-team preview, not accepted on a separate Cloudflare account. As of October 13, 2026, `next` is 0.3.9 and the personal panel has passed the ordinary published-CLI update from 0.3.8; `latest` remains 0.3.1. Pin exact versions for repeatable installation. See [platform lifecycle](docs/platform-lifecycle.md) for prerequisites, confirmation, recovery and update limits. `init` / `db generate` remain unnecessary for applications. Core/dashboard remain private workspaces, not separate npm packages. Local builds perform no cloud deployment.
 
 ## Native data API
+
+The short example below is intentionally public, not a private-user authorization model. For authenticated per-owner data, use the [tested application guide](docs/build-an-app.md#4-минимальный-backend-с-изоляцией-пользователей).
 
 ```ts
 // flare/schema.ts

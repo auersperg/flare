@@ -127,4 +127,6 @@ Password reset/block/revoke disconnects affected live users. Live cache is clear
 
 SDK and CLI are MIT-licensed; see LICENSE. npm name: `@auersperg/flare`.
 The `flare` binary remains unchanged. Preview releases are published under the `next` tag. Core/dashboard are separate non-published
-components and are not included in this package.
+workspaces, not separately published npm packages. Their compiled, checksummed platform payload is included under `dist/platform` for CLI installation/update; browser SDK imports do not load it.
+
+For new applications and coding agents, see the [application guide](https://github.com/auersperg/flare/blob/main/docs/build-an-app.md) and [app AGENTS.md template](https://github.com/auersperg/flare/blob/main/docs/templates/AGENTS.md). Match their verified SDK version to your pinned dependency.
