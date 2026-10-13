@@ -1,6 +1,26 @@
 import { accessSnapshot } from "./platform-config.mjs";
 import { configurationDigest } from "./platform-state.mjs";
 
+// Both status and update verification must check the same complete contract.
+// Return field names only: diagnostics must never print response bodies/secrets.
+export function runtimeReadinessFailures(
+  data,
+  state,
+  release = state.installed,
+) {
+  const expected = {
+    readiness: "control-plane-ready",
+    installationId: state.id,
+    platformPayload: release?.digest,
+    version: release?.version,
+    runtimeAbi: release?.runtimeAbi ?? 4,
+    protocol: release?.protocol ?? 1,
+  };
+  return Object.keys(expected).filter(
+    (key) => expected[key] === undefined || data?.[key] !== expected[key],
+  );
+}
+
 /** Read-only, bounded probes. Checkpoints remain separate from live evidence. */
 export async function platformHealth(cf, state, fetcher) {
   const checkedAt = Date.now();
@@ -22,13 +42,10 @@ export async function platformHealth(cf, state, fetcher) {
         return { status: "unhealthy", httpStatus: r.status };
       }
       const d = await r.json();
-      const matches =
-        d.readiness === "control-plane-ready" &&
-        d.installationId === state.id &&
-        d.platformPayload === state.installed?.digest &&
-        d.version === state.installed?.version;
+      const mismatches = runtimeReadinessFailures(d, state);
       return {
-        status: matches ? "healthy" : "mismatch",
+        status: mismatches.length ? "mismatch" : "healthy",
+        ...(mismatches.length ? { mismatches } : {}),
         version: d.version,
         installationId: d.installationId,
       };

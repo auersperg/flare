@@ -4,7 +4,6 @@ import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { readFile, writeFile, mkdtemp, mkdir, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
-import { tmpdir } from "node:os";
 import { buildApplication } from "../packages/flare/src/cli/build.mjs";
 import {
   createClient,
@@ -21,7 +20,8 @@ const id = randomUUID(),
 const name = "Deletion acceptance",
   alias = "delete-proof-" + id.slice(0, 8),
   worker = "flare-delete-proof-" + id.slice(0, 8);
-const dir = await mkdtemp(join(tmpdir(), worker));
+await mkdir(".flare", { recursive: true });
+const dir = await mkdtemp(join(process.cwd(), ".flare", worker + "-"));
 const report = {
   scope: id,
   customer,
@@ -39,8 +39,7 @@ let created = false,
   client;
 const cf = (path, body, method = body ? "POST" : "GET") =>
   cloud.api(path, body, method);
-const db = (sql, params = []) =>
-  cf(`d1/database/${install.database}/query`, { sql, params });
+const db = (sql, params = []) => cloud.sql(install.database, sql, params);
 async function command(env, op, body) {
   const r = await fetch(
     `${install.runtimeUrl}/control/api/projects/${id}/${env}/${op}`,
@@ -107,11 +106,7 @@ try {
     "INSERT INTO project_aliases (alias,projectId,published) VALUES (?,?,1)",
     [alias, id],
   );
-  const fixture = join(
-    process.cwd(),
-    ".private",
-    "delete-native-entry-" + id + ".ts",
-  );
+  const fixture = join(dir, "native-entry.ts");
   await writeFile(
     fixture,
     (await readFile("tests/fixtures/native-app.ts", "utf8"))
@@ -239,11 +234,11 @@ try {
         `SELECT * FROM ${table} WHERE ${table === "projects" ? "id" : "projectId"}=?`,
         [id],
       );
-      assert.equal(rows[0].results.length, 0);
+      assert.equal(rows.results.length, 0);
     }
     const reservation = (
       await db("SELECT published FROM project_aliases WHERE alias=?", [alias])
-    )[0].results[0];
+    ).results[0];
     assert.equal(reservation.published, 0);
     for (const env of ["dev", "prod"]) {
       const r = await fetch(`${install.runtimeUrl}/p/${id}/${env}/v1/call`, {
@@ -296,8 +291,4 @@ try {
     JSON.stringify(report, null, 2),
   );
   await rm(dir, { recursive: true, force: true });
-  await rm(
-    join(process.cwd(), ".private", "delete-native-entry-" + id + ".ts"),
-    { force: true },
-  );
 }

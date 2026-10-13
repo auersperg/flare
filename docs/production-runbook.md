@@ -6,6 +6,8 @@ Flare is a self-hosted backend, not a managed service with an operator SLA. Use 
 
 Personal installation: published 0.3.8 update/resume, live readiness, no-op and owner Access session verified on October 13, 2026; four complete pre/post capsule pairs matched and remain retained. Dashboard live channel showed connected. See the [0.3.8 report](archive/implementation-0.3.8-report.md); optional cloud Secrets Store returned 403 and the extra cloud recovery drill did not complete. Historical fixture load/recovery/alert checks are documented in the [archived improvement plan](archive/architecture-improvement-plan.md), not a general SLA.
 
+The [subsequent follow-up](archive/follow-up-after-0.3.8.md) passed an independent cloud recovery proof on 0.3.8: 111 documents, one file, restored password identity, corrupt-file fence/repair and complete scoped cleanup. Recovery phase: 3361.57 ms for that fixture only. Cloud project deletion passed separately. This closes the current recovery gate, not the historical failed drill or a general SLA. CLI ABI/protocol status checks and safe verify diagnostics are corrected in source, pending a separate immutable release.
+
 ## Before admitting real users
 
 1. Complete local verification (`bun run verify`, `bun run test:kernel`, production dependency audit).

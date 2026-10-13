@@ -18,7 +18,10 @@ import {
   readPlatformConfig,
   accessSnapshot,
 } from "./platform-config.mjs";
-import { platformHealth } from "./platform-health.mjs";
+import {
+  platformHealth,
+  runtimeReadinessFailures,
+} from "./platform-health.mjs";
 import { loadPlatformRelease, assertUpgrade } from "./platform-release.mjs";
 
 const steps = [
@@ -552,22 +555,26 @@ async function verify(cf, state, release, fetcher, wait) {
   await assertAccess(cf, state);
   await supervisorNamespace(cf, state);
   let healthy = false;
+  let lastProbe = "unavailable";
   for (let attempt = 0; attempt < 5; attempt++) {
     try {
       const response = await fetcher(
         `https://${state.addresses.runtimeHost}/health?ready=1`,
         { redirect: "error", signal: AbortSignal.timeout(15000) },
       );
-      const data = await response.json();
-      healthy =
-        response.ok &&
-        data.readiness === "control-plane-ready" &&
-        data.version === release.manifest.version &&
-        data.installationId === state.id &&
-        data.platformPayload === release.manifest.digest &&
-        data.runtimeAbi === 4 &&
-        data.protocol === 1;
+      lastProbe = `HTTP ${response.status}`;
+      if (!response.ok) await response.body?.cancel();
+      else {
+        const failures = runtimeReadinessFailures(
+          await response.json(),
+          state,
+          release.manifest,
+        );
+        healthy = failures.length === 0;
+        if (failures.length) lastProbe += "; mismatches: " + failures.join(",");
+      }
     } catch {
+      lastProbe = "network/timeout or invalid health response";
       /* Eventual route propagation; no mutation retry. */
     }
     if (healthy) break;
@@ -575,7 +582,8 @@ async function verify(cf, state, release, fetcher, wait) {
   }
   if (!healthy)
     throw Error(
-      "Runtime health does not match the installed platform payload; operation remains resumable",
+      "Runtime health does not match the installed platform payload; operation remains resumable. Last probe: " +
+        lastProbe,
     );
   for (const path of ["/", "/api/session"]) {
     const response = await fetcher(

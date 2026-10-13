@@ -110,7 +110,7 @@ Worker names, catalogue IDs, R2/Queue identities, supervisor namespace, `app` fa
 }
 ```
 
-Replace example project/store IDs with your own. Create the secret in Cloudflare Secrets Store with Workers scope first; Flare config contains only its reference, not its value. Binding permissions are enforced by Cloudflare; enabling this optional capability may require Secrets Store permissions beyond the base installation token. Only Runtime receives bindings; grants are project/environment scoped and outbound remains exact HTTPS hosts, bounded bodies/deadline, no redirects. App code never receives the account token.
+Replace example project/store IDs with your own. Create the secret in Cloudflare Secrets Store with Workers scope first; Flare config contains only its reference, not its value. This optional capability requires **Account Secrets Store Edit** on the deployment token; Read alone cannot bind a secret to a Worker. The secret must include the `workers` scope. These are native [Cloudflare access checks](https://developers.cloudflare.com/secrets-store/access-control/), separate from the base installation permissions. Only Runtime receives bindings; grants are project/environment scoped and outbound remains exact HTTPS hosts, bounded bodies/deadline, no redirects. App code never receives the account token.
 
 Access snapshots guard the app's security fields and separate policy list while excluding only known response timestamps. Unknown fields remain guarded. Legacy snapshots migrate only after the old exact hash matches; legacy drift requires explicit review. If an intentional Cloudflare Access change blocks update, inspect it in Cloudflare and take the current `health.access.snapshot` from `platform status`. Then run:
 

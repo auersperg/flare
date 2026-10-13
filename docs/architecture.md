@@ -4,6 +4,8 @@
 
 **0.3.8:** operator config, semantic Access snapshot, live status, dashboard invalidation и backup inventory реализованы и установлены. Registry archive и личный update/resume/no-op проверены; подробный [отчёт](archive/implementation-0.3.8-report.md) разделяет PASS и оставшиеся ограничения.
 
+Последующая [проверка важных пропусков](archive/follow-up-after-0.3.8.md) закрыла cloud restore/password/deletion gate отдельными fixtures. Дополнительные CLI readiness/diagnostics corrections пока в исходниках, не в immutable published 0.3.8; установка по-прежнему 0.3.8.
+
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
 ## Содержание

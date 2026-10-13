@@ -153,12 +153,25 @@ describe("Semantic Access and bounded live health", () => {
             installationId: "fixture",
             version: "test",
             platformPayload: "digest",
+            runtimeAbi: 4,
+            protocol: 1,
           })
         : new Response(null, {
             status: 302,
             headers: { location: state.access.issuer + "/login" },
           });
     expect((await platformHealth(cf, state, ready)).status).toBe("ready");
+    for (const field of ["runtimeAbi", "protocol"]) {
+      for (const value of [undefined, 999]) {
+        const result = await platformHealth(cf, state, async (url) => {
+          const response = await ready(url);
+          if (!url.includes("/health")) return response;
+          return Response.json({ ...(await response.json()), [field]: value });
+        });
+        expect(result.status).toBe("not-verified");
+        expect(result.runtime.mismatches).toEqual([field]);
+      }
+    }
     expect(
       (
         await platformHealth(cf, state, async () => {

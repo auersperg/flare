@@ -469,6 +469,31 @@ async function testContext(fn) {
 }
 
 describe("Platform lifecycle", () => {
+  it("reports only failed readiness fields and resumes without redeploying", async () =>
+    testContext(async ({ cloud, install, deps }) => {
+      const goodFetch = deps.fetch;
+      deps.fetch = async (url, init) => {
+        const response = await goodFetch(url, init);
+        if (!url.includes("/health")) return response;
+        return Response.json({
+          ...(await response.json()),
+          protocol: "private-response-must-not-be-printed",
+        });
+      };
+      let failure;
+      try {
+        await install();
+      } catch (error) {
+        failure = String(error);
+      }
+      expect(failure).toContain("Last probe: HTTP 200; mismatches: protocol");
+      expect(failure).not.toContain("private-response-must-not-be-printed");
+      expect(cloud.state().operation.phase).toBe("verify");
+      const deployments = cloud.deployments.length;
+      deps.fetch = goodFetch;
+      expect((await install({ resume: true })).status).toBe("installed");
+      expect(cloud.deployments.length).toBe(deployments);
+    }));
   it("journals same-release config updates, preserves them without --config and resumes lost acknowledgements", async () =>
     testContext(async ({ cloud, install, deps, directory }) => {
       await install();

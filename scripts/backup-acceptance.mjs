@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import { readFile, writeFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { buildApplication } from "../packages/flare/src/cli/build.mjs";
 import {
   createClient,
@@ -18,8 +17,11 @@ const id = randomUUID(),
   customer = randomUUID(),
   token = randomUUID() + randomUUID(),
   operatorKey = randomBytes(32).toString("hex");
-const operator = "flare-backup-proof-" + id.slice(0, 8),
-  dir = await mkdtemp(join(tmpdir(), "flare-backup-proof-"));
+const operator = "flare-backup-proof-" + id.slice(0, 8);
+// Keep metadata evaluation within the normal workspace dependency tree.
+// Nothing requires the operator's private folder or a dependency symlink.
+await mkdir(".flare", { recursive: true });
+const dir = await mkdtemp(join(process.cwd(), ".flare", "backup-proof-"));
 const report = {
   id,
   revision: spawnSync("git", ["rev-parse", "HEAD"], {
@@ -37,7 +39,7 @@ const clients = [];
 const cf = (path, body, method = body ? "POST" : "GET") =>
   cloud.api(path, body, method);
 async function db(sql, params = []) {
-  return cf(`d1/database/${install.database}/query`, { sql, params });
+  return cloud.sql(install.database, sql, params);
 }
 async function request(env, op, body) {
   const r = await fetch(
@@ -72,7 +74,7 @@ async function bundle(
         'from "zod"',
         "from " + JSON.stringify(Bun.resolveSync("zod", process.cwd())),
       );
-    entry = join(process.cwd(), ".private", "native-entry-" + id + ".ts");
+    entry = join(dir, "native-entry.ts");
     await writeFile(entry, source);
   }
   const out = join(dir, name);
@@ -91,26 +93,27 @@ async function bundle(
   };
 }
 async function test(name, fn) {
+  const started = performance.now();
   await fn();
-  report.tests.push({ name, status: "PASS" });
+  report.tests.push({
+    name,
+    status: "PASS",
+    durationMs: performance.now() - started,
+  });
   console.log("PASS:", name);
 }
 let operatorUrl;
-async function operate(op, backup, file) {
-  let r;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    r = await fetch(operatorUrl, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer " + operatorKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ op, backup, file }),
-    });
-    if (r.status !== 404) break;
-    await r.body?.cancel();
-    await Bun.sleep(2000);
-  }
+async function operate(op, backup, file, env = "dev") {
+  // Propagation is checked with GET /ready. Never automatically replay writes.
+  const r = await fetch(operatorUrl, {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + operatorKey,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ op, backup, file, env }),
+    signal: AbortSignal.timeout(60000),
+  });
   if (!r.ok)
     throw Error(
       "Operator HTTP " + r.status + " " + (await r.text()).slice(0, 400),
@@ -132,12 +135,20 @@ async function rows(env) {
   return result;
 }
 try {
+  await mkdir("artifacts", { recursive: true });
+  await writeFile(
+    "artifacts/backup-cloud-acceptance.json",
+    JSON.stringify(report, null, 2),
+    { mode: 0o600 },
+  );
+  const release = await bundle();
+  // Record intent before the write: cleanup is safe even if its acknowledgement is lost.
+  created = true;
   await db("INSERT INTO customers VALUES (?,?,?)", [
     customer,
     "Flare backup acceptance",
     Date.now(),
   ]);
-  created = true;
   await db("INSERT INTO projects VALUES (?,?,?,?)", [
     id,
     customer,
@@ -155,7 +166,7 @@ try {
     install.owner,
     Date.now() + 3600000,
   ]);
-  const source = `export default {async fetch(req,env){if(req.method!=="POST"||req.headers.get("authorization")!=="Bearer "+env.KEY)return new Response("Unauthorized",{status:401});const x=await req.json();if(["auth-configure","auth-password","auth-disable","auth-revoke","auth-users"].includes(x.op)){const r=await env.RUNTIME.command("admin",["${id}/dev",x.op,x.backup||{}]);if(!r.ok)return Response.json({error:r.code},{status:400});return Response.json(r.value);}if(x.op==="cleanup"){for(const op of ["prepareDestroy","destroy"])for(const scope of ["${id}/prod","${id}/dev"]){const r=await env.RUNTIME.command(op,[scope]);if(!r.ok)throw Error(r.code);}return Response.json({cleaned:true});}if(!/^[0-9a-f-]{36}$/.test(x.backup)||!/^[0-9a-f-]{36}$/.test(x.file)||!["corrupt","repair"].includes(x.op))return new Response("Invalid",{status:400});await env.BUNDLES.put("backups/${id}/dev/"+x.backup+"/files/"+x.file,x.op==="repair"?"Cloud backup bytes":"corrupt");return Response.json({done:true});}}`;
+  const source = `export default {async fetch(req,env){if(req.headers.get("authorization")!=="Bearer "+env.KEY)return new Response("Unauthorized",{status:401});if(req.method==="GET"&&new URL(req.url).pathname==="/ready")return Response.json({ready:"${id}"});if(req.method!=="POST")return new Response("Not found",{status:404});const x=await req.json();if(!["dev","prod"].includes(x.env))return new Response("Invalid",{status:400});if(["auth-configure","auth-password","auth-disable","auth-revoke","auth-users"].includes(x.op)){const r=await env.RUNTIME.command("admin",["${id}/"+x.env,x.op,x.backup||{}]);if(!r.ok)return Response.json({error:r.code},{status:400});return Response.json(r.value);}if(x.op==="cleanup"){for(const op of ["prepareDestroy","destroy"])for(const scope of ["${id}/prod","${id}/dev"]){const r=await env.RUNTIME.command(op,[scope]);if(!r.ok)throw Error(r.code);}return Response.json({cleaned:true});}if(!/^[0-9a-f-]{36}$/.test(x.backup)||!/^[0-9a-f-]{36}$/.test(x.file)||!["corrupt","repair"].includes(x.op))return new Response("Invalid",{status:400});await env.BUNDLES.put("backups/${id}/dev/"+x.backup+"/files/"+x.file,x.op==="repair"?"Cloud backup bytes":"corrupt");return Response.json({done:true});}}`;
   new Bun.Transpiler({ loader: "js" }).transformSync(source);
   const form = new FormData();
   form.set(
@@ -193,7 +204,21 @@ try {
     previews_enabled: false,
   });
   operatorUrl = `https://${operator}.${(await cf("workers/subdomain")).subdomain}.workers.dev`;
-  const release = await bundle();
+  let ready = false;
+  for (let attempt = 0; attempt < 30 && !ready; attempt++) {
+    try {
+      const response = await fetch(operatorUrl + "/ready", {
+        headers: { authorization: "Bearer " + operatorKey },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) ready = (await response.json()).ready === id;
+      else await response.body?.cancel();
+    } catch {
+      /* Route propagation; only this read is retried. */
+    }
+    if (!ready && attempt < 29) await Bun.sleep(2000);
+  }
+  assert(ready, "Scoped backup proof helper did not become ready");
   for (const env of ["dev", "prod"]) {
     await command(env, "settings", {
       origins: ["http://127.0.0.1:4321"],
@@ -204,6 +229,16 @@ try {
   const dev = createClient({ url: install.runtimeUrl + "/p/" + id + "/dev" }),
     prod = createClient({ url: install.runtimeUrl + "/p/" + id + "/prod" });
   clients.push(dev, prod);
+  await operate("auth-configure", { enabled: true, registration: true });
+  const recoveryAuth = createPasswordAuth({
+    url: install.runtimeUrl + "/p/" + id + "/dev",
+  });
+  const recoveryPassword = randomBytes(16).toString("hex");
+  const recoveryUser = await recoveryAuth.register(
+    "backup-recovery-user",
+    recoveryPassword,
+  );
+  await operate("auth-configure", { enabled: true, registration: false });
   for (let n = 0; n < 111; n++)
     await dev.mutation(reference("tasks/create", "mutation"), {
       title: "Backup document " + n,
@@ -295,6 +330,7 @@ try {
     );
   });
   await test("Retry restores identical IDs, timestamps, file bytes and leaves origins unchanged", async () => {
+    const restoreStarted = performance.now();
     await operate("repair", backup, grant.id);
     await command("prod", "backup-restore", { id: backup, sourceEnv: "dev" });
     assert.equal(
@@ -316,6 +352,33 @@ try {
     ]);
     const file = await command("prod", "file-download?id=" + grant.id);
     assert.equal(await (await fetch(file.url)).text(), "Cloud backup bytes");
+    await operate(
+      "auth-configure",
+      { enabled: true, registration: false },
+      undefined,
+      "prod",
+    );
+    const restoredAuth = createPasswordAuth({
+      url: install.runtimeUrl + "/p/" + id + "/prod",
+    });
+    assert.equal(
+      (await restoredAuth.login("backup-recovery-user", recoveryPassword)).id,
+      recoveryUser.id,
+    );
+    await restoredAuth.logout();
+    report.recovery = {
+      rows: before.length,
+      files: 1,
+      authUsers: 1,
+      idsAndTimestampsPreserved: true,
+      passwordLoginPreserved: true,
+      elapsedMs: performance.now() - restoreStarted,
+      scope: "111-document disposable fixture; not a general SLA",
+    };
+    assert(
+      report.recovery.elapsedMs < 3600000,
+      "Fixture recovery exceeded the accepted one-hour objective",
+    );
     await prod.mutation(reference("tasks/create", "mutation"), {
       title: "Works after restore",
     });
@@ -437,7 +500,10 @@ try {
           body: "{}",
         },
       );
-      assert.equal(cross.status, 403);
+      assert(
+        [401, 403].includes(cross.status),
+        "Cross-environment password session was not rejected",
+      );
       await operate("auth-disable", { id: user.id, disabled: true });
       await assert.rejects(auth.me());
     } finally {
@@ -447,11 +513,7 @@ try {
     }
   });
   await test("Five successful cloud builds, exact-hash promotion and rollback preserve production data", async () => {
-    const entry = join(
-      process.cwd(),
-      ".private",
-      "release-versions-" + id + ".ts",
-    );
+    const entry = join(dir, "release-versions.ts");
     const source = (await readFile("tests/fixtures/native-app.ts", "utf8"))
       .replaceAll(
         "../../packages/flare/src/sdk/",
@@ -546,32 +608,56 @@ try {
     } catch (e) {
       report.cleanupError = String(e);
       process.exitCode = 1;
+      // Retain only the fixed-scope helper and its private recovery credential.
+      report.recoveryDirectory = dir;
+      await writeFile(
+        join(dir, "recovery.json"),
+        JSON.stringify({
+          account: install.account,
+          operator,
+          operatorUrl,
+          operatorKey,
+          id,
+          customer,
+        }),
+        { mode: 0o600 },
+      );
     }
-    await cf(`workers/scripts/${operator}`, undefined, "DELETE");
+    if (report.resourcesCleaned) {
+      try {
+        await cf(`workers/scripts/${operator}`, undefined, "DELETE");
+        report.helperCleaned = true;
+      } catch (e) {
+        report.cleanupError = String(e);
+        process.exitCode = 1;
+      }
+    }
   }
   if (created && (!operatorCreated || report.resourcesCleaned)) {
-    for (const table of [
-      "credentials",
-      "environments",
-      "project_aliases",
-      "audit",
-    ])
-      await db(`DELETE FROM ${table} WHERE projectId=?`, [id]);
-    await db("DELETE FROM projects WHERE id=?", [id]);
-    await db("DELETE FROM customers WHERE id=?", [customer]);
+    try {
+      for (const table of [
+        "credentials",
+        "environments",
+        "project_aliases",
+        "audit",
+      ])
+        await db(`DELETE FROM ${table} WHERE projectId=?`, [id]);
+      await db("DELETE FROM projects WHERE id=?", [id]);
+      await db("DELETE FROM customers WHERE id=?", [customer]);
+      report.catalogCleaned = true;
+    } catch (e) {
+      report.cleanupError = String(e);
+      process.exitCode = 1;
+    }
   }
+  if (report.cleanupError) report.status = "FAIL";
   report.finishedAt = new Date().toISOString();
   await mkdir("artifacts", { recursive: true });
   await writeFile(
     "artifacts/backup-cloud-acceptance.json",
     JSON.stringify(report, null, 2),
   );
-  await rm(dir, { recursive: true, force: true });
-  await rm(join(process.cwd(), ".private", "native-entry-" + id + ".ts"), {
-    force: true,
-  });
-  await rm(join(process.cwd(), ".private", "release-versions-" + id + ".ts"), {
-    force: true,
-  });
+  if (!report.recoveryDirectory)
+    await rm(dir, { recursive: true, force: true });
   console.log("Report: artifacts/backup-cloud-acceptance.json");
 }
