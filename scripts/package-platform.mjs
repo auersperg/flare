@@ -36,7 +36,7 @@ const manifest = {
   compatibilityDate: "2026-10-10",
   wranglerVersion: WRANGLER_VERSION,
   // Add earlier managed versions only after exercising their upgrade in native/cloud acceptance.
-  upgradeFrom: ["0.3.7"],
+  upgradeFrom: ["0.3.8"],
   files,
 };
 manifest.digest = manifestDigest(manifest);
