@@ -1,7 +1,7 @@
 {
   "name": "flare-workspace",
   "private": true,
-  "version": "0.3.12",
+  "version": "0.3.13",
   "type": "module",
   "workspaces": [
     "packages/flare",

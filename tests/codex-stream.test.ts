@@ -41,6 +41,21 @@ describe("native Codex event streams", () => {
     ).rejects.toThrow("read-only");
     client.dispose();
   });
+  it("calls fetch without binding it to the options object (browser receiver contract)", async () => {
+    let receiver: unknown;
+    const client = createClient({
+      url: "https://example.com",
+      fetch: function (this: unknown) {
+        receiver = this;
+        return Promise.resolve(response(done));
+      },
+    });
+    const stream = client.codexEvents(ref, { id });
+    expect((await stream.next()).value?.type).toBe("task");
+    await stream.return();
+    client.dispose();
+    expect(receiver).toBeUndefined();
+  });
   it("validates descriptors and cursors before accessing a binding", async () => {
     for (const [grant, cursor] of [
       [{ type: "codex-events", id, extra: true }, 0],

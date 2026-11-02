@@ -38,7 +38,7 @@ export async function* readCodexEvents<I>(options: {
     failures = 0;
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > 4096)
     throw new FlareError("INVALID_ARGUMENT", "Invalid cursor");
-  const signal = options.signal;
+  const { signal, transport } = options;
   while (!signal.aborted) {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const connection = new AbortController();
@@ -54,7 +54,7 @@ export async function* readCodexEvents<I>(options: {
       touch();
       const token = await options.token();
       if (signal.aborted) return;
-      const response = await options.transport(options.url, {
+      const response = await transport(options.url, {
         method: "POST",
         redirect: "error",
         signal: connection.signal,
