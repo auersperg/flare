@@ -1,6 +1,6 @@
 # Создание приложения на Flare — руководство для агента
 
-Проверенная база: **`@auersperg/flare@0.3.10`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
+Проверенная база: **`@auersperg/flare@0.3.11`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
 
 Это инструкция для **отдельного приложения**, а не для изменения Flare. Полная реализация — в [архитектуре](architecture.md); установка самой платформы — в [platform lifecycle](platform-lifecycle.md); эксплуатационные ограничения — в [runbook](production-runbook.md).
 
@@ -55,8 +55,8 @@ my-app/
 В отдельном frontend-проекте с `package.json`:
 
 ```sh
-bun add --exact @auersperg/flare@0.3.10
-bunx --bun --package @auersperg/flare@0.3.10 flare dev
+bun add --exact @auersperg/flare@0.3.11
+bunx --bun --package @auersperg/flare@0.3.11 flare dev
 ```
 
 1. Укажите **Runtime URL установленной платформы**, полученный от владельца. Это не project dev URL и не адрес dashboard.
@@ -228,7 +228,7 @@ export function Tasks({ signedIn }: { signedIn: boolean }) {
 После dev acceptance и **явного подтверждения владельца**:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.10 flare deploy --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.11 flare deploy --cmd "bun run build"
 ```
 
 Команда собирает backend, генерирует API, запускает frontend build с URL целевой **prod** среды, затем активирует backend с подтверждением проекта. Подставьте реальную build-команду вашего framework. Ошибка build не должна активировать backend. `.env.local` продолжает указывать на dev. Обычный `flare deploy` без `--cmd` тоже поддерживается, но frontend build/target URL тогда обеспечьте отдельно.
@@ -236,8 +236,8 @@ bunx --bun --package @auersperg/flare@0.3.10 flare deploy --cmd "bun run build"
 Для продвижения уже проверенного immutable dev release:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.10 flare releases --env dev
-bunx --bun --package @auersperg/flare@0.3.10 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.11 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.11 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
 ```
 
 Frontend output публикуется **отдельным hosting flow**. Backend activation и frontend deployment не являются общей atomic transaction: используйте совместимые additive API изменения и проверяйте обе стороны. Перед prod проверьте prod auth, origins, capabilities и восстановление согласно требованиям проекта; не копируйте dev пользователей/данные автоматически.
@@ -275,7 +275,7 @@ CI использует scoped `FLARE_DEPLOY_TOKEN`, корректную projec
 Сдай код, тесты, инструкции запуска и отчёт с фактически проверенными результатами.
 ```
 
-## 10. Search и MCP (новые исходники; не опубликованный SDK 0.3.10)
+## 10. Search и MCP (SDK 0.3.11)
 
 Сначала требуется совместимый platform/SDK build; облачный AI Search instance подключает оператор. Нет binding — `SEARCH_NOT_CONFIGURED`. Первая версия принимает TXT/PDF до 10 MiB; для индексации PDF больше 4 MiB оператор должен включить OCR в AI Search. Индекс выбирается средой, не аргументом клиента.
 

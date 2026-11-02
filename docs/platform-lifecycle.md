@@ -1,6 +1,6 @@
 # Platform installation and updates
 
-Release **0.3.10** contains performance and correctness improvements in the SDK, Runtime, dashboard and CLI. The supported managed transition is **0.3.9 → 0.3.10**, with protocol 1 and runtime ABI 4 unchanged. Pin the exact package version; this remains a trusted-team preview, with independent-account acceptance untested.
+Release **0.3.11** adds scoped AI Search, session-authenticated MCP and optional private Codex runner references. The supported managed transition is **0.3.10 → 0.3.11**, with protocol 1 and runtime ABI 4 unchanged. Pin the exact package version; this remains a trusted-team preview, with independent-account acceptance untested.
 
 0.3.8 adds operator capabilities config, semantic Access snapshots and read-only live status. See the [implementation and acceptance report](archive/implementation-0.3.8-report.md) for exact package/CI evidence and remaining cloud permission/recovery boundaries.
 
@@ -20,8 +20,8 @@ Do not paste credentials into command arguments or commit them. Set `CLOUDFLARE_
 For the published preview:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.10 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
-bunx --bun --package @auersperg/flare@0.3.10 flare platform install --account ACCOUNT_ID --owner owner@example.com
+bunx --bun --package @auersperg/flare@0.3.11 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
+bunx --bun --package @auersperg/flare@0.3.11 flare platform install --account ACCOUNT_ID --owner owner@example.com
 ```
 
 For a source checkout, build and use the **compiled** CLI:
@@ -80,7 +80,7 @@ flare platform update --account ACCOUNT_ID --dry-run
 flare platform update --account ACCOUNT_ID
 ```
 
-The target is the payload bundled with the running CLI, not a downloaded moving `latest` platform. Maintainers publish a new immutable package for different bytes. Same version/different digest, downgrades, protocol/ABI mismatch and undeclared version transitions are rejected. `upgradeFrom` is an explicit manifest allowlist. The 0.3.10 payload admits the exact published 0.3.9 source only. Historical 0.3.9 delivery supported 0.3.8; preservation passed the cloud transition before publication and the ordinary published-CLI personal update afterwards. No personal resume was needed for 0.3.9; historical 0.3.8 resume evidence remains in its archived report. Four complete pre/post capsule pairs and read-only live state matched; a repeated confirmed update was unchanged. Archived releases are immutable; preserve their exact registry archives for future acceptance. Since 0.3.5, clean builds at different paths must produce identical full platform manifests.
+The target is the payload bundled with the running CLI, not a downloaded moving `latest` platform. Maintainers publish a new immutable package for different bytes. Same version/different digest, downgrades, protocol/ABI mismatch and undeclared version transitions are rejected. `upgradeFrom` is an explicit manifest allowlist. The 0.3.11 payload admits the exact published 0.3.10 source only. Historical 0.3.9 delivery supported 0.3.8; preservation passed the cloud transition before publication and the ordinary published-CLI personal update afterwards. No personal resume was needed for 0.3.9; historical 0.3.8 resume evidence remains in its archived report. Four complete pre/post capsule pairs and read-only live state matched; a repeated confirmed update was unchanged. Archived releases are immutable; preserve their exact registry archives for future acceptance. Since 0.3.5, clean builds at different paths must produce identical full platform manifests.
 
 Updates apply additive D1 migrations, then Runtime and Admin, then verify. Previously applied migration files must remain byte-identical. Workers update sequentially, not atomically; compatible intermediate states and possible client reconnection are part of the release contract. There is no zero-downtime or full graceful job/action-drain guarantee in this preview.
 
@@ -92,7 +92,7 @@ Worker names, catalogue IDs, R2/Queue identities, supervisor namespace, `app` fa
 
 `platform status` keeps installation `status` separate from `health`. Probes are read-only and bounded: expected Runtime/catalog/Admin payload readiness, unauthenticated dashboard closure and semantic Access app/policy digest. Network/permission errors mean unavailable, not healthy/not-installed. Actual owner sign-in is still separate. There is no monitoring timer.
 
-`platform install/update --config operator.json` accepts complete desired `capabilities` and native `secrets` / `search` references. Omission on update preserves managed config; an explicit empty `{}` removes grants. The same release can deploy a config change without replacing data/namespace. Interrupted operations resume with their stored config; supplying a different config is refused. This does not accept arbitrary Wrangler settings or out-of-band bindings.
+`platform install/update --config operator.json` accepts complete desired `capabilities` and native `secrets` / `search` / `codex` references. Omission on update preserves managed config; an explicit empty `{}` removes grants. The same release can deploy a config change without replacing data/namespace. Interrupted operations resume with their stored config; supplying a different config is refused. This does not accept arbitrary Wrangler settings or out-of-band bindings.
 
 ```json
 {
@@ -114,7 +114,7 @@ Worker names, catalogue IDs, R2/Queue identities, supervisor namespace, `app` fa
 
 Replace example project/store IDs with your own. Create the secret in Cloudflare Secrets Store with Workers scope first; Flare config contains only its reference, not its value. This optional capability requires **Account Secrets Store Edit** on the deployment token; Read alone cannot bind a secret to a Worker. The secret must include the `workers` scope. These are native [Cloudflare access checks](https://developers.cloudflare.com/secrets-store/access-control/), separate from the base installation permissions. Only Runtime receives bindings; grants are project/environment scoped and outbound remains exact HTTPS hosts, bounded bodies/deadline, no redirects. App code never receives the account token.
 
-### Optional AI Search connection (unreleased source capability)
+### Optional AI Search connection (0.3.11)
 
 Create/approve a dedicated AI Search instance separately. The installer **does not provision it**. Connect a pre-existing instance in the default namespace, private (no public search/MCP bypass), without attaching the shared Flare files bucket:
 
@@ -139,7 +139,7 @@ Replace example identities; retain other desired grants/references when merging 
 
 To disconnect: (1) remove the capability's `search` grant but **retain** its `search` reference and update; this fences retrieval/new indexing and starts durable cleanup, (2) wait for AI → remaining/error states to clear (explicit retry via Exclude all if necessary), (3) remove the reference in a second update. The CLI requires an authenticated read of the affected environment to verify cleanup; sign in through the existing project login or use its deploy token. Binding replacement/reassignment follows the same sequence. A deleted catalogue environment needs no session: project deletion itself drains the derived copies. `SEARCH_RECONCILE_REQUIRED` means an upload had an unknown outcome and no provider item is visible yet: retain the checkpoint/binding and reconcile with the provider before detaching, rather than claiming deletion succeeded. Never force-remove a binding with pending cleanup; no instance is deleted by Flare.
 
-Deploy a platform build containing this capability before application SDK code that calls it. This is not included in the already-published 0.3.10 package. Do not roll Runtime back to a pre-search implementation while search checkpoints exist: disable grants and drain first. Re-enabling after restore requires explicit application indexing, not a copied provider index.
+Deploy a platform build containing this capability before application SDK code that calls it. This requires 0.3.11 or later; 0.3.10 does not contain the capability. Do not roll Runtime back to a pre-search implementation while search checkpoints exist: disable grants and drain first. Re-enabling after restore requires explicit application indexing, not a copied provider index.
 
 Access snapshots guard the app's security fields and separate policy list while excluding only known response timestamps. Unknown fields remain guarded. Legacy snapshots migrate only after the old exact hash matches; legacy drift requires explicit review. If an intentional Cloudflare Access change blocks update, inspect it in Cloudflare and take the current `health.access.snapshot` from `platform status`. Then run:
 
@@ -155,3 +155,7 @@ This accepts exactly the reviewed app/policies under the existing installation C
 The same npm archive contains the CLI and verified platform payload. CI runs local source/type/package/native checks without cloud credentials. CI includes clean-build reproducibility and uploads the accepted archive only after all checks pass. Protected publication reuses that exact-commit artifact without rebuilding or repacking. Wait for successful CI before dispatching publication; if the artifact has expired, rerun CI for the same commit. Cloud lifecycle acceptance is manual, against disposable installations, never retained customer environments.
 
 Independent-account installation, full graceful drain and off-account disaster recovery are not verified. A same-release no-op is not a cross-version proof. See the [runbook](production-runbook.md) for recovery and operational limitations. Historical release evidence is retained in `docs/archive/`, not in the current command guide.
+
+### Optional persistent Codex connection (0.3.11)
+
+The private on-demand runner has a separate native container deployment and persistent login storage. Platform updates bind an explicitly scoped `codex` service reference, but do not provision, log into, or delete the runner. See [operator setup and trust boundaries](../packages/codex/README.md).

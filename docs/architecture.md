@@ -8,7 +8,7 @@
 
 **Статус:** работающая self-hosted установка для доверенной команды; preview, не полный Convex replacement и не сертификация всех production-гарантий. Ниже разделены реализованные механизмы, состояние конкретной установки и незавершённые возможности. Это карта фактической реализации, а не первоначальный план Reactive/Flared.
 
-### Необязательный Codex runner (unreleased)
+### Необязательный Codex runner (0.3.11)
 
 `packages/codex` добавляет отдельный приватный контейнерный runner: action → scoped Service Binding → Durable Object → официальный Codex CLI. В core нет второго agent loop, OAuth proxy или постоянно работающего процесса. `ctx.codex.start/status/cancel` доступен только actions с явным operator grant. Авторизация хранится в приватном DO и обновляется самим Codex; после сохранения результата контейнер уничтожается. Runner принадлежит одному project/environment и предназначен только для доверенной личной автоматизации. Его отдельный Docker deployment не входит в обычный install/update и не затрагивает приложения, которым capability не выдана. Подробнее: [настройка, границы доверия и lifecycle](../packages/codex/README.md).
 

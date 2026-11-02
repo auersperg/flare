@@ -116,7 +116,7 @@ Schema changes validate existing documents and update native SQLite expression i
 
 **Breaking change:** only runtime ABI 4 and the native document API are supported. Old `tables`, Drizzle SQL declarations, `--migrations` and ABI 1–3 have been removed. Use a fresh environment/installation for this preview; rebuilding does not reset the existing cloud deployment, catalogue or databases. Do not deploy 0.3 over a 0.2 installation assuming compatibility.
 
-Release 0.3.10 includes the SDK, CLI and checksummed platform payload in one npm archive. The supported managed upgrade is 0.3.9 → 0.3.10. This remains a trusted-team preview; use the `next` channel or pin the exact version. Platform updates preserve application storage but do not rebuild existing application bundles: update their SDK and redeploy backend/frontend separately. See [platform lifecycle](docs/platform-lifecycle.md) for prerequisites, confirmation, recovery and limits. Core/dashboard remain private workspaces. Local builds perform no cloud deployment.
+Release 0.3.11 includes the SDK, CLI and checksummed platform payload in one npm archive. The supported managed upgrade is 0.3.10 → 0.3.11. This remains a trusted-team preview; use the `next` channel or pin the exact version. Platform updates preserve application storage but do not rebuild existing application bundles: update their SDK and redeploy backend/frontend separately. See [platform lifecycle](docs/platform-lifecycle.md) for prerequisites, confirmation, recovery and limits. Core/dashboard remain private workspaces. Local builds perform no cloud deployment.
 
 ## Native data API
 
