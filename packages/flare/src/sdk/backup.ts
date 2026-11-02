@@ -1,6 +1,6 @@
 import { boundedJson, FlareError, stableJson, type Json } from "./protocol.js";
 import {
-  documentValue,
+  documentJson,
   quote,
   schemaContract,
   type NativeStorage,
@@ -124,14 +124,13 @@ export async function restoreData(
           doc._creationTime < 0
         )
           reject("INVALID_BACKUP");
-        const value = await documentValue(schema[name], doc.value);
-        if (stableJson(value) !== stableJson(doc.value))
-          reject("INVALID_BACKUP");
+        const value = await documentJson(schema[name], doc.value);
+        if (value !== stableJson(doc.value)) reject("INVALID_BACKUP");
         storage.sql.exec(
           `INSERT INTO ${quote(name)} VALUES (?,?,?)`,
           doc._id,
           doc._creationTime,
-          stableJson(value),
+          value,
         );
       }
     }

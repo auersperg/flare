@@ -2,6 +2,7 @@ import {
   useEffect,
   useContext,
   useId,
+  useRef,
   useState,
   type ReactNode,
   type SubmitEvent,
@@ -59,22 +60,37 @@ export function useResource<T>(path: string) {
     loading: boolean;
   }>({ path, loading: true });
   const [version, setVersion] = useState(0);
+  const reload = useRef<() => void>(() => {});
   useEffect(() => {
     const abort = new AbortController();
-    setState((previous) =>
-      previous.path === path && previous.data !== undefined
-        ? { ...previous, error: undefined, loading: true }
-        : { path, loading: true },
-    );
-    void api<T>(path, undefined, abort.signal)
-      .then((data) => {
-        if (!abort.signal.aborted) setState({ path, data, loading: false });
-      })
-      .catch((e) => {
-        if (!abort.signal.aborted)
-          setState({ path, error: message(e), loading: false });
-      });
+    let running = false,
+      pending = false;
+    reload.current = async () => {
+      pending = true;
+      if (running) return;
+      running = true;
+      do {
+        pending = false;
+        setState((previous) =>
+          previous.path === path && previous.data !== undefined
+            ? { ...previous, error: undefined, loading: true }
+            : { path, loading: true },
+        );
+        try {
+          const data = await api<T>(path, undefined, abort.signal);
+          if (!abort.signal.aborted) setState({ path, data, loading: false });
+        } catch (e) {
+          if (!abort.signal.aborted)
+            setState({ path, error: message(e), loading: false });
+        }
+      } while (pending && !abort.signal.aborted);
+      running = false;
+    };
     return () => abort.abort();
+  }, [path]);
+  useEffect(() => {
+    // Keep an in-flight snapshot; coalesce newer hints into one trailing read.
+    reload.current();
   }, [path, version, epoch]);
   useEffect(() => {
     let lastResume = 0;

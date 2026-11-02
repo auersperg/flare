@@ -27,6 +27,27 @@ export type Backup = {
 export const BACKUP_BYTES = SNAPSHOT_BYTES + 4 * 1048576;
 export const BACKUP_FILES = 100;
 export const BACKUP_FILE_BYTES = 100 * 1048576;
+/** Bound live streams and settle all started writes before returning an error. */
+async function copyInParallel<T, R>(files: T[], copy: (file: T) => Promise<R>) {
+  const copied = new Array<R>(files.length);
+  let next = 0;
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(3, files.length) }, async () => {
+      while (next < files.length) {
+        const i = next++;
+        try {
+          copied[i] = await copy(files[i]);
+        } catch (error) {
+          next = files.length;
+          throw error;
+        }
+      }
+    }),
+  );
+  for (const result of results)
+    if (result.status === "rejected") throw result.reason;
+  return copied;
+}
 export function backupPrefix(scope: string, id?: string) {
   return `backups/${scopeForDeletion(scope)}/${id === undefined ? "" : uuid(id) + "/"}`;
 }
@@ -91,9 +112,8 @@ export class BackupStore {
     )
       fail("BACKUP_TOO_LARGE");
     if (files.length && !this.files) fail("UNSUPPORTED");
-    const prefix = backupPrefix(value.scope, value.id),
-      copied: BackupFile[] = [];
-    for (const file of files) {
+    const prefix = backupPrefix(value.scope, value.id);
+    const copied = await copyInParallel(files, async (file) => {
       const object = await this.files!.get(fileKey(value.scope, file.id));
       if (
         !object ||
@@ -111,8 +131,8 @@ export class BackupStore {
       );
       if (!stored || stored.size !== file.size || stored.etag !== object.etag)
         fail("INVALID_BACKUP");
-      copied.push({ ...file, md5: stored.etag });
-    }
+      return { ...file, md5: stored.etag };
+    });
     const backup: Backup = { ...value, files: copied },
       encoded = boundedJson(backup, BACKUP_BYTES);
     const stored = await this.bucket.put(prefix + "manifest.json", encoded, {
@@ -155,13 +175,12 @@ export class BackupStore {
       limit: 20,
       cursor,
     });
-    const backups = [];
-    for (const prefix of page.delimitedPrefixes) {
-      const id = prefix.slice(backupPrefix(scope).length, -1);
-      const manifest = await this.bucket.head(prefix + "manifest.json"),
-        meta = manifest?.customMetadata;
-      backups.push(
-        meta
+    const backups = await Promise.all(
+      page.delimitedPrefixes.map(async (prefix) => {
+        const id = prefix.slice(backupPrefix(scope).length, -1);
+        const manifest = await this.bucket.head(prefix + "manifest.json"),
+          meta = manifest?.customMetadata;
+        return meta
           ? {
               id,
               scope,
@@ -171,14 +190,14 @@ export class BackupStore {
               rows: Number(meta.rows),
               files: Number(meta.files),
             }
-          : { id, scope, state: "incomplete" },
-      );
-    }
+          : { id, scope, state: "incomplete" };
+      }),
+    );
     return { page: backups, cursor: page.truncated ? page.cursor : null };
   }
   async copyFiles(value: Backup, target: string) {
     if (value.files.length && !this.files) fail("UNSUPPORTED");
-    for (const file of value.files) {
+    await copyInParallel(value.files, async (file) => {
       const object = await this.bucket.get(
         backupPrefix(value.scope, value.id) + "files/" + file.id,
         { onlyIf: { etagMatches: file.md5 } },
@@ -200,7 +219,7 @@ export class BackupStore {
       );
       if (!stored || stored.size !== file.size || stored.etag !== file.md5)
         fail("INVALID_BACKUP");
-    }
+    });
   }
   async remove(scope: string, id: string) {
     const prefix = backupPrefix(scope, id);
@@ -308,8 +327,7 @@ export class BackupInventory {
     const rows = before
       ? this.storage.sql
           .exec(
-            "SELECT * FROM backup_index WHERE at<? OR (at=? AND id<?) ORDER BY at DESC,id DESC LIMIT 21",
-            before.at,
+            "SELECT * FROM backup_index WHERE (at,id)<(?,?) ORDER BY at DESC,id DESC LIMIT 21",
             before.at,
             before.id,
           )

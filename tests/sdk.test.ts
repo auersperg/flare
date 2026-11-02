@@ -445,7 +445,44 @@ describe("live client lifecycle", () => {
     expect(ws.listenerCount()).toBe(0);
     client.dispose();
   });
-  it("isolates observer mutations and exceptions", async () => {
+  it.each([null, false, 0, "", [], {}].map((value) => [value]))(
+    "replays and deduplicates an empty or falsy snapshot %#",
+    async (value) => {
+      const { client, sockets } = await fixture();
+      const first = jest.fn(),
+        late = jest.fn();
+      const ref = reference("counter/publicGet", "query");
+      client.onUpdate(ref, {}, first);
+      await ticks();
+      const ws = sockets[0];
+      ws.open();
+      const id = ws.frames[0].id;
+      ws.snapshot(id, 1, value);
+      client.onUpdate(ref, {}, late);
+      ws.snapshot(id, 2, value);
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(late).toHaveBeenCalledTimes(1);
+      expect(late).toHaveBeenCalledWith(value);
+      expect(ws.frames.at(-1)).toEqual({ type: "ack", id, revision: 2 });
+      client.dispose();
+    },
+  );
+  it("compares canonical snapshots regardless of nested object key order", async () => {
+    const { client, sockets } = await fixture();
+    const next = jest.fn();
+    client.onUpdate(reference("counter/publicGet", "query"), {}, next);
+    await ticks();
+    const ws = sockets[0];
+    ws.open();
+    const id = ws.frames[0].id;
+    ws.snapshot(id, 1, { b: [{ y: 2, x: 1 }], a: 0 });
+    ws.snapshot(id, 2, { a: 0, b: [{ x: 1, y: 2 }] });
+    expect(next).toHaveBeenCalledTimes(1);
+    ws.snapshot(id, 3, { a: 0, b: [{ x: 1, y: 3 }] });
+    expect(next).toHaveBeenCalledTimes(2);
+    client.dispose();
+  });
+  it("isolates observer mutations and exceptions, including cached replay", async () => {
     const { client, sockets } = await fixture();
     const second = jest.fn();
     const ref = reference<any, any>("counter/publicGet", "query");
@@ -460,6 +497,10 @@ describe("live client lifecycle", () => {
     ws.snapshot(ws.frames[0].id, 1, { x: 1 });
     expect(second).toHaveBeenCalledWith({ x: 1 });
     expect(ws.frames.at(-1).type).toBe("ack");
+    const late = jest.fn();
+    client.onUpdate(ref, {}, late);
+    expect(late).toHaveBeenCalledWith({ x: 1 });
+    expect(late.mock.calls[0][0]).not.toBe(second.mock.calls[0][0]);
     client.dispose();
   });
   it("uses a new ticket on reconnect and accepts fresh snapshots with reset revision", async () => {

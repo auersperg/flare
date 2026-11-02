@@ -25,9 +25,12 @@ export async function consumeBatch<T>(
   work: (body: T) => Promise<unknown>,
   failed: (body: T, error: unknown) => void,
 ) {
-  for (let offset = 0; offset < batch.messages.length; offset += 4) {
-    await Promise.all(
-      batch.messages.slice(offset, offset + 4).map(async (message) => {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, batch.messages.length) }, async () => {
+      // Fill each free slot immediately; a slow message must not idle its peers.
+      while (next < batch.messages.length) {
+        const message = batch.messages[next++];
         try {
           await work(message.body);
           message.ack();
@@ -35,7 +38,7 @@ export async function consumeBatch<T>(
           failed(message.body, error);
           message.retry();
         }
-      }),
-    );
-  }
+      }
+    }),
+  );
 }

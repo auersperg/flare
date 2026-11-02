@@ -248,21 +248,193 @@ try {
   sockets.push(live.ws);
   await waitProof(() => live.frames.some((f) => f.type === "ready"));
   const before = live.frames.filter((f) => f.type === "invalidate").length;
-  const mutation = await fetch(base + "/p/" + project + "/dev/v1/call", {
+  // Exercise the actual Runtime subscription path, not only dashboard hints.
+  const appBase = base + "/p/" + project + "/dev/v1";
+  const ticketResponse = await fetch(appBase + "/live/ticket", {
     method: "POST",
     headers: {
-      "content-type": "application/json",
       authorization: "Bearer " + proof.key,
+      "content-type": "application/json",
     },
-    body: JSON.stringify({
-      path: "tasks/create",
-      kind: "mutation",
-      args: { title: "native push" },
-    }),
+    body: "{}",
   });
-  assert.equal(mutation.status, 200, await mutation.clone().text());
+  assert.equal(ticketResponse.status, 200, await ticketResponse.clone().text());
+  const { result: ticket } = await ticketResponse.json();
+  const appLive = connectProofSocket(
+    appBase.replace("http:", "ws:") + "/live?ticket=" + ticket.ticket,
+    proof.key,
+  );
+  sockets.push(appLive.ws);
+  await waitProof(() => appLive.frames.some((f) => f.type === "ready"));
+  const send = (frame) => appLive.ws.send(JSON.stringify(frame));
+  const snapshots = (id) =>
+    appLive.frames.filter((f) => f.type === "snapshot" && f.id === id);
+  const subscribe = (id, limit) =>
+    send({ type: "subscribe", id, path: "tasks/list", args: { limit } });
+  subscribe("first", 1);
+  await waitProof(() => snapshots("first").length === 1);
+  const initial = snapshots("first")[0];
+  assert.deepEqual(initial.result, []);
+  const createTask = async (title) => {
+    const response = await fetch(appBase + "/call", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + proof.key,
+      },
+      body: JSON.stringify({
+        path: "tasks/create",
+        kind: "mutation",
+        args: { title },
+      }),
+    });
+    assert.equal(response.status, 200, await response.clone().text());
+  };
+  await createTask("native push");
   await waitProof(
     () => live.frames.filter((f) => f.type === "invalidate").length > before,
+  );
+  // A second subscription is a processing barrier while the first awaits ACK.
+  subscribe("barrier", 100);
+  await waitProof(() => snapshots("barrier").length === 1);
+  assert.equal(
+    live.frames.filter((f) => f.type === "invalidate").length,
+    before + 1,
+    "One committed mutation must send one dashboard hint, not duplicate authorization checks",
+  );
+  assert.equal(snapshots("barrier")[0].result.length, 1);
+  assert.equal(snapshots("first").length, 1, "Backpressure must wait for ACK");
+  send({ type: "ack", id: "first", revision: initial.revision });
+  await waitProof(() => snapshots("first").length === 2);
+  const current = snapshots("first")[1];
+  assert.equal(current.result[0].title, "native push");
+  send({ type: "ack", id: "first", revision: current.revision });
+  send({ type: "unsubscribe", id: "barrier" });
+  await createTask("outside first result");
+  subscribe("after", 100);
+  await waitProof(() => snapshots("after").length === 1);
+  assert.equal(snapshots("after")[0].result.length, 2);
+  assert.equal(
+    snapshots("first").length,
+    2,
+    "Unchanged result must not resend",
+  );
+  assert.equal(
+    appLive.frames.some((f) => f.type === "error"),
+    false,
+  );
+  for (const indexed of [false, true])
+    for (const direction of ["asc", "desc"]) {
+      let cursor = null;
+      const titles = [];
+      do {
+        const response = await fetch(appBase + "/call", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer " + proof.key,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            path: "checks/page",
+            kind: "query",
+            args: { direction, cursor, indexed },
+          }),
+        });
+        assert.equal(response.status, 200, await response.clone().text());
+        const { result } = await response.json();
+        assert.equal(result.page.length, 1);
+        assert.equal(result.isDone, result.continueCursor === null);
+        titles.push(result.page[0].title);
+        assert.ok(
+          titles.length <= 2,
+          "Pagination must terminate without duplicates",
+        );
+        cursor = result.continueCursor;
+      } while (cursor);
+      assert.deepEqual(
+        titles,
+        direction === "asc"
+          ? ["native push", "outside first result"]
+          : ["outside first result", "native push"],
+      );
+    }
+  send({ type: "ack", id: "after", revision: snapshots("after")[0].revision });
+  send({ type: "subscribe", id: "notes", path: "checks/notes", args: {} });
+  await waitProof(() => snapshots("notes").length === 1);
+  send({ type: "ack", id: "notes", revision: snapshots("notes")[0].revision });
+  const notesBefore = await command("data", { table: "notes" });
+  assert.equal(notesBefore.rows.length, 0);
+  const writeBoth = (args) =>
+    fetch(appBase + "/call", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + proof.key,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        path: "checks/writeBoth",
+        kind: "mutation",
+        args,
+      }),
+    });
+  const failedWrite = await writeBoth({ fail: true, empty: false });
+  assert.ok(failedWrite.status >= 400);
+  await failedWrite.body?.cancel();
+  assert.deepEqual(await command("data", { table: "notes" }), notesBefore);
+  assert.equal((await command("data", { table: "tasks" })).rows.length, 2);
+  const committed = await writeBoth({ fail: false, empty: false });
+  assert.equal(committed.status, 200, await committed.clone().text());
+  await waitProof(
+    () => snapshots("after").length === 2 && snapshots("notes").length === 2,
+  );
+  const tasksAfter = await command("data", { table: "tasks" });
+  const notesAfter = await command("data", { table: "notes" });
+  assert.equal(tasksAfter.rows.length, 3);
+  assert.equal(notesAfter.rows.length, 1);
+  assert.equal(notesAfter.revision, notesBefore.revision + 1);
+  assert.equal(tasksAfter.revision, notesAfter.revision);
+  assert.equal(snapshots("after")[1].revision, notesAfter.revision);
+  assert.equal(snapshots("notes")[1].revision, notesAfter.revision);
+  appLive.ws.close();
+  const edit = {
+    table: "notes",
+    operation: "update",
+    key: notesAfter.rows[0]._id,
+    values: { title: "edited" },
+    expectedRevision: notesAfter.revision,
+  };
+  const beforeEdit = live.frames.filter((f) => f.type === "invalidate").length;
+  const edited = await command("edit", edit);
+  await waitProof(
+    () =>
+      live.frames.filter((f) => f.type === "invalidate").length > beforeEdit,
+  );
+  assert.equal(
+    live.frames.filter((f) => f.type === "invalidate").length,
+    beforeEdit + 1,
+    "A dashboard edit must notify once after completion",
+  );
+  assert.equal(edited.revision, notesAfter.revision + 1);
+  assert.equal(edited.rows[0].title, "edited");
+  const conflict = await fetch(proofBase + "/command?env=dev", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer " + proof.key,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ op: "edit", input: edit }),
+  });
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json()).code, "CONFLICT");
+  assert.equal(
+    (await command("data", { table: "notes" })).revision,
+    edited.revision,
+  );
+  const emptyWrite = await writeBoth({ fail: false, empty: true });
+  assert.equal(emptyWrite.status, 200, await emptyWrite.clone().text());
+  assert.equal(
+    (await command("data", { table: "notes" })).revision,
+    edited.revision + 1,
   );
   const action = async (which) => {
     const r = await fetch(base + "/p/" + project + "/" + which + "/v1/call", {
@@ -342,6 +514,9 @@ try {
           "Runtime → Admin readiness → Runtime RPC works with real service bindings",
           "Missing catalogue identity fails readiness closed",
           "Physical service-fetch WebSocket receives mutation invalidation",
+          "Application subscriptions preserve ACK backpressure and suppress unchanged snapshots",
+          "Native SQLite default and range-index cursors paginate in both directions without duplicates",
+          "Atomic multi-table revisions, rollback, live invalidation, no-op commits and stale-edit rejection",
           "Native Secrets Store binding is available only to the granted Action scope",
           "Real D1 membership revocation closes the channel without another data hint",
           "Legacy-compatible backup inventory reports a verified completed recovery point",

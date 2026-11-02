@@ -217,15 +217,20 @@ async function compileRole(role, entry, working) {
 export async function generateReferences(contract) {
   let generated = 'import {reference} from "@auersperg/flare";\n';
   const refs = [];
+  const types = new Map();
+  const declaration = async (schema, name) => {
+    const key = stableJson(schema),
+      previous = types.get(key);
+    if (previous) return `export type ${name} = ${previous};\n`;
+    const code = await compile(schema, name, { bannerComment: "" });
+    types.set(key, name);
+    return code;
+  };
   for (const [index, [path, fn]] of Object.entries(
     contract.functions,
   ).entries()) {
-    generated += await compile(fn.input, `Input${index}`, {
-      bannerComment: "",
-    });
-    generated += await compile(fn.output, `Output${index}`, {
-      bannerComment: "",
-    });
+    generated += await declaration(fn.input, `Input${index}`);
+    generated += await declaration(fn.output, `Output${index}`);
     refs.push(
       `${JSON.stringify(path)}: reference<Input${index}, Output${index}>(${JSON.stringify(path)}, ${JSON.stringify(fn.kind)})`,
     );

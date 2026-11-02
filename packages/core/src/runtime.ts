@@ -302,6 +302,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
             dueAt: Date.now(),
           });
           await this.recover();
+          await this.dashboardHint();
         }),
     },
   });
@@ -352,6 +353,9 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     );
     this.ctx.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS job_events_retention ON job_events(state,at)",
+    );
+    this.ctx.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS job_events_at ON job_events(at)",
     );
     this.ctx.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS job_events_release ON job_events(release,state)",
@@ -724,8 +728,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     return s.auth;
   }
   private async snapshot(c: Connection, row: any, cache = new SnapshotCache()) {
-    const auth = this.connectionAuth(c),
-      key = stableJson({ path: row.path, args: JSON.parse(row.args), auth });
+    const auth = this.connectionAuth(c);
     if (Number(row.sent) > Number(row.acked)) {
       this.ctx.storage.sql.exec(
         "UPDATE subscriptions SET pending=1 WHERE connection=? AND id=?",
@@ -735,44 +738,35 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       return;
     }
     try {
+      const args = JSON.parse(row.args),
+        key = stableJson({ path: row.path, args, auth });
       const { value: result, hash } = await cache.get(key, () =>
         this.invoke({
           path: row.path,
           kind: "query",
-          args: JSON.parse(row.args),
+          args,
           auth,
         }),
       );
+      const changed = row.hash !== hash;
+      if (changed)
+        c.send(
+          boundedJson(
+            {
+              type: "snapshot",
+              id: row.id,
+              result: result.result,
+              revision: result.revision,
+            },
+            LIMITS.outputBytes + 1024,
+          ),
+        );
       this.ctx.storage.sql.exec(
-        "UPDATE subscriptions SET dependencies=?,checked=?,release=? WHERE connection=? AND id=?",
+        "UPDATE subscriptions SET dependencies=?,checked=?,release=?,sent=?,hash=?,pending=0 WHERE connection=? AND id=?",
         JSON.stringify(result.tables),
         result.revision,
         this.current(),
-        c.id,
-        row.id,
-      );
-      if (row.hash === hash) {
-        this.ctx.storage.sql.exec(
-          "UPDATE subscriptions SET pending=0 WHERE connection=? AND id=?",
-          c.id,
-          row.id,
-        );
-        return;
-      }
-      c.send(
-        boundedJson(
-          {
-            type: "snapshot",
-            id: row.id,
-            result: result.result,
-            revision: result.revision,
-          },
-          LIMITS.outputBytes + 1024,
-        ),
-      );
-      this.ctx.storage.sql.exec(
-        "UPDATE subscriptions SET sent=?,hash=?,pending=0 WHERE connection=? AND id=?",
-        result.revision,
+        changed ? result.revision : row.sent,
         hash,
         c.id,
         row.id,
@@ -832,7 +826,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     }
   }
   private async broadcast() {
-    await this.dashboardHint();
+    // Dashboard commands notify after recording their outcome; this is app data only.
     const connections = [...this.sockets.getConnections()].filter(
       (c) => !(c.state as ConnectionAuth | null)?.dashboard,
     );
@@ -913,7 +907,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   }
   async onJob({ job }: LifecycleJobContext) {
     await this.serial(async () => {
-      if (job.fn === "recover") await this.recover();
+      if (job.fn === "recover") {
+        await this.recover();
+        await this.dashboardHint();
+      }
       if (job.fn === "files-cleanup") await this.files().sweep();
       if (job.fn === "cron-reconcile") await this.reconcileCrons();
       if (job.fn === "expire") {
@@ -1107,8 +1104,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         input.body ?? {},
         input.authorization?.slice(7) ?? null,
       );
-      this.closeRevokedSockets();
-      await this.dashboardHint();
+      if (input.operation !== "me") {
+        this.closeRevokedSockets();
+        await this.dashboardHint();
+      }
       return result;
     });
   }
@@ -1468,7 +1467,8 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       if (op.startsWith("auth-")) {
         this.assertAvailable();
         const result = await this.passwords().admin(op, input);
-        this.closeRevokedSockets();
+        if (op !== "auth-users" && op !== "auth-settings")
+          this.closeRevokedSockets();
         return result;
       }
       if (op === "release-export") {

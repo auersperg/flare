@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { it, expect } from "bun:test";
@@ -7,6 +7,105 @@ async function temporaryCli(prefix: string) {
   await mkdir(parent, { recursive: true });
   return mkdtemp(join(parent, prefix));
 }
+it("reuses identical generated types without changing references, local refs or input/output contracts", async () => {
+  const { generateReferences } = await import(
+    resolve("packages/flare/src/cli/build.mjs")
+  );
+  const directory = await temporaryCli("reference-types-");
+  try {
+    const input = {
+      type: "object",
+      properties: { value: { type: "string" } },
+      required: ["value"],
+      additionalProperties: false,
+    };
+    const output = { type: "array", items: { type: "number" } };
+    const recursive = {
+      $ref: "#/$defs/Node",
+      $defs: {
+        Node: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+            next: { $ref: "#/$defs/Node" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      },
+    };
+    const contract = {
+      functions: {
+        first: { kind: "query", input, output },
+        second: {
+          kind: "mutation",
+          input: {
+            additionalProperties: false,
+            required: ["value"],
+            properties: input.properties,
+            type: "object",
+          },
+          output,
+        },
+        third: { kind: "action", input: { type: "string" }, output: recursive },
+        fourth: { kind: "query", input: { type: "string" }, output: recursive },
+      },
+    };
+    const generated = await generateReferences(contract);
+    expect(generated).toContain("export type Input1 = Input0;");
+    expect(generated).toContain("export type Output1 = Output0;");
+    expect(generated).toContain("export type Output3 = Output2;");
+    expect(generated).toContain(
+      'reference<Input1, Output1>("second", "mutation")',
+    );
+    expect(await generateReferences(contract)).toBe(generated);
+    await writeFile(join(directory, "api.ts"), generated);
+    await writeFile(
+      join(directory, "proof.ts"),
+      `
+      import {api, type Input0, type Input1, type Input2, type Output0, type Output1, type Output2, type Output3} from './api';
+      import type {FunctionRef} from '@auersperg/flare';
+      const input: Input1 = {value:'one'};
+      const original: Input0 = input;
+      const output: Output1 = [1,2];
+      const originalOutput: Output0 = output;
+      const tree: Output2 = {value:'one',next:{value:'two'}};
+      const repeatedTree: Output3 = tree;
+      const distinct: Input2 = 'string';
+      const ref: FunctionRef<Input1, Output1> = api.second;
+      // @ts-expect-error wrong field type must remain invalid
+      const badInput: Input1 = {value:1};
+      // @ts-expect-error distinct schema must not reuse the object input
+      const badDistinct: Input2 = input;
+      // @ts-expect-error wrong output element type must remain invalid
+      const badOutput: Output1 = ['string'];
+      // @ts-expect-error recursive local refs must remain typed
+      const badTree: Output3 = {value:'one',next:{value:2}};
+    `,
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve("node_modules/typescript/bin/tsc"),
+        "--ignoreConfig",
+        "--noEmit",
+        "--strict",
+        "--skipLibCheck",
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--target",
+        "es2022",
+        join(directory, "proof.ts"),
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 it("discovers schema/functions and generates typed API/server without SQL journals", async () => {
   const dir = await temporaryCli("cli-proof-");
   try {

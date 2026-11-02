@@ -33,7 +33,7 @@ if(req.method!=="POST"||u.pathname!=="/command")return new Response("Not found",
 const {op,input}=await req.json(); let args;
 if(op==="configure")args=[{scope,origins:[],oidc:null}];
 else if(op==="deploy")args=[scope,input];
-else if(["health","edit","backup-list","backup-create","backup-delete","auth-create","auth-configure","file-upload","file-delete"].includes(op))args=[scope,op,input??{}];
+else if(["health","data","edit","backup-list","backup-create","backup-delete","auth-create","auth-configure","file-upload","file-delete"].includes(op))args=[scope,op,input??{}];
 else return new Response("Invalid",{status:400});
 const r=await env.RUNTIME.command(["configure","deploy"].includes(op)?op:"admin",args);
 return Response.json(r,{status:r.ok?200:409});

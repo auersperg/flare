@@ -1,3 +1,4 @@
+import { readBody } from "./http.js";
 import {
   assertPath,
   boundedJson,
@@ -68,8 +69,10 @@ export async function uploadFile(
       body: file,
       redirect: "error",
       credentials: "omit",
-      signal:
-        options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 120000),
+      signal: AbortSignal.any([
+        ...(options.signal ? [options.signal] : []),
+        AbortSignal.timeout(options.timeoutMs ?? 120000),
+      ]),
     });
   } catch {
     throw new FlareError(
@@ -78,7 +81,15 @@ export async function uploadFile(
       true,
     );
   }
-  const result: unknown = await response.json().catch(() => null);
+  const result: unknown = response.body
+    ? await readBody(response.body, LIMITS.outputBytes, () => {
+        throw Error("Upload response exceeds limit");
+      })
+        .then((bytes) =>
+          JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+        )
+        .catch(() => null)
+    : null;
   if (!response.ok) {
     const code =
       result &&
@@ -131,8 +142,8 @@ type Subscription = {
   args: unknown;
   observers: Set<Observer<any>>;
   revision: number;
-  value?: unknown;
-  hasValue: boolean;
+  /** Validated canonical JSON; undefined means no snapshot for this identity. */
+  snapshot?: string;
   terminal: boolean;
 };
 const authorizationErrors = new Set([
@@ -184,7 +195,7 @@ export function createClient(options: ClientOptions) {
     for (const observer of sub.observers) {
       try {
         (observer[method] as ((value: unknown) => void) | undefined)?.(
-          method === "next" ? JSON.parse(stableJson(value)) : value,
+          method === "next" ? JSON.parse(value as string) : value,
         );
       } catch {
         /* One observer must not block ACK or its peers. */
@@ -231,31 +242,13 @@ export function createClient(options: ClientOptions) {
           "Missing response body",
           write,
         );
-      const reader = response.body.getReader();
-      let bytes = 0;
-      const chunks: Uint8Array[] = [];
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          bytes += value.byteLength;
-          if (bytes > LIMITS.outputBytes)
-            throw new FlareError(
-              "INVALID_RESPONSE",
-              "Response exceeds limit",
-              write,
-            );
-          chunks.push(value);
-        }
-      } finally {
-        await reader.cancel().catch(() => {});
-      }
-      const combined = new Uint8Array(bytes);
-      let offset = 0;
-      for (const chunk of chunks) {
-        combined.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
+      const combined = await readBody(response.body, LIMITS.outputBytes, () => {
+        throw new FlareError(
+          "INVALID_RESPONSE",
+          "Response exceeds limit",
+          write,
+        );
+      });
       let data: unknown;
       try {
         data = JSON.parse(
@@ -350,7 +343,7 @@ export function createClient(options: ClientOptions) {
         attempt = 0;
         for (const sub of subscriptions.values()) {
           sub.revision = -1;
-          sub.hasValue = false;
+          sub.snapshot = undefined;
           if (!sub.terminal) register(sub);
         }
       };
@@ -372,8 +365,7 @@ export function createClient(options: ClientOptions) {
           if (frame.type === "error") {
             sub.terminal = true;
             if (authorizationErrors.has(frame.code)) {
-              sub.hasValue = false;
-              sub.value = undefined;
+              sub.snapshot = undefined;
             }
             notify(
               sub,
@@ -394,11 +386,10 @@ export function createClient(options: ClientOptions) {
             throw new Error("Invalid snapshot");
           const json = boundedJson(frame.result, LIMITS.outputBytes);
           if (frame.revision > sub.revision) {
-            const changed = !sub.hasValue || stableJson(sub.value) !== json;
+            const changed = sub.snapshot !== json;
             sub.revision = frame.revision;
-            sub.value = frame.result;
-            sub.hasValue = true;
-            if (changed) notify(sub, "next", sub.value);
+            sub.snapshot = json;
+            if (changed) notify(sub, "next", sub.snapshot);
           }
           send({ type: "ack", id: sub.id, revision: sub.revision });
         } catch {
@@ -411,8 +402,7 @@ export function createClient(options: ClientOptions) {
         socket = undefined;
         for (const sub of subscriptions.values()) {
           if (event.code === 1008) {
-            sub.hasValue = false;
-            sub.value = undefined;
+            sub.snapshot = undefined;
             sub.revision = -1;
           }
           if (!sub.terminal)
@@ -447,8 +437,7 @@ export function createClient(options: ClientOptions) {
           error instanceof FlareError &&
           authorizationErrors.has(error.code)
         ) {
-          sub.hasValue = false;
-          sub.value = undefined;
+          sub.snapshot = undefined;
           sub.revision = -1;
         }
         notify(
@@ -517,7 +506,6 @@ export function createClient(options: ClientOptions) {
           args: JSON.parse(stableJson(args)),
           observers: new Set(),
           revision: -1,
-          hasValue: false,
           terminal: false,
         };
         subscriptions.set(key, sub);
@@ -525,8 +513,12 @@ export function createClient(options: ClientOptions) {
       }
       const registration = { next: observer.next, error: observer.error };
       sub.observers.add(registration);
-      if (sub.hasValue)
-        notify({ ...sub, observers: new Set([observer]) }, "next", sub.value);
+      if (sub.snapshot !== undefined)
+        notify(
+          { ...sub, observers: new Set([observer]) },
+          "next",
+          sub.snapshot,
+        );
       void connect();
       let unsubscribed = false;
       return () => {
@@ -560,8 +552,7 @@ export function createClient(options: ClientOptions) {
       socket = undefined;
       old?.close(1000, "Authorization changed");
       for (const sub of subscriptions.values()) {
-        sub.hasValue = false;
-        sub.value = undefined;
+        sub.snapshot = undefined;
         sub.revision = -1;
         sub.terminal = false;
         notify(

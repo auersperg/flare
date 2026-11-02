@@ -12,14 +12,17 @@ export const manifestDigest = ({ digest: _digest, ...manifest }) =>
 
 export async function payloadFiles(directory, prefix = "") {
   const files = [];
-  for (const name of (await readdir(join(directory, prefix))).sort()) {
-    const path = prefix + name;
-    const stat = await lstat(join(directory, path));
-    if (stat.isSymbolicLink())
+  const entries = await readdir(join(directory, prefix), {
+    withFileTypes: true,
+  });
+  entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of entries) {
+    const path = prefix + entry.name;
+    if (entry.isSymbolicLink())
       throw Error("Platform payload contains a symlink");
-    if (stat.isDirectory())
+    if (entry.isDirectory())
       files.push(...(await payloadFiles(directory, path + "/")));
-    else if (stat.isFile()) files.push(path);
+    else if (entry.isFile()) files.push(path);
     else throw Error("Unsupported platform payload entry");
   }
   return files;

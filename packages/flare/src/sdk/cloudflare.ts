@@ -250,7 +250,7 @@ export function createFacet(app: {
         }
         let result: Json = null;
         const changed = new Set<string>();
-        await this.ctx.storage.transaction(async () => {
+        const revision = await this.ctx.storage.transaction(async () => {
           let active = true;
           const scheduled: Promise<unknown>[] = [];
           const jobs: MutationContext["jobs"] = Object.freeze({
@@ -301,19 +301,15 @@ export function createFacet(app: {
                   );
                 const id = crypto.randomUUID();
                 this.ctx.storage.sql.exec(
-                  "INSERT INTO _flared_outbox (id,release,path,args,auth,dueAt) VALUES (?,?,?,?,?,?)",
+                  "INSERT INTO _flared_outbox (id,release,path,args,auth,dueAt,internal) VALUES (?,?,?,?,?,?,?)",
                   id,
                   this.env.RELEASE_ID,
                   path,
                   JSON.stringify(input),
-                  JSON.stringify(call.auth),
+                  JSON.stringify(target.auth === "internal" ? null : call.auth),
                   Date.now() + Math.ceil(delay * 1000),
+                  Number(target.auth === "internal"),
                 );
-                if (target.auth === "internal")
-                  this.ctx.storage.sql.exec(
-                    "UPDATE _flared_outbox SET internal=1,auth='null' WHERE id=?",
-                    id,
-                  );
                 return id;
               })();
               scheduled.push(pending);
@@ -348,22 +344,27 @@ export function createFacet(app: {
             capability.revoke();
             await Promise.allSettled(scheduled);
           }
-          this.commitRevision(changed);
+          return this.commitRevision(changed);
         });
         await this.ctx.storage.sync();
-        return { result, revision: this.revision(), tables: [...changed] };
+        return { result, revision, tables: [...changed] };
       });
     }
     private commitRevision(changed: Set<string>) {
-      this.ctx.storage.sql.exec(
-        "UPDATE _flared_revision SET value=value+1 WHERE id=1",
+      const revision = Number(
+        this.ctx.storage.sql
+          .exec(
+            "UPDATE _flared_revision SET value=value+1 WHERE id=1 RETURNING value",
+          )
+          .one().value,
       );
       for (const name of changed)
         this.ctx.storage.sql.exec(
           "INSERT INTO _flared_changes VALUES (?,?) ON CONFLICT(name) DO UPDATE SET revision=excluded.revision",
           name,
-          this.revision(),
+          revision,
         );
+      return revision;
     }
     pendingJobs(limit = 100): Promise<OutboxJob[]> {
       return this.serial(async () => {
@@ -552,7 +553,7 @@ export function createFacet(app: {
         boundedJson(input, LIMITS.inputBytes);
         let rows: unknown[] = [];
         const changed = new Set<string>();
-        await this.ctx.storage.transaction(async () => {
+        const revision = await this.ctx.storage.transaction(async () => {
           if (input.expectedRevision !== this.revision())
             throw new FlareError(
               "CONFLICT",
@@ -589,10 +590,10 @@ export function createFacet(app: {
           } finally {
             capability.revoke();
           }
-          this.commitRevision(changed);
+          return this.commitRevision(changed);
         });
         await this.ctx.storage.sync();
-        return { rows, revision: this.revision() };
+        return { rows, revision };
       });
     }
   };

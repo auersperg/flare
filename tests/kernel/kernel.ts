@@ -15,8 +15,28 @@ function coreEnv(env: any) {
   };
 }
 export class AppSupervisor extends NativeSupervisor {
+  private authEffects = { closeRevokedSockets: 0, dashboardHint: 0 };
   constructor(ctx: DurableObjectState, env: any) {
     super(ctx, coreEnv(env));
+    for (const name of ["closeRevokedSockets", "dashboardHint"] as const) {
+      const call = (this as any)[name].bind(this);
+      (this as any)[name] = (...args: unknown[]) => {
+        this.authEffects[name]++;
+        return call(...args);
+      };
+    }
+  }
+  async activate(metadata: Parameters<NativeSupervisor["activate"]>[0]) {
+    try {
+      return await super.activate(metadata);
+    } catch (error) {
+      console.error({
+        source: "core-activate-test",
+        error: String(error),
+        stack: error instanceof Error ? error.stack : null,
+      });
+      throw error;
+    }
   }
   async admin(op: string, input: any) {
     try {
@@ -64,6 +84,7 @@ export class AppSupervisor extends NativeSupervisor {
     return {
       alarm: await this.ctx.storage.getAlarm(),
       jobs: this.lifecycle.jobs.list(),
+      authEffects: this.authEffects,
     };
   }
 }

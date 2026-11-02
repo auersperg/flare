@@ -30,6 +30,7 @@ function store(scope = "proof/dev") {
   return {
     auth: new PasswordAuth(storage, scope, "https://api.example.com"),
     db,
+    sql: storage.sql,
   };
 }
 afterEach(() => {
@@ -37,6 +38,49 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 describe("password authentication", () => {
+  it("reads each user page in one public-field query without N+1 lookups", async () => {
+    const { auth, db, sql } = store();
+    const expected = Array.from({ length: 123 }, (_, i) => ({
+      id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      login: `user${i}`,
+      disabled: i % 2 === 1,
+      createdAt: i,
+    }));
+    for (const user of expected)
+      db.query("INSERT INTO auth_users VALUES (?,?,?,?,?)").run(
+        user.id,
+        user.login,
+        "fixture-password-hash",
+        Number(user.disabled),
+        user.createdAt,
+      );
+    const exec = jest.spyOn(sql, "exec");
+    const users: any[] = [];
+    let cursor: string | null = null;
+    do {
+      exec.mockClear();
+      const page: any = await auth.admin("auth-users", { cursor });
+      expect(exec).toHaveBeenCalledTimes(1);
+      expect(exec.mock.calls[0][0]).toBe(
+        "SELECT id,login,disabled,createdAt FROM auth_users WHERE id>? ORDER BY id LIMIT 51",
+      );
+      expect(page.users.length).toBeLessThanOrEqual(50);
+      users.push(...page.users);
+      cursor = page.next;
+      if (cursor) db.query("DELETE FROM auth_users WHERE id=?").run(cursor);
+    } while (cursor);
+    expect(users).toEqual(expected);
+    expect(JSON.stringify(users)).not.toContain("fixture-password-hash");
+    expect(
+      await auth.admin("auth-users", { cursor: expected.at(-1)!.id }),
+    ).toEqual({ users: [], next: null });
+    exec.mockClear();
+    for (const cursor of ["x".repeat(37), 1])
+      await expect(auth.admin("auth-users", { cursor })).rejects.toMatchObject({
+        code: "INVALID_CURSOR",
+      });
+    expect(exec).not.toHaveBeenCalled();
+  });
   it("uses native salted scrypt, verifies and rejects weak input", async () => {
     const a = await hashPassword(password),
       b = await hashPassword(password);

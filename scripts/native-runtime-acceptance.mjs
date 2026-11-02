@@ -608,12 +608,26 @@ try {
         body: "{}",
       });
       assert.equal(cross.status, 403); // Other environment has authentication disabled.
+      const beforeReads = (await control("kernelState", target)).authEffects;
+      assert.equal((await alice.me()).id, a.id);
+      assert.equal((await bob.me()).id, b.id);
+      const settings = await control("admin", target, "auth-settings", {});
+      assert.equal(settings.enabled, true);
       const list = await control("admin", target, "auth-users", {});
       assert.equal(list.users.length, 2);
       assert(!JSON.stringify(list).includes("scrypt$"));
+      assert.deepEqual(
+        (await control("kernelState", target)).authEffects,
+        beforeReads,
+        "Read-only auth calls must not sweep other sessions or notify Dashboard",
+      );
       await control("admin", target, "auth-password", {
         id: a.id,
         password: password + "reset",
+      });
+      assert.deepEqual((await control("kernelState", target)).authEffects, {
+        closeRevokedSockets: beforeReads.closeRevokedSockets + 1,
+        dashboardHint: beforeReads.dashboardHint + 1,
       });
       await assert.rejects(ca.query(reference("lab/identity", "query"), {}));
       await wait(() => errors.length > 0); // Socket close/reconnect cannot regain the revoked identity.
@@ -716,6 +730,18 @@ try {
       size: body.size,
     });
     await uploadFile(grant, body);
+    const extraFiles = [];
+    for (let i = 0; i < 3; i++) {
+      const text = `Parallel backup file ${i}`;
+      const body = new Blob([text], { type: "text/plain" });
+      const extra = await admin("file-upload", {
+        name: `backup-${i}.txt`,
+        type: "text/plain",
+        size: body.size,
+      });
+      await uploadFile(extra, body);
+      extraFiles.push({ id: extra.id, text });
+    }
     const before = await admin("data", { table: "tasks", limit: 100 });
     const accountPassword = "Backup account private passphrase 73!";
     const account = await admin("auth-create", {
@@ -723,11 +749,12 @@ try {
       password: accountPassword,
     });
     const saved = await admin("backup-create", { id });
-    assert.equal(saved.files, 1);
+    assert.equal(saved.files, 4);
     assert.equal((await admin("backup-create", { id })).hash, saved.hash);
     assert.equal((await admin("backup-list")).page[0].id, id);
     // Prove restoration does not depend on the live source file.
     await admin("file-delete", { id: grant.id });
+    for (const file of extraFiles) await admin("file-delete", { id: file.id });
     // Fault injection exists only in this authenticated test harness, never core.
     await control("backupBytes", scope, id, grant.id, "corrupted");
     const input = { id, source: scope };
@@ -797,6 +824,12 @@ try {
         await (await fetch(download.url)).text(),
         "Backup file bytes",
       );
+      for (const file of extraFiles) {
+        const download = await control("admin", target, "file-download", {
+          id: file.id,
+        });
+        assert.equal(await (await fetch(download.url)).text(), file.text);
+      }
       await restored.mutation(reference("tasks/create", "mutation"), {
         title: "Works after restore",
       });

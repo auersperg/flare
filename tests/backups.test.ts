@@ -139,6 +139,187 @@ function bucket() {
   return { r2, objects };
 }
 describe("Supervisor backup inventory", () => {
+  it("seeks deep pages through timestamp ties and incomplete backups without rescanning", async () => {
+    const { db, storage } = await fixture();
+    try {
+      const calls: { text: string; args: any[] }[] = [];
+      const exec = storage.sql.exec.bind(storage.sql);
+      storage.sql.exec = (text: string, ...args: any[]) => {
+        if (text.startsWith("SELECT * FROM backup_index WHERE"))
+          calls.push({ text, args });
+        return exec(text, ...args);
+      };
+      const inventory = new BackupInventory(
+        storage as any,
+        { completed: async () => true } as any,
+        scope,
+      );
+      db.exec("UPDATE backup_inventory SET complete=1");
+      for (let i = 0; i < 65; i++) {
+        const id = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+        const at = Math.floor(i / 23) - 1;
+        db.query("INSERT INTO backup_index VALUES (?,?,?)").run(
+          id,
+          at,
+          JSON.stringify(
+            at < 0
+              ? { id, scope, state: "incomplete" }
+              : {
+                  id,
+                  scope,
+                  at,
+                  hash: "fixture",
+                  revision: i,
+                  rows: 0,
+                  files: 0,
+                },
+          ),
+        );
+      }
+      const expected = db
+        .query("SELECT id FROM backup_index ORDER BY at DESC,id DESC")
+        .all()
+        .map((r: any) => r.id);
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const result = await inventory.list(cursor);
+        seen.push(...result.page.map((item: any) => item.id));
+        cursor = result.cursor ?? undefined;
+        // A cursor is a key, not a requirement that its row still exists.
+        db.query("DELETE FROM backup_index WHERE id=?").run(
+          result.page.at(-1)!.id,
+        );
+      } while (cursor);
+      expect(seen).toEqual(expected);
+      expect(calls).toHaveLength(3);
+      for (const { text, args } of calls) {
+        const plan = db
+          .query("EXPLAIN QUERY PLAN " + text)
+          .all(...args)
+          .map((r: any) => r.detail)
+          .join(" ");
+        expect(plan).toContain(
+          "SEARCH backup_index USING INDEX backup_index_at",
+        );
+        expect(plan).not.toContain("SCAN");
+        expect(plan).not.toContain("TEMP B-TREE");
+      }
+    } finally {
+      db.close();
+    }
+  });
+  it("reads one bounded R2 metadata page concurrently and preserves listing order", async () => {
+    const ids = Array.from({ length: 20 }, () => crypto.randomUUID());
+    const pending: { key: string; resolve: (value: any) => void }[] = [];
+    const store = new BackupStore(
+      {
+        async list(options: any) {
+          expect(options).toEqual({
+            prefix: backupPrefix(scope),
+            delimiter: "/",
+            limit: 20,
+            cursor: "previous",
+          });
+          return {
+            delimitedPrefixes: ids.map((id) => backupPrefix(scope, id)),
+            truncated: true,
+            cursor: "next",
+          };
+        },
+        head(key: string) {
+          return new Promise((resolve) => pending.push({ key, resolve }));
+        },
+      } as any,
+      undefined,
+    );
+    const result = store.list(scope, "previous");
+    await Promise.resolve();
+    expect(pending.map((p) => p.key)).toEqual(
+      ids.map((id) => backupPrefix(scope, id) + "manifest.json"),
+    );
+    for (let i = pending.length - 1; i >= 0; i--)
+      pending[i].resolve(
+        i === 7
+          ? null
+          : {
+              customMetadata: {
+                at: String(i),
+                revision: "1",
+                release: "hash",
+                rows: "2",
+                files: "0",
+              },
+            },
+      );
+    const page = await result;
+    expect(page.cursor).toBe("next");
+    expect(page.page.map((item) => item.id)).toEqual(ids);
+    expect(page.page[7]).toEqual({ id: ids[7], scope, state: "incomplete" });
+    expect(page.page[19]).toMatchObject({
+      at: 19,
+      revision: 1,
+      rows: 2,
+      files: 0,
+    });
+  });
+  it("does not checkpoint partial metadata results when a concurrent read fails", async () => {
+    const { db, storage } = await fixture();
+    try {
+      const ids = Array.from({ length: 3 }, () => crypto.randomUUID());
+      const pending: {
+        resolve: (value: any) => void;
+        reject: (error: Error) => void;
+      }[] = [];
+      let failed = true;
+      const cursors: unknown[] = [];
+      const store = new BackupStore(
+        {
+          async list(options: any) {
+            cursors.push(options.cursor);
+            return {
+              delimitedPrefixes: ids.map((id) => backupPrefix(scope, id)),
+              truncated: true,
+              cursor: "next",
+            };
+          },
+          async head() {
+            if (failed)
+              return new Promise((resolve, reject) =>
+                pending.push({ resolve, reject }),
+              );
+            return null;
+          },
+        } as any,
+        undefined,
+      );
+      const inventory = new BackupInventory(storage as any, store, scope);
+      const result = inventory.list();
+      await Promise.resolve();
+      expect(pending).toHaveLength(3);
+      pending[1].reject(Error("metadata unavailable"));
+      await expect(result).rejects.toThrow("metadata unavailable");
+      pending[0].resolve(null);
+      pending[2].resolve(null);
+      await Promise.resolve();
+      expect(db.query("SELECT COUNT(*) n FROM backup_index").get()).toEqual({
+        n: 0,
+      });
+      expect(
+        db.query("SELECT cursor,complete FROM backup_inventory").get(),
+      ).toEqual({ cursor: null, complete: 0 });
+      failed = false;
+      const retried = await inventory.list();
+      expect(cursors).toEqual([undefined, undefined]);
+      expect(retried.page).toHaveLength(3);
+      expect(retried.inventory).toBe("partial");
+      expect(
+        db.query("SELECT cursor,complete FROM backup_inventory").get(),
+      ).toEqual({ cursor: "next", complete: 0 });
+    } finally {
+      db.close();
+    }
+  });
   it("does not confuse UUID order with newest completed and survives restart/delete ambiguity", async () => {
     const { db, storage } = await fixture(),
       { r2, objects } = bucket();
@@ -333,6 +514,121 @@ describe("bounded logical snapshots", () => {
   });
 });
 describe("private R2 backup capsules", () => {
+  it.each(["create", "restore"] as const)(
+    "bounds %s streams, preserves order and waits for in-flight writes on failure",
+    async (operation) => {
+      for (const fail of [false, true]) {
+        const s = await fixture(),
+          builds = bucket(),
+          files = bucket();
+        try {
+          const entries = Array.from({ length: 7 }, (_, i) => ({
+            id: crypto.randomUUID(),
+            name: `file${i}`,
+            type: "text/plain",
+            size: 1,
+            createdAt: i,
+          }));
+          for (const [i, file] of entries.entries())
+            await files.r2.put(`files/${scope}/${file.id}`, String(i));
+          const store = new BackupStore(builds.r2, files.r2);
+          const value = {
+            format: 1 as const,
+            id: crypto.randomUUID(),
+            scope,
+            at: 1,
+            bundle: await bundle(),
+            data: exportData(s.storage, schema),
+          };
+          if (operation === "restore") await store.create(value, entries);
+          const saved =
+            operation === "restore" ? await store.read(scope, value.id) : null;
+          const destination = operation === "create" ? builds.r2 : files.r2;
+          const put = destination.put.bind(destination);
+          const writes: {
+            resolve: () => void;
+            reject: (error: Error) => void;
+          }[] = [];
+          let active = 0,
+            peak = 0,
+            settled = false,
+            manifests = 0;
+          destination.put = async (key: string, body: any, options: any) => {
+            if (key.endsWith("manifest.json")) {
+              expect(active).toBe(0);
+              expect(writes).toHaveLength(entries.length);
+              manifests++;
+              return put(key, body, options);
+            }
+            peak = Math.max(peak, ++active);
+            try {
+              await new Promise<void>((resolve, reject) =>
+                writes.push({ resolve, reject }),
+              );
+              return await put(key, body, options);
+            } finally {
+              active--;
+            }
+          };
+          const pending =
+            operation === "create"
+              ? store.create(value, entries)
+              : store.copyFiles(saved!, target);
+          void pending.then(
+            () => {
+              settled = true;
+            },
+            () => {
+              settled = true;
+            },
+          );
+          const waitForWrites = async (count: number) => {
+            for (let i = 0; i < 200 && writes.length < count; i++)
+              await Bun.sleep(1);
+            expect(writes).toHaveLength(count);
+          };
+          await waitForWrites(3);
+          expect(active).toBe(3);
+          if (fail) {
+            writes[1].reject(Error("copy unavailable"));
+            await Bun.sleep(1);
+            expect(settled).toBe(false);
+            expect(writes).toHaveLength(3);
+            writes[2].resolve();
+            writes[0].resolve();
+            await expect(pending).rejects.toThrow("copy unavailable");
+            expect(writes).toHaveLength(3);
+            expect(manifests).toBe(0);
+          } else {
+            // A free slot starts another file without waiting for slow peers.
+            let count = 3;
+            for (const i of [2, 0, 1, 3]) {
+              writes[i].resolve();
+              await waitForWrites(++count);
+              expect(active).toBe(3);
+            }
+            for (const i of [6, 5, 4]) writes[i].resolve();
+            await pending;
+            expect(manifests).toBe(operation === "create" ? 1 : 0);
+            expect(
+              (await store.read(scope, value.id))!.files.map((file) => file.id),
+            ).toEqual(entries.map((file) => file.id));
+            if (operation === "restore")
+              for (const [i, file] of entries.entries())
+                expect(
+                  await (
+                    await files.r2.get(`files/${target}/${file.id}`)
+                  ).text(),
+                ).toBe(String(i));
+          }
+          expect(peak).toBe(3);
+          expect(active).toBe(0);
+        } finally {
+          s.db.close();
+        }
+      }
+    },
+  );
   it("copies bytes, commits manifest last and restores scoped files with matching checksums", async () => {
     const s = await fixture(),
       builds = bucket(),

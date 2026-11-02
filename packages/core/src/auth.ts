@@ -38,6 +38,12 @@ export function validateAuthBackup(
 const ttl = 12 * 60 * 60 * 1000;
 const kdf = { N: 16384, r: 8, p: 5, maxmem: 32 * 1024 * 1024 };
 const dummySalt = "00000000000000000000000000000000";
+const userInfo = (row: Record<string, unknown>) => ({
+  id: String(row.id),
+  login: String(row.login),
+  disabled: !!row.disabled,
+  createdAt: Number(row.createdAt),
+});
 function derive(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) =>
     scrypt(password, salt, 32, kdf, (error, value) =>
@@ -219,12 +225,7 @@ export class PasswordAuth {
       .exec("SELECT id,login,disabled,createdAt FROM auth_users WHERE id=?", id)
       .toArray()[0];
     if (!row) fail("NOT_FOUND");
-    return {
-      id: String(row.id),
-      login: String(row.login),
-      disabled: !!row.disabled,
-      createdAt: Number(row.createdAt),
-    };
+    return userInfo(row);
   }
   async authenticate(token: string): Promise<Auth> {
     if (
@@ -348,12 +349,12 @@ export class PasswordAuth {
         fail("INVALID_CURSOR");
       const rows = this.storage.sql
         .exec(
-          "SELECT id FROM auth_users WHERE id>? ORDER BY id LIMIT 51",
+          "SELECT id,login,disabled,createdAt FROM auth_users WHERE id>? ORDER BY id LIMIT 51",
           cursor,
         )
         .toArray();
       return {
-        users: rows.slice(0, 50).map((r) => this.user(String(r.id))),
+        users: rows.slice(0, 50).map(userInfo),
         next: rows.length > 50 ? String(rows[49].id) : null,
       };
     }

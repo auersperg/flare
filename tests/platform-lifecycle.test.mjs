@@ -588,6 +588,45 @@ describe("Platform lifecycle", () => {
       expect(cloud.state().access.snapshot).toBe(snapshot);
       expect(app.policies[0].decision).toBe("deny"); // CLI never writes policies.
     }));
+  it("enumerates payloads in bytewise depth-first order and refuses directory links", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "flare-payload-walk-"));
+    try {
+      for (const name of ["a", "empty", "nested"])
+        await mkdir(join(directory, name));
+      for (const name of [
+        "a/z.js",
+        "nested/file.js",
+        "a.txt",
+        "Z.js",
+        "_entry.js",
+        "B.js",
+        "é.js",
+      ])
+        await writeFile(join(directory, name), "fixture");
+      expect(await payloadFiles(directory)).toEqual([
+        "B.js",
+        "Z.js",
+        "_entry.js",
+        "a/z.js",
+        "a.txt",
+        "nested/file.js",
+        "é.js",
+      ]);
+      await symlink("nested", join(directory, "linked"));
+      await expect(payloadFiles(directory)).rejects.toThrow("symlink");
+      await rm(join(directory, "linked"));
+      await symlink("missing", join(directory, "dangling"));
+      await expect(payloadFiles(directory)).rejects.toThrow("symlink");
+      await rm(join(directory, "dangling"));
+      const fifo = join(directory, "fifo");
+      expect(spawnSync("mkfifo", [fifo]).status).toBe(0);
+      await expect(payloadFiles(directory)).rejects.toThrow(
+        "Unsupported platform payload entry",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it("packages immutable payload files and detects corruption, unsafe paths and extras", async () => {
     const f = await fixture();
     try {

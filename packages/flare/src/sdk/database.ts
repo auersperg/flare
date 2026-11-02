@@ -1,6 +1,6 @@
 import { FlareError, boundedJson, stableJson } from "./protocol.js";
 import {
-  documentValue,
+  documentJson,
   fieldSql,
   quote,
   type Schema,
@@ -156,7 +156,10 @@ export function database<S extends Schema>(
       filters: readonly Filter[],
       direction: "asc" | "desc",
     ): Query<any> {
-      const page = (options: { limit: number; cursor?: string | null }) =>
+      const page = (
+        options: { limit: number; cursor?: string | null },
+        withCursor = true,
+      ) =>
         task(async () => {
           table(name);
           size(options.limit);
@@ -166,12 +169,38 @@ export function database<S extends Schema>(
             "_id",
           ];
           const expressions = fields.map(fieldSql);
-          const signature = stableJson({ name, index, filters, direction });
+          const signature = withCursor
+            ? stableJson({ name, index, filters, direction })
+            : "";
+          const fixed = filters.filter((f) => f.operator === "=");
           const where = filters.map(
             (f) =>
               `${fieldSql(f.field)} ${f.operator === "=" ? "IS" : f.operator} ?`,
           );
           const bindings: SqlValue[] = filters.map((f) => bind(f.value));
+          const rowLimit = options.limit + (withCursor ? 1 : 0);
+          const rows: Record<string, SqlValue>[] = [];
+          const read = (
+            terms: string[] = [],
+            values: SqlValue[] = [],
+            orderStart = fixed.length,
+          ) => {
+            if (rows.length >= rowLimit) return;
+            const conditions = [...terms, ...where];
+            rows.push(
+              ...sql
+                .exec(
+                  `SELECT *${withCursor ? "," + expressions.map((e, i) => `${e} AS __k${i}`).join(",") : ""} FROM ${quote(name)} ${conditions.length ? "WHERE " + conditions.join(" AND ") : ""} ORDER BY ${expressions
+                    .slice(orderStart)
+                    .map((e) => `${e} ${direction}`)
+                    .join(",")} LIMIT ?`,
+                  ...values,
+                  ...bindings,
+                  rowLimit - rows.length,
+                )
+                .toArray(),
+            );
+          };
           if (options.cursor != null) {
             let token: any;
             try {
@@ -185,40 +214,63 @@ export function database<S extends Schema>(
               throw new FlareError("INVALID_CURSOR", "Invalid cursor");
             }
             if (
+              !token ||
               token.signature !== signature ||
               !Array.isArray(token.values) ||
               token.values.length !== fields.length ||
-              !token.values.every(scalar)
+              !token.values.every(scalar) ||
+              typeof token.values.at(-2) !== "number" ||
+              typeof token.values.at(-1) !== "string"
             )
               throw new FlareError(
                 "INVALID_CURSOR",
                 "Cursor belongs to a different query",
               );
-            const terms = expressions.map((expr, i) => {
-              const prefix = expressions.slice(0, i).map((e) => `${e} IS ?`);
-              bindings.push(...token.values.slice(0, i).map(bind));
-              const value = token.values[i];
-              if (value === null)
-                prefix.push(direction === "asc" ? `${expr} IS NOT NULL` : "0");
-              else {
-                prefix.push(
-                  direction === "asc"
-                    ? `${expr} > ?`
-                    : `(${expr} < ? OR ${expr} IS NULL)`,
+            if (fixed.some((f, i) => bind(f.value) !== bind(token.values[i])))
+              throw new FlareError(
+                "INVALID_CURSOR",
+                "Cursor violates index range",
+              );
+            // Visit disjoint key ranges in output order, stopping when full.
+            // One OR predicate makes SQLite scan/sort earlier index entries.
+            // Keep the original filters in every range, including for forged cursors.
+            const first = fixed.length;
+            for (
+              let i = expressions.length - 2;
+              i >= first && rows.length < rowLimit;
+              i--
+            ) {
+              const prefix = expressions
+                .slice(first, i)
+                .map((e) => `${e} IS ?`);
+              const values = token.values.slice(first, i).map(bind);
+              const expr = expressions[i],
+                value = token.values[i];
+              if (i === expressions.length - 2) {
+                read(
+                  [
+                    ...prefix,
+                    `(${expressions.slice(i).join(",")}) ${direction === "asc" ? ">" : "<"} (?,?)`,
+                  ],
+                  [...values, ...token.values.slice(i).map(bind)],
+                  i,
                 );
-                bindings.push(bind(value));
+              } else if (direction === "asc") {
+                read(
+                  [
+                    ...prefix,
+                    value === null ? `${expr} IS NOT NULL` : `${expr} > ?`,
+                  ],
+                  value === null ? values : [...values, bind(value)],
+                  i,
+                );
+              } else if (value !== null) {
+                read([...prefix, `${expr} < ?`], [...values, bind(value)], i);
+                // SQLite places NULL below every non-null scalar.
+                read([...prefix, `${expr} IS NULL`], values, i + 1);
               }
-              return "(" + prefix.join(" AND ") + ")";
-            });
-            where.push("(" + terms.join(" OR ") + ")");
-          }
-          const rows = sql
-            .exec(
-              `SELECT *,${expressions.map((e, i) => `${e} AS __k${i}`).join(",")} FROM ${quote(name)} ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY ${expressions.map((e) => `${e} ${direction}`).join(",")} LIMIT ?`,
-              ...bindings,
-              options.limit + 1,
-            )
-            .toArray();
+            }
+          } else read();
           let more = rows.length > options.limit;
           if (more) rows.pop();
           const docs: any[] = [];
@@ -237,7 +289,7 @@ export function database<S extends Schema>(
           }
           const last = rows[docs.length - 1];
           const continueCursor =
-            more && last
+            withCursor && more && last
               ? btoa(
                   String.fromCharCode(
                     ...new TextEncoder().encode(
@@ -330,7 +382,7 @@ export function database<S extends Schema>(
         paginate: page,
         take(limit: number) {
           return task(async () => {
-            const result = await page({ limit });
+            const result = await page({ limit }, false);
             if (!result.isDone && result.page.length < limit)
               throw new FlareError(
                 "TOO_LARGE",
@@ -341,7 +393,7 @@ export function database<S extends Schema>(
         },
         first() {
           return task(
-            async () => (await page({ limit: 1 })).page[0] ?? null,
+            async () => (await page({ limit: 1 }, false)).page[0] ?? null,
             false,
           );
         },
@@ -355,14 +407,14 @@ export function database<S extends Schema>(
       return task(async () => {
         writing();
         const definition = table(name),
-          value = await documentValue(definition, input);
+          value = await documentJson(definition, input);
         writing();
         const id = crypto.randomUUID();
         sql.exec(
           `INSERT INTO ${quote(name)} VALUES (?,?,?)`,
           id,
           Date.now(),
-          stableJson(value),
+          value,
         );
         changed.add(name);
         return id;
@@ -380,16 +432,12 @@ export function database<S extends Schema>(
           .exec(`SELECT _data FROM ${quote(name)} WHERE _id=?`, id)
           .toArray()[0];
         if (!row) throw new FlareError("NOT_FOUND", "Document not found");
-        const value = await documentValue(definition, {
+        const value = await documentJson(definition, {
           ...JSON.parse(String(row._data)),
           ...patch,
         });
         writing();
-        sql.exec(
-          `UPDATE ${quote(name)} SET _data=? WHERE _id=?`,
-          stableJson(value),
-          id,
-        );
+        sql.exec(`UPDATE ${quote(name)} SET _data=? WHERE _id=?`, value, id);
         changed.add(name);
       });
     },
@@ -398,12 +446,12 @@ export function database<S extends Schema>(
         writing();
         const definition = table(name);
         checkedId(id);
-        const value = await documentValue(definition, input);
+        const value = await documentJson(definition, input);
         writing();
         const rows = sql
           .exec(
             `UPDATE ${quote(name)} SET _data=? WHERE _id=? RETURNING _id`,
-            stableJson(value),
+            value,
             id,
           )
           .toArray();

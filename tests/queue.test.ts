@@ -55,4 +55,56 @@ describe("native Queue batching", () => {
     expect(retried).toEqual([3, 8]);
     expect(errors).toEqual(retried);
   });
+  it("keeps free slots busy while a slow message is pending", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started: number[] = [],
+      acked: number[] = [],
+      retried: number[] = [];
+    let finished = false;
+    const messages = Array.from({ length: 12 }, (_, body) => ({
+      body,
+      ack: () => acked.push(body),
+      retry: () => retried.push(body),
+    }));
+    const result = consumeBatch<number>(
+      { messages } as any,
+      async (body) => {
+        started.push(body);
+        if (body === 0) {
+          await gate;
+          throw Error("slow failure");
+        }
+      },
+      () => {},
+    ).then(() => {
+      finished = true;
+    });
+    try {
+      for (let i = 0; i < 30; i++) await Promise.resolve();
+      expect(started).toEqual(Array.from({ length: 12 }, (_, i) => i));
+      expect(acked).toHaveLength(11);
+      expect(finished).toBe(false);
+    } finally {
+      release();
+      await result;
+    }
+    expect(retried).toEqual([0]);
+    expect(finished).toBe(true);
+  });
+  it("handles empty batches without starting work", async () => {
+    let calls = 0;
+    await consumeBatch(
+      { messages: [] } as any,
+      async () => {
+        calls++;
+      },
+      () => {
+        calls++;
+      },
+    );
+    expect(calls).toBe(0);
+  });
 });

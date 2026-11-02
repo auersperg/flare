@@ -202,6 +202,61 @@ describe("bounded broadcast snapshots", () => {
   });
 });
 describe("on-demand retention", () => {
+  it("indexes recent jobs on existing storage without sorting the whole history", async () => {
+    const source = await Bun.file(
+      new URL("../packages/core/src/runtime.ts", import.meta.url),
+    ).text();
+    const statements = [
+      ...source.matchAll(
+        /"(CREATE (?:TABLE|INDEX) IF NOT EXISTS [^"\n]*\bjob_events\b[^"\n]*)"/g,
+      ),
+    ].map((match) => match[1]);
+    const query = source.match(
+      /"(SELECT \* FROM job_events ORDER BY at DESC LIMIT 100)"/,
+    )?.[1];
+    expect(query).toBeDefined();
+    const db = new Database(":memory:");
+    try {
+      // Upgrade a populated database, not just a fresh schema.
+      for (const statement of statements.filter(
+        (statement) => !statement.includes("job_events_at"),
+      ))
+        db.exec(statement);
+      const insert = db.query(
+        "INSERT INTO job_events(id,path,release,dueAt,state,at) VALUES (?,?,?,?,?,?)",
+      );
+      for (let i = 0; i < 1000; i++)
+        insert.run(
+          String(i),
+          "process",
+          "release",
+          i,
+          ["queued", "running", "failed", "completed"][i % 4],
+          i,
+        );
+      for (let restart = 0; restart < 2; restart++)
+        for (const statement of statements) db.exec(statement);
+      expect(db.query("SELECT count(*) n FROM job_events").get()).toEqual({
+        n: 1000,
+      });
+      const rows = db.query(query!).all();
+      expect(rows.map((row: any) => row.at)).toEqual(
+        Array.from({ length: 100 }, (_, i) => 999 - i),
+      );
+      expect(new Set(rows.map((row: any) => row.state))).toEqual(
+        new Set(["queued", "running", "failed", "completed"]),
+      );
+      const plan = db
+        .query("EXPLAIN QUERY PLAN " + query)
+        .all()
+        .map((row: any) => row.detail)
+        .join(" ");
+      expect(plan).toContain("USING INDEX job_events_at");
+      expect(plan).not.toContain("TEMP B-TREE");
+    } finally {
+      db.close();
+    }
+  });
   it("bounds cleanup and preserves active jobs and recent deduplication receipts", () => {
     const db = new Database(":memory:");
     try {

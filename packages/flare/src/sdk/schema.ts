@@ -2,7 +2,7 @@ import type {
   StandardSchemaV1,
   StandardJSONSchemaV1,
 } from "@standard-schema/spec";
-import { FlareError, boundedJson, stableJson, type Json } from "./protocol.js";
+import { FlareError, boundedJson, stableJson } from "./protocol.js";
 
 export type SqlValue = ArrayBuffer | string | number | null;
 /** The small structural portion of native storage needed by the adapter; no Worker globals in public types. */
@@ -199,10 +199,11 @@ function documentSchema(table: TableDefinition) {
   }
   return doc;
 }
-export async function documentValue(
+/** Validate once and return the canonical JSON written by all storage paths. */
+export async function documentJson(
   table: TableDefinition,
   input: unknown,
-): Promise<Record<string, Json>> {
+): Promise<string> {
   boundedJson(input, 65536);
   const properties = documentSchema(table).properties ?? {};
   if (
@@ -221,7 +222,7 @@ export async function documentValue(
     Object.keys(result.value).some((k) => !Object.hasOwn(properties, k))
   )
     throw new FlareError("INVALID_INPUT", "Document failed schema validation");
-  return JSON.parse(boundedJson(result.value, 65536));
+  return boundedJson(result.value, 65536);
 }
 export async function applySchema(storage: NativeStorage, schema: Schema) {
   const contract = schemaContract(schema),
@@ -254,11 +255,11 @@ export async function applySchema(storage: NativeStorage, schema: Schema) {
         `CREATE TABLE IF NOT EXISTS ${quote(name)} (_id TEXT PRIMARY KEY, _creationTime REAL NOT NULL, _data TEXT NOT NULL CHECK(json_valid(_data)))`,
       );
       // Validate existing documents before activating a changed contract. Consume each cursor before await.
-      let cursor = "";
-      while (
+      const changed =
         !old[name] ||
-        stableJson(old[name].document) !== stableJson(definition.document)
-      ) {
+        stableJson(old[name].document) !== stableJson(definition.document);
+      let cursor = "";
+      while (changed) {
         const rows = storage.sql
           .exec(
             `SELECT _id,_data FROM ${quote(name)} WHERE _id > ? ORDER BY _id LIMIT 100`,
@@ -266,14 +267,14 @@ export async function applySchema(storage: NativeStorage, schema: Schema) {
           )
           .toArray();
         for (const row of rows) {
-          const value = await documentValue(
+          const value = await documentJson(
             schema[name],
             JSON.parse(String(row._data)),
           );
-          if (stableJson(value) !== stableJson(JSON.parse(String(row._data))))
+          if (value !== stableJson(JSON.parse(String(row._data))))
             storage.sql.exec(
               `UPDATE ${quote(name)} SET _data=? WHERE _id=?`,
-              stableJson(value),
+              value,
               row._id,
             );
         }
