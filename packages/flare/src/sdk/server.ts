@@ -1,3 +1,5 @@
+import type { CodexContext } from "./codex.js";
+export type { CodexContext, CodexTask, CodexTaskInput } from "./codex.js";
 import type { SearchContext } from "./search.js";
 export type { SearchContext, SearchHit, SearchState } from "./search.js";
 export { z } from "zod";
@@ -46,6 +48,7 @@ export interface MutationContext<S extends Schema = Schema> {
   };
 }
 export interface ActionContext {
+  readonly codex: CodexContext;
   readonly search: SearchContext;
   readonly auth: Auth | null;
   runQuery<I, O>(ref: FunctionRef<I, O>, args: I): Promise<O>;

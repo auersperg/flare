@@ -16,5 +16,10 @@
     }
   },
   "include": ["packages/**/*.ts", "packages/**/*.tsx", "tests/**/*.ts"],
-  "exclude": ["packages/core/dashboard", "**/dist/**", "**/node_modules/**"]
+  "exclude": [
+    "packages/core/dashboard",
+    "**/dist/**",
+    "**/node_modules/**",
+    "packages/codex"
+  ]
 }

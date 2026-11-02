@@ -1,0 +1,8 @@
+{
+  "name": "@flare/codex-runner",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/sandbox": "1.0.3"
+  }
+}

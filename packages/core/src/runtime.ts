@@ -1,3 +1,4 @@
+import { codexCommand } from "./codex.js";
 import { SearchStore } from "./search.js";
 import { mcpResponse, mcpTools } from "./mcp.js";
 import { PasswordAuth } from "./auth.js";
@@ -2013,6 +2014,9 @@ export class AppCapability extends WorkerEntrypoint<Env, { scope: string }> {
   }
   secret(name: string) {
     return appSecret(this.env, this.ctx.props.scope, name);
+  }
+  codexCommand(op: string, input: unknown) {
+    return codexCommand(this.env, this.ctx.props.scope, op, input);
   }
   searchCommand(op: string, input: any) {
     return getSupervisor(this.env, this.ctx.props.scope).searchCommand(

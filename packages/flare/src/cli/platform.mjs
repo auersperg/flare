@@ -261,6 +261,13 @@ export function workerConfiguration(state, release, role, bootstrap = false) {
     services: bootstrap
       ? []
       : [
+          ...(validatePlatformConfig(state.config).codex ?? []).map(
+            ({ binding, service }) => ({
+              binding,
+              service,
+              entrypoint: "CodexService",
+            }),
+          ),
           {
             binding: "ADMIN_API",
             service: state.workers.admin.name,

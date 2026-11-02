@@ -7,11 +7,11 @@ export function validatePlatformConfig(value = {}) {
   if (
     !object(value) ||
     Object.keys(value).some(
-      (k) => !["capabilities", "secrets", "search"].includes(k),
+      (k) => !["capabilities", "secrets", "search", "codex"].includes(k),
     )
   )
     throw Error(
-      "Platform config accepts only capabilities, secrets and search references",
+      "Platform config accepts only capabilities, secrets, search and codex references",
     );
   const capabilities = value.capabilities ?? {},
     secrets = value.secrets ?? [];
@@ -68,6 +68,32 @@ export function validatePlatformConfig(value = {}) {
       };
     })
     .sort((a, b) => a.binding.localeCompare(b.binding));
+  const codex = value.codex ?? [];
+  if (!Array.isArray(codex) || codex.length > 16)
+    throw Error("Invalid Codex references");
+  const codexBindings = new Set(),
+    codexServices = new Set();
+  const codexReferences = codex
+    .map((r) => {
+      if (
+        !object(r) ||
+        Object.keys(r).sort().join() !== "binding,scope,service" ||
+        !/^APP_CODEX_[A-Z0-9_]{1,64}$/.test(r.binding) ||
+        typeof r.service !== "string" ||
+        !/^[a-z0-9][a-z0-9-]{0,62}$/.test(r.service) ||
+        typeof r.scope !== "string" ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/(dev|prod)$/.test(
+          r.scope,
+        ) ||
+        codexBindings.has(r.binding) ||
+        codexServices.has(r.service)
+      )
+        throw Error("Invalid or duplicate Codex runner reference");
+      codexBindings.add(r.binding);
+      codexServices.add(r.service);
+      return { binding: r.binding, service: r.service, scope: r.scope };
+    })
+    .sort((a, b) => a.binding.localeCompare(b.binding));
   const result = {};
   const used = new Set();
   for (const scope of Object.keys(capabilities).sort()) {
@@ -77,7 +103,9 @@ export function validatePlatformConfig(value = {}) {
         scope,
       ) ||
       !object(p) ||
-      Object.keys(p).some((k) => !["outbound", "secrets", "search"].includes(k))
+      Object.keys(p).some(
+        (k) => !["outbound", "secrets", "search", "codex"].includes(k),
+      )
     )
       throw Error("Invalid capability scope");
     const hosts = p.outbound ?? [],
@@ -111,7 +139,15 @@ export function validatePlatformConfig(value = {}) {
       throw Error(
         "Search grant must reference an instance owned by this environment",
       );
+    if (
+      p.codex !== undefined &&
+      !codexReferences.some((r) => r.binding === p.codex && r.scope === scope)
+    )
+      throw Error(
+        "Codex grant must reference a runner owned by this environment",
+      );
     result[scope] = {
+      ...(p.codex === undefined ? {} : { codex: p.codex }),
       ...(p.search === undefined ? {} : { search: p.search }),
       outbound: [...new Set(hosts)].sort(),
       secrets: Object.fromEntries(Object.entries(mapping).sort()),
@@ -124,6 +160,7 @@ export function validatePlatformConfig(value = {}) {
   return {
     capabilities: result,
     secrets: references,
+    ...(codexReferences.length ? { codex: codexReferences } : {}),
     ...(searchReferences.length ? { search: searchReferences } : {}),
   };
 }

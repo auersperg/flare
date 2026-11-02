@@ -4,6 +4,7 @@ export type AppPolicy = {
   outbound: string[];
   secrets: Record<string, string>;
   search?: string;
+  codex?: string;
 };
 export type PolicyEnv = { APP_CAPABILITIES?: string };
 const empty: AppPolicy = { outbound: [], secrets: {} };
@@ -23,7 +24,7 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
         !/^[0-9a-f-]{36}\/(dev|prod)$/.test(key) ||
         !value ||
         Object.keys(value).some(
-          (k) => !["outbound", "secrets", "search"].includes(k),
+          (k) => !["outbound", "secrets", "search", "codex"].includes(k),
         )
       )
         throw new FlareError("INVALID_CONFIG", "Invalid capability scope");
@@ -67,7 +68,14 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
           !/^APP_SEARCH_[A-Z0-9_]{1,64}$/.test(value.search))
       )
         throw new FlareError("INVALID_CONFIG", "Invalid search binding");
+      if (
+        value.codex !== undefined &&
+        (typeof value.codex !== "string" ||
+          !/^APP_CODEX_[A-Z0-9_]{1,64}$/.test(value.codex))
+      )
+        throw new FlareError("INVALID_CONFIG", "Invalid Codex binding");
       cached![key] = Object.freeze({
+        ...(value.codex === undefined ? {} : { codex: value.codex }),
         ...(value.search === undefined ? {} : { search: value.search }),
         outbound: Object.freeze([...new Set(outbound)]) as unknown as string[],
         secrets: Object.freeze({ ...secrets }),

@@ -1,3 +1,4 @@
+import { codexContext } from "./codex.js";
 import { searchContext } from "./search.js";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import {
@@ -100,6 +101,7 @@ export interface ScopedCapability {
   ): Promise<string>;
   download(id: string): Promise<Response>;
   fileCommand(op: string, input: unknown): Promise<any>;
+  codexCommand(op: string, input: unknown): Promise<any>;
   searchCommand(op: string, input: unknown): Promise<any>;
   scheduleCommand(op: string, input: unknown): Promise<any>;
 }
@@ -648,6 +650,9 @@ export function createAction(app: {
       const capability = this.env.CAPABILITY;
       const context: ActionContext = {
         auth: call.auth,
+        codex: codexContext((op, input) =>
+          rpcData(capability.codexCommand(op, input)),
+        ),
         search: searchContext((op, input) =>
           rpcData(capability.searchCommand(op, input)),
         ),

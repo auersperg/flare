@@ -507,6 +507,7 @@ describe("Production-only repository", () => {
       "packages/flare",
       "packages/core",
       "packages/core/dashboard",
+      "packages/codex",
     ]);
     expect(pkg.scripts.dev).toBeUndefined();
     expect(pkg.scripts["build:demo"]).toBeUndefined();
