@@ -198,6 +198,8 @@ export default { async fetch(req,env,ctx) {
       assert.ok(events.includes("fixture OK"));
       assert.ok(events.includes("[redacted]"));
       assert.ok(!events.includes("fixture-rotated"));
+      assert.ok(events.includes('"state":"snapshot"'));
+      assert.ok(events.includes("first buffered output"));
       assert.ok(!events.includes("id: 1\nevent:"));
     }
   }

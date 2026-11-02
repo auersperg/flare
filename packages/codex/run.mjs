@@ -145,6 +145,8 @@ async function event(message) {
       deltas.set(key, (r = new Redactor(redact.secrets)));
     }
     const text = r.delta(p.delta);
+    if (method.includes("commandExecution") && !truncated)
+      r.output = ((r.output ?? "") + text).slice(0, EVENT_BYTES);
     for (let i = 0; i < text.length; i += 2048)
       await emit({
         type: method.includes("agentMessage") ? "text" : "output",
@@ -176,9 +178,12 @@ async function event(message) {
       ]),
     ];
     for (const r of deltas.values()) r.secrets = redact.secrets;
+    let commandOutput = "";
     for (const [key, r] of deltas)
       if (key.endsWith(":" + item.id) && method === "item/completed") {
         const text = r.delta("", true);
+        if (key.startsWith("item/commandExecution"))
+          commandOutput = (r.output ?? "") + text;
         if (text)
           await emit({
             type: key.startsWith("item/agentMessage") ? "text" : "output",
@@ -187,6 +192,19 @@ async function event(message) {
           });
         deltas.delete(key);
       }
+    if (item.type === "commandExecution" && method === "item/completed") {
+      // Native unified exec may buffer the first output instead of sending a delta.
+      // Preserve its authoritative completion snapshot when it differs from the live output.
+      const output = redact.text(String(item.aggregatedOutput ?? ""));
+      if (output && output !== commandOutput)
+        for (let i = 0; i < output.length && !truncated; i += 2048)
+          await emit({
+            type: "output",
+            itemId: item.id,
+            state: i === 0 ? "snapshot" : "snapshot-part",
+            text: output.slice(i, i + 2048),
+          });
+    }
     await emit({
       type: "item",
       itemId: String(item.id).slice(0, 128),

@@ -53,6 +53,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       type: "commandExecution",
       command: "echo safe",
       exitCode: 0,
+      aggregatedOutput: "first buffered output\nfixture-rotated\nsafe output\n",
       status: "completed",
     },
   });
