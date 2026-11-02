@@ -30,12 +30,33 @@ export class CodexSession extends DurableObject<Env> {
   command(op: string, input: unknown) {
     return this.session.exclusive(() => this.session.command(op, input));
   }
+  events(id: string, after: number) {
+    return this.session.exclusive(() => this.session.events(id, after));
+  }
   alarm() {
     return this.session.exclusive(() => this.session.tick());
   }
 }
 /** Private service binding only. No fetch API, login endpoint, or arbitrary exec RPC. */
 export class CodexService extends WorkerEntrypoint<Env> {
+  async events(scope: string, id: string, after: number) {
+    try {
+      if (!scopePattern.test(scope) || scope !== this.env.FLARE_SCOPE)
+        throw Error("CODEX_SCOPE_MISMATCH");
+      return {
+        ok: true as const,
+        value: await this.env.SESSION.getByName("codex").events(id, after),
+      };
+    } catch (error) {
+      return {
+        ok: false as const,
+        code:
+          error instanceof Error && /^CODEX_[A-Z_]+$/.test(error.message)
+            ? error.message
+            : "CODEX_UNAVAILABLE",
+      };
+    }
+  }
   async command(scope: string, op: string, input: unknown) {
     try {
       if (!scopePattern.test(scope) || scope !== this.env.FLARE_SCOPE)

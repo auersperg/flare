@@ -22,6 +22,7 @@ try {
     },
   });
   await cp(join(root, "packages/codex/run.mjs"), join(dir, "run.mjs"));
+  await cp(join(root, "packages/codex/events.mjs"), join(dir, "events.mjs"));
   await cp(
     join(root, "tests/fixtures/codex-process.mjs"),
     join(dir, "codex-process.mjs"),
@@ -39,7 +40,7 @@ try {
     join(dir, "worker.ts"),
     `
 import { CodexSession, CodexService, Outbound } from ${JSON.stringify(join(root, "packages/codex/src/index.ts"))};
-import { codexCommand } from ${JSON.stringify(join(root, "packages/core/src/codex.ts"))};
+import { codexCommand, codexEvents } from ${JSON.stringify(join(root, "packages/core/src/codex.ts"))};
 export { CodexService, Outbound };
 export class ProofSession extends CodexSession {
   proof() { return { running: this.ctx.container.running, rotated: JSON.parse(this.ctx.storage.kv.get("auth") || "{}").tokens?.access_token === "fixture-rotated" }; }
@@ -48,6 +49,7 @@ export default { async fetch(req,env,ctx) {
   if(req.headers.get("authorization")!=="Bearer "+env.KEY) return new Response(null,{status:401});
   if(new URL(req.url).pathname==="/proof") return Response.json(await env.SESSION.getByName("codex").proof());
   const {op,input,scope=env.FLARE_SCOPE}=await req.json();
+  if(op==="events") {const stream=await codexEvents({APP_CAPABILITIES:JSON.stringify({[env.FLARE_SCOPE]:{codex:"APP_CODEX_PROOF"}}),APP_CODEX_PROOF:ctx.exports.CodexService},scope,{type:"codex-events",id:input.id},input.after??0,()=>{});return new Response(stream,{headers:{"content-type":"text/event-stream"}});}
   try { return Response.json(await codexCommand({APP_CAPABILITIES: JSON.stringify({[env.FLARE_SCOPE]: {codex: "APP_CODEX_PROOF"}}), APP_CODEX_PROOF: ctx.exports.CodexService}, scope, op, input)); }
   catch { return new Response("rejected",{status:409}); }
 }};`,
@@ -90,6 +92,8 @@ export default { async fetch(req,env,ctx) {
       "127.0.0.1",
       "--port",
       String(port),
+      "--inspector-port",
+      "0",
     ],
     { cwd: root, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -137,6 +141,34 @@ export default { async fetch(req,env,ctx) {
     const input = { id: crypto.randomUUID(), prompt };
     const admitted = await call("start", input);
     assert.equal(admitted.state, "running");
+    if (prompt === "first") {
+      let received = "",
+        seen = false;
+      for (let attempt = 0; attempt < 5 && !seen; attempt++) {
+        const response = await fetch(base, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ op: "events", input: { id: input.id } }),
+        });
+        assert.equal(response.headers.get("content-type"), "text/event-stream");
+        const reader = response.body.getReader();
+        while (!seen) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          received += new TextDecoder().decode(chunk.value);
+          seen = received.includes("event: progress");
+        }
+        if (seen)
+          assert.equal(
+            (await call("status", { id: input.id })).state,
+            "running",
+            "events must precede task completion",
+          );
+        await reader.cancel();
+        if (!seen) await new Promise((r) => setTimeout(r, 300));
+      }
+      assert.ok(seen, "No live events: " + received + "\n" + log);
+    }
     if (prompt === "wait") await call("cancel", { id: input.id });
     const task = await done(input.id);
     assert.equal(
@@ -152,6 +184,22 @@ export default { async fetch(req,env,ctx) {
       rotated: true,
     });
     assert.deepEqual(await call("start", input), task);
+    if (prompt === "first") {
+      const response = await fetch(base, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          op: "events",
+          input: { id: input.id, after: 1 },
+        }),
+      });
+      const events = await response.text();
+      assert.ok(events.includes("event: task"));
+      assert.ok(events.includes("fixture OK"));
+      assert.ok(events.includes("[redacted]"));
+      assert.ok(!events.includes("fixture-rotated"));
+      assert.ok(!events.includes("id: 1\nevent:"));
+    }
   }
   const forbidden = await fetch(base, {
     method: "POST",

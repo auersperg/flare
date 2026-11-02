@@ -1,3 +1,4 @@
+import { eventStream, eventBytes } from "./stream.js";
 import type { Files } from "@cloudflare/sandbox";
 import { codexInput, type CodexTask } from "../../flare/src/sdk/codex.js";
 import { boundedText, managedAuth, mcpUrl } from "./policy.js";
@@ -18,6 +19,7 @@ export interface Settings {
 /** One serialized owner of a login and one running task. No queue or automatic replay. */
 export class Session {
   private tail: Promise<unknown> = Promise.resolve();
+  private watchers = 0;
   constructor(
     private storage: DurableObjectStorage,
     private container: Container,
@@ -27,6 +29,9 @@ export class Session {
   ) {
     storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS codex_tasks (id TEXT PRIMARY KEY, finished_at INTEGER, record TEXT NOT NULL)",
+    );
+    storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS codex_events (id TEXT PRIMARY KEY, body TEXT NOT NULL)",
     );
   }
 
@@ -97,6 +102,9 @@ export class Session {
       "DELETE FROM codex_tasks WHERE finished_at < ?",
       Date.now() - retentionMs,
     );
+    this.storage.sql.exec(
+      "DELETE FROM codex_events WHERE id NOT IN (SELECT id FROM codex_tasks)",
+    );
     const { count } = this.storage.sql
       .exec<{ count: number }>("SELECT COUNT(*) AS count FROM codex_tasks")
       .one();
@@ -132,6 +140,7 @@ export class Session {
       );
       if ((await setup.exitCode) !== 0) throw Error("CODEX_SETUP_FAILED");
       await this.files.writeFile(`${dir}/codex/auth.json`, auth);
+      await this.files.writeFile(`${dir}/events.ndjson`, "");
       await this.files.writeFile(
         `${dir}/input.json`,
         JSON.stringify({ prompt: input.prompt, mcpUrl: url, timeoutMs }),
@@ -165,6 +174,51 @@ export class Session {
       );
     }
     return this.visible(this.task(task.id));
+  }
+  async events(id: string, after: number) {
+    codexInput("status", { id });
+    if (!Number.isSafeInteger(after) || after < 0 || after > 4096)
+      throw Error("CODEX_INVALID_CURSOR");
+    const task = this.task(id);
+    if (!task) throw Error("CODEX_TASK_NOT_FOUND");
+    if (this.watchers >= 4) throw Error("CODEX_STREAM_LIMIT");
+    let process: ExecProcess | undefined;
+    if (task.state === "running" && this.container.running) {
+      const pid = await this.read(`${dir}/pid`, 32);
+      if (pid && /^\d+\s*$/.test(pid))
+        process = await this.container.exec(
+          [
+            "tail",
+            "-n",
+            `+${after + 1}`,
+            "-f",
+            "--pid",
+            pid.trim(),
+            `${dir}/events.ndjson`,
+          ],
+          { stderr: "ignore", signal: AbortSignal.timeout(15000) },
+        );
+    }
+    this.watchers++;
+    return eventStream({
+      after,
+      process,
+      archive: () =>
+        this.storage.sql
+          .exec<{ body: string }>(
+            "SELECT body FROM codex_events WHERE id = ?",
+            id,
+          )
+          .toArray()[0]?.body ?? "",
+      task: () => this.visible(this.task(id)),
+      settle: () =>
+        this.task(id)?.state === "running"
+          ? this.exclusive(() => this.tick())
+          : Promise.resolve(),
+      release: () => {
+        this.watchers--;
+      },
+    });
   }
   private auth(): string {
     const revision = this.storage.kv.get<string>("auth-revision");
@@ -214,6 +268,17 @@ export class Session {
         };
       }
     } else if (checkpoint === false) this.storage.kv.put("auth-invalid", true);
+    if (this.container.running) {
+      const body = await this.read(`${dir}/events.ndjson`, eventBytes).catch(
+        () => undefined,
+      );
+      if (body !== undefined)
+        this.storage.sql.exec(
+          "INSERT OR REPLACE INTO codex_events VALUES (?, ?)",
+          task.id,
+          body,
+        );
+    }
     // Commit result and rotated credentials before destroying ephemeral disk.
     this.put({ ...task, ...outcome, finishedAt: Date.now() });
     await this.storage.sync();

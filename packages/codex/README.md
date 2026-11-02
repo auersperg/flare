@@ -1,6 +1,6 @@
 # Optional private Codex runner
 
-Flare action → private Service Binding → one Durable Object / Linux container → official Codex CLI. Codex owns the agent loop and ChatGPT OAuth refresh. No model proxy, second agent framework, queue, public runner API, or always-on process is added to the platform.
+Flare action → private Service Binding → one Durable Object / Linux container → official Codex App Server. Codex owns the agent loop and ChatGPT OAuth refresh. No model proxy, second agent framework, queue, public runner API, or always-on process is added to the platform.
 
 This package is deployed **separately and only when enabled**. The normal Flare install/update does not build or provision containers. Its managed configuration stores only a service reference; the runner's secrets and lifecycle remain operator-owned. Removing a reference does not delete the runner.
 
@@ -99,3 +99,37 @@ bun run test:codex:local
 The local native acceptance test uses real workerd, Service Binding RPC, SQLite, Sandbox files and Docker, but substitutes a deterministic Codex process. It checks successful/failed/cancelled execution, rotated-auth persistence, cold restart, duplicate suppression, scope rejection and container shutdown. It never reads an account login or calls a model. A real subscription/cloud test requires separate explicit operator approval.
 
 Cloud proof on 2026-11-02: two real Codex tasks returned `FLARE_CODEX_OK` using a dedicated ChatGPT login. The second ran after deletion of the bootstrap secret and redeployment, using only persisted credentials. Cloudflare reported zero active container instances afterwards. The test Worker, DO namespace, container application and all test image tags were removed. Real token rotation was not triggered by changing `last_refresh` with CLI 0.166.0; rotated-file persistence is covered by the local fixture, not claimed as a live refresh proof.
+
+## Live events (0.3.12)
+
+The same pinned official Codex binary runs `app-server --listen stdio://` **only for one task**. Its native `item/agentMessage/delta` and command lifecycle/output notifications drive the UI; there is no simulated typing or status-polling substitute. The small process client still owns only startup, deadline, cancellation and shutdown, not the model/tool loop. A new ephemeral thread is used for each task.
+
+Only allowlisted display fields are written to a bounded 256 KiB / 4,096-event NDJSON journal. Account/auth frames, raw stderr, private reasoning and arbitrary protocol objects are never forwarded. Known runner OAuth/MCP credentials are redacted, including split text deltas. This is defense in depth, **not a guarantee against a malicious agent encoding secrets**: the trusted-owner restriction remains essential.
+
+Cloudflare's native container `exec()` follows the journal using `tail`, returning a byte stream over the existing private Service Binding. Disconnect stops only this follower, never the task. The journal is checkpointed to the same DO's SQLite storage before container teardown and pruned with its seven-day task history. No extra database, queue, public runner URL or always-on process is added. Old tasks from before 0.3.12 can return their final state without an event history.
+
+The app exposes an owner-authorized **read-only query**, not an action that may replay mutations:
+
+```ts
+export const watch = query({
+  auth: "required",
+  input: z.object({ id: z.uuid() }),
+  output: z.object({ type: z.literal("codex-events"), id: z.uuid() }),
+  handler: ({ auth }, { id }) => {
+    requireOwner(auth); // your existing application authorization
+    return { type: "codex-events" as const, id };
+  },
+});
+
+for await (const event of client.codexEvents(
+  api.ai.watch,
+  { id },
+  { signal },
+)) {
+  // text/output/item/status/truncated events, followed by the final task
+}
+```
+
+The descriptor is not a credential. `POST /v1/codex/events` uses the existing Bearer session, origin checks, app query ACL and explicit environment Codex grant. The authenticated SDK reads SSE with `fetch`, never puts tokens in URLs, reconnects with the last event ID and deduplicates replay. Reconnecting cannot start a task. A 30-second connection lease re-runs app authorization; session expiry/revocation is also checked on chunks and every five seconds while connected. Logout/client disposal aborts its streams. Slow readers are disconnected with bounded buffering and can resume. Four concurrent followers per runner are allowed; completed-task replay does not restart a container.
+
+When the trace limit is reached, a `truncated` event is explicit; task execution and its separately bounded final answer continue. Model command output may arrive in batches if the underlying tool buffers stdout; text deltas are forwarded as Codex emits them, not split artificially.

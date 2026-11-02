@@ -407,10 +407,11 @@ describe("live client lifecycle", () => {
       client.dispose();
     },
   );
-  it("exposes only the three call methods and onUpdate, with no call/subscribe aliases", async () => {
+  it("exposes explicit call and event methods, with no call/subscribe aliases", async () => {
     const { client } = await fixture();
     expect(Object.keys(client).sort()).toEqual([
       "action",
+      "codexEvents",
       "dispose",
       "mutation",
       "onUpdate",

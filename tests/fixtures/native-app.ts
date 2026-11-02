@@ -31,6 +31,18 @@ const snapshot = z.object({ rows: z.array(doc), reads: z.number() });
 export default defineApp({
   schema,
   functions: {
+    ai: {
+      watch: query({
+        auth: "required",
+        input: z.object({ id: z.uuid() }),
+        output: z.object({ type: z.literal("codex-events"), id: z.uuid() }),
+        handler: ({ auth }, { id }) => {
+          if (auth?.claims.login !== "alice")
+            throw new FlareError("FORBIDDEN", "Owner only");
+          return { type: "codex-events" as const, id };
+        },
+      }),
+    },
     tasks: {
       list: query({
         auth: "public",

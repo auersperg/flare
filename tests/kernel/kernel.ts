@@ -18,6 +18,36 @@ export class AppSupervisor extends NativeSupervisor {
   private authEffects = { closeRevokedSockets: 0, dashboardHint: 0 };
   constructor(ctx: DurableObjectState, env: any) {
     super(ctx, coreEnv(env));
+    this.env.APP_CAPABILITIES = JSON.stringify({
+      [ctx.id.name!]: { codex: "APP_CODEX_STREAM" },
+    });
+    (this.env as any).APP_CODEX_STREAM = {
+      events: async (_scope: string, id: string, after: number) => ({
+        ok: true,
+        value: new Response(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              const e = new TextEncoder();
+              if (after < 1)
+                c.enqueue(
+                  e.encode(
+                    'id: 1\nevent: progress\ndata: {"seq":1,"at":1,"type":"text","text":"native"}\n\n',
+                  ),
+                );
+              setTimeout(() => {
+                c.enqueue(
+                  e.encode(
+                    `event: task\ndata: ${JSON.stringify({ id, state: "succeeded", startedAt: 1, result: "native OK" })}\n\n`,
+                  ),
+                );
+                c.close();
+              }, 100);
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      }),
+    };
     for (const name of ["closeRevokedSockets", "dashboardHint"] as const) {
       const call = (this as any)[name].bind(this);
       (this as any)[name] = (...args: unknown[]) => {

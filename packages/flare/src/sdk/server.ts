@@ -1,3 +1,4 @@
+export type { CodexSubscription } from "./codex-stream.js";
 import type { CodexContext } from "./codex.js";
 export type { CodexContext, CodexTask, CodexTaskInput } from "./codex.js";
 import type { SearchContext } from "./search.js";

@@ -1,3 +1,5 @@
+import { readCodexEvents, type CodexSubscription } from "./codex-stream.js";
+export type { CodexEvent, CodexSubscription } from "./codex-stream.js";
 import { readBody } from "./http.js";
 import {
   assertPath,
@@ -471,6 +473,37 @@ export function createClient(options: ClientOptions) {
     query: invoke("query"),
     mutation: invoke("mutation"),
     action: invoke("action"),
+    async *codexEvents<I>(
+      ref: FunctionRef<I, CodexSubscription>,
+      args: I,
+      streamOptions: { signal?: AbortSignal; after?: number } = {},
+    ) {
+      ensureOpen();
+      assertPath(ref.path);
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      cleanups.add(abort);
+      streamOptions.signal?.addEventListener("abort", abort, { once: true });
+      if (streamOptions.signal?.aborted) abort();
+      try {
+        yield* readCodexEvents({
+          url: endpoint("/v1/codex/events"),
+          ref,
+          args,
+          after: streamOptions.after,
+          transport: transport as typeof fetch,
+          signal: controller.signal,
+          token: async () => {
+            ensureOpen();
+            return (await options.getToken?.()) ?? null;
+          },
+        });
+      } finally {
+        abort();
+        cleanups.delete(abort);
+        streamOptions.signal?.removeEventListener("abort", abort);
+      }
+    },
     /** One subscription delivers the initial snapshot and subsequent updates. */
     onUpdate<I, O>(
       ref: FunctionRef<I, O>,

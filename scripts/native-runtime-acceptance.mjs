@@ -580,6 +580,40 @@ try {
         await cb.action(reference("lab/privateEcho", "action"), {}),
         b.id,
       );
+      const streamRef = reference("ai/watch", "query"),
+        streamId = crypto.randomUUID();
+      const streamed = [];
+      for await (const event of ca.codexEvents(streamRef, { id: streamId }))
+        streamed.push(event);
+      assert.deepEqual(
+        streamed.map((e) => e.type),
+        ["text", "task"],
+      );
+      assert.equal(streamed[1].task.result, "native OK");
+      await assert.rejects(
+        cb.codexEvents(streamRef, { id: streamId }).next(),
+        (e) => e.code === "FORBIDDEN",
+      );
+      const anonymousStream = createClient({ url });
+      await assert.rejects(
+        anonymousStream.codexEvents(streamRef, { id: streamId }).next(),
+        (e) => e.code === "UNAUTHORIZED",
+      );
+      anonymousStream.dispose();
+      const crossOriginStream = await fetch(url + "/v1/codex/events", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://evil.example",
+          authorization: `Bearer ${await alice.getToken()}`,
+        },
+        body: JSON.stringify({
+          path: "ai/watch",
+          kind: "query",
+          args: { id: streamId },
+        }),
+      });
+      assert.equal(crossOriginStream.status, 403);
       const frames = [],
         errors = [];
       unsubscribe = ca.onUpdate(

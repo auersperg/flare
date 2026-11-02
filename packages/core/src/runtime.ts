@@ -1,4 +1,4 @@
-import { codexCommand } from "./codex.js";
+import { codexCommand, codexEvents } from "./codex.js";
 import { SearchStore } from "./search.js";
 import { mcpResponse, mcpTools } from "./mcp.js";
 import { PasswordAuth } from "./auth.js";
@@ -1037,7 +1037,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
   async application(input: {
     origin: string | null;
     authorization: string | null;
-    operation: "call" | "ticket" | "preflight";
+    operation: "call" | "ticket" | "preflight" | "codex-events";
     body: any;
   }) {
     await this.lifecycle.start();
@@ -1064,12 +1064,32 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       assertPath(input.body.path);
       if (!["query", "mutation", "action"].includes(input.body.kind))
         fail("INVALID_KIND");
-      return this.call({
+      if (
+        input.operation === "codex-events" &&
+        (!auth || input.body.kind !== "query")
+      )
+        fail("UNAUTHORIZED");
+      const result = await this.call({
         path: input.body.path,
         kind: input.body.kind,
         args: input.body.args,
         auth,
       });
+      if (input.operation === "codex-events") {
+        const stream = await codexEvents(
+          this.env,
+          this.config().scope,
+          result.result,
+          input.body.after ?? 0,
+          () => {
+            this.assertAvailable();
+            this.checkPasswordSession(auth);
+            if (!auth || auth.expiresAt <= Date.now()) fail("AUTH_EXPIRED");
+          },
+        );
+        return { stream };
+      }
+      return result;
     });
     return { origin: allowedOrigin as string | null, response };
   }
@@ -2409,7 +2429,9 @@ export default {
                 ? "preflight"
                 : route.operation === "live/ticket"
                   ? "ticket"
-                  : "call",
+                  : route.operation === "codex/events"
+                    ? "codex-events"
+                    : "call",
             body,
           });
       origin = answer.origin;
@@ -2429,6 +2451,10 @@ export default {
         );
         headers.set("access-control-max-age", "600");
         return new Response(null, { status: 204, headers });
+      }
+      if (route.operation === "codex/events") {
+        headers.set("content-type", "text/event-stream");
+        return new Response(result.stream, { headers });
       }
       headers.set("content-type", "application/json");
       return new Response(boundedJson(result, LIMITS.outputBytes), { headers });
