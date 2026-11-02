@@ -353,10 +353,9 @@ export class SearchStore {
             try {
               await instance.items.delete(id);
             } catch (error) {
-              // Only the documented item-level 404 proves a retry has nothing left to delete.
+              // The native binding may expose a plain Error; only its exact item-not-found code proves absence.
               if (
                 !(error instanceof Error) ||
-                error.name !== "AiSearchNotFoundError" ||
                 error.message !== "item_not_found"
               )
                 throw error;
@@ -365,13 +364,11 @@ export class SearchStore {
           this.storage.sql.exec("DELETE FROM search_items WHERE id=?", row.id);
           continue;
         }
-        if (existing[0]) {
-          const info = ["error", "skipped", "outdated"].includes(
-            existing[0].status,
-          )
-            ? await instance.items.get(existing[0].id).sync()
-            : existing[0];
-          this.updateInfo(row, info);
+        if (
+          existing[0] &&
+          !["error", "skipped", "outdated"].includes(existing[0].status)
+        ) {
+          this.updateInfo(row, existing[0]);
         } else {
           const object = await this.env.FILES?.get(fileKey(this.scope, row.id));
           if (!object) fail("NOT_FOUND");
@@ -390,7 +387,10 @@ export class SearchStore {
           );
           this.updateInfo(
             row,
-            await instance.items.upload(row.key, object.body),
+            await instance.items.uploadAndPoll(row.key, object.body, {
+              timeoutMs: 30_000,
+              pollIntervalMs: 2_000,
+            }),
           );
         }
       } catch (error) {

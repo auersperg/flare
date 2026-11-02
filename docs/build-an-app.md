@@ -277,7 +277,7 @@ CI использует scoped `FLARE_DEPLOY_TOKEN`, корректную projec
 
 ## 10. Search и MCP (новые исходники; не опубликованный SDK 0.3.10)
 
-Сначала требуется совместимый platform/SDK build; облачный AI Search instance подключает оператор. Нет binding — `SEARCH_NOT_CONFIGURED`. Первая версия поддерживает TXT/PDF до 10 MiB. Индекс выбирается средой, не аргументом клиента.
+Сначала требуется совместимый platform/SDK build; облачный AI Search instance подключает оператор. Нет binding — `SEARCH_NOT_CONFIGURED`. Первая версия принимает TXT/PDF до 10 MiB; для индексации PDF больше 4 MiB оператор должен включить OCR в AI Search. Индекс выбирается средой, не аргументом клиента.
 
 Серверные действия:
 

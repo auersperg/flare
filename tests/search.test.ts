@@ -58,6 +58,14 @@ function fixture(onWake?: (count: number) => Promise<void>) {
         if (failUpload) throw Error("private provider body");
         return info;
       },
+      uploadAndPoll: async (
+        key: string,
+        body: ReadableStream,
+        options: any,
+      ) => {
+        expect(options).toEqual({ timeoutMs: 30_000, pollIntervalMs: 2_000 });
+        return provider.items.upload(key, body);
+      },
       get: (id: string) => ({
         info: async () => [...items.values()].find((i) => i.id === id),
         sync: async () => {
@@ -160,6 +168,19 @@ describe("Scoped derived search", () => {
     await f.store.work();
     expect(f.uploads).toBe(1);
     expect(f.items.size).toBe(1);
+    expect((await f.store.status(f.id)).status).toBe("queued");
+  });
+  it("reindexes a failed item through the same bounded native upload path", async () => {
+    const f = fixture();
+    await f.store.index(f.id);
+    await f.store.work();
+    const key = [...f.items.keys()][0];
+    f.items.get(key)!.status = "error";
+    await f.store.status(f.id);
+    await f.store.index(f.id);
+    await f.store.work();
+    expect(f.uploads).toBe(2);
+    expect([...f.items.keys()]).toEqual([key]);
     expect((await f.store.status(f.id)).status).toBe("queued");
   });
   it("requires a trusted ACL callback and excludes another user's hits", async () => {
@@ -435,9 +456,7 @@ describe("Scoped derived search", () => {
     await f.store.work();
     expect(f.store.summary().remaining).toBe(1);
     f.env.APP_SEARCH_TEST.items.delete = async () => {
-      throw Object.assign(Error("item_not_found"), {
-        name: "AiSearchNotFoundError",
-      });
+      throw Error("item_not_found");
     };
     await f.store.work();
     expect(f.store.summary().remaining).toBe(0);
