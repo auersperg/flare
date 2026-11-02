@@ -105,7 +105,34 @@ export function boundedJson(value: unknown, maxBytes: number): string {
     throw new FlareError("TOO_LARGE", "JSON payload exceeds limit");
   return json;
 }
+export type McpTool = { name: string; description: string };
+
+export function assertMcpTools(functions: Record<string, FunctionContract>) {
+  const names = new Set<string>();
+  for (const fn of Object.values(functions)) {
+    if (fn.mcp === undefined) continue;
+    const m = fn.mcp;
+    if (
+      !m ||
+      typeof m !== "object" ||
+      Object.keys(m).sort().join() !== "description,name" ||
+      typeof m.name !== "string" ||
+      !/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(m.name) ||
+      typeof m.description !== "string" ||
+      !m.description.trim() ||
+      m.description.length > 1000 ||
+      names.has(m.name) ||
+      fn.auth === "internal" ||
+      fn.input.type !== "object"
+    )
+      throw new FlareError("INVALID_CONTRACT", "Invalid MCP tool contract");
+    boundedJson({ mcp: m, input: fn.input }, 16384);
+    names.add(m.name);
+  }
+}
+
 export interface FunctionContract {
+  mcp?: McpTool;
   kind: FunctionKind;
   auth: "required" | "public" | "internal";
   input: Record<string, unknown>;

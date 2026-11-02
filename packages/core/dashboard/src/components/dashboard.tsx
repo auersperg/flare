@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { DashboardLive } from "./dashboard-live";
 import {
   Shield,
+  Search,
   Activity,
   Database,
   Box,
@@ -36,6 +37,7 @@ const SchedulesView = lazy(() =>
 );
 const DataView = lazy(() => import("./data-view"));
 const FunctionsView = lazy(() => import("./functions-view"));
+const AiView = lazy(() => import("./ai-view"));
 const AuthView = lazy(() => import("./auth-view"));
 const SettingsView = lazy(() => import("./settings-view"));
 const SdkView = lazy(() => import("./sdk-view"));
@@ -46,6 +48,7 @@ export const sections = [
   { key: "functions", label: "Functions", icon: Code },
   { key: "files", label: "Files", icon: File },
   { key: "schedules", label: "Schedules", icon: Timer },
+  { key: "ai", label: "AI", icon: Search },
   { key: "auth", label: "Auth", icon: Shield },
   { key: "logs", label: "Logs", icon: Logs },
 ] as const;
@@ -310,6 +313,8 @@ function DashboardApp() {
                     <FilesView {...scope} />
                   ) : view === "schedules" ? (
                     <SchedulesView {...scope} />
+                  ) : view === "ai" ? (
+                    <AiView {...scope} />
                   ) : view === "auth" ? (
                     <AuthView {...scope} />
                   ) : view === "logs" ? (

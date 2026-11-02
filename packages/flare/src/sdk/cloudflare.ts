@@ -1,3 +1,4 @@
+import { searchContext } from "./search.js";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import {
   flatten,
@@ -20,6 +21,8 @@ import { applySchema, schemaContract, type Schema } from "./schema.js";
 import { boundedJson, LIMITS } from "./protocol.js";
 
 export interface Invocation {
+  /** Trusted Runtime admission only, never copied from public call input. */
+  mcp?: string;
   path: string;
   kind: FunctionKind;
   args: Json;
@@ -97,6 +100,7 @@ export interface ScopedCapability {
   ): Promise<string>;
   download(id: string): Promise<Response>;
   fileCommand(op: string, input: unknown): Promise<any>;
+  searchCommand(op: string, input: unknown): Promise<any>;
   scheduleCommand(op: string, input: unknown): Promise<any>;
 }
 function authorize(
@@ -644,6 +648,9 @@ export function createAction(app: {
       const capability = this.env.CAPABILITY;
       const context: ActionContext = {
         auth: call.auth,
+        search: searchContext((op, input) =>
+          rpcData(capability.searchCommand(op, input)),
+        ),
         schedules: {
           set: (input) => rpcData(capability.scheduleCommand("set", input)),
           cancel: (name) =>

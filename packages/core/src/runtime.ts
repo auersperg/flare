@@ -1,3 +1,5 @@
+import { SearchStore } from "./search.js";
+import { mcpResponse, mcpTools } from "./mcp.js";
 import { PasswordAuth } from "./auth.js";
 import { dashboardIdentity, type DashboardIdentity } from "./dashboard-live.js";
 import packageInfo from "../package.json" with { type: "json" };
@@ -94,6 +96,7 @@ function getSupervisor(
   return {
     fetch: (request) => stub.fetch(request),
     authCommand: (...args) => stub.dispatch("authCommand", args).then(unwrap),
+    mcp: (...args) => stub.dispatch("mcp", args).then(unwrap),
     application: (...args) => stub.dispatch("application", args).then(unwrap),
     socketIdentity: (...args) =>
       stub.dispatch("socketIdentity", args).then(unwrap),
@@ -112,6 +115,8 @@ function getSupervisor(
     destroy: (...args) => stub.dispatch("destroy", args).then(unwrap),
     prepareDestroy: (...args) =>
       stub.dispatch("prepareDestroy", args).then(unwrap),
+    searchCommand: (...args) =>
+      stub.dispatch("searchCommand", args).then(unwrap),
     fileCommand: (...args) => stub.dispatch("fileCommand", args).then(unwrap),
     scheduleCommand: (...args) =>
       stub.dispatch("scheduleCommand", args).then(unwrap),
@@ -164,6 +169,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         ![
           "authCommand",
           "application",
+          "mcp",
           "socketIdentity",
           "configuration",
           "configure",
@@ -178,6 +184,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
           "destroy",
           "prepareDestroy",
           "fileCommand",
+          "searchCommand",
           "scheduleCommand",
         ].includes(op)
       )
@@ -339,6 +346,8 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     );
     this.restoring = this.restoreState()?.status === "restoring";
     FileStore.initialize(this.ctx.storage);
+    SearchStore.initialize(this.ctx.storage);
+    await this.search().reconcile();
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS crons (name TEXT PRIMARY KEY,id TEXT NOT NULL,path TEXT NOT NULL,args TEXT NOT NULL,cron TEXT NOT NULL,enabled INTEGER NOT NULL,schedulerId TEXT)",
     );
@@ -425,6 +434,9 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       )
         fail("BACKUP_BUSY");
       await this.closeForDeletion(scope);
+      await this.search().clear();
+      await this.search().work();
+      if (this.search().summary().remaining) fail("SEARCH_CLEANUP_PENDING");
       if (this.env.FILES) {
         const prefix = `files/${scopeForDeletion(scope)}/`;
         let cursor: string | undefined;
@@ -906,6 +918,11 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     else await this.lifecycle.jobs.cancel("recover");
   }
   async onJob({ job }: LifecycleJobContext) {
+    if (job.fn === "search-reconcile") {
+      await this.search().work();
+      await this.serial(() => this.dashboardHint());
+      return;
+    }
     await this.serial(async () => {
       if (job.fn === "recover") {
         await this.recover();
@@ -1055,6 +1072,31 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     });
     return { origin: allowedOrigin as string | null, response };
   }
+  async mcp(input: {
+    origin: string | null;
+    authorization: string | null;
+    name?: string;
+    args?: Json;
+  }) {
+    await this.lifecycle.start();
+    this.assertAvailable();
+    if (input.origin && !this.config().origins.includes(input.origin))
+      fail("FORBIDDEN");
+    const token = input.authorization;
+    if (!token?.startsWith("Bearer flared_session_")) fail("UNAUTHORIZED");
+    const auth = await this.passwords().authenticate(token.slice(7));
+    if (input.name === undefined) return mcpTools(this.metadata().manifest);
+    const result = await this.call({
+      path: "mcp",
+      kind: "query",
+      args: input.args ?? {},
+      auth,
+      mcp: input.name,
+    });
+    this.checkPasswordSession(auth);
+    if (auth.expiresAt <= Date.now()) fail("AUTH_EXPIRED");
+    return result.result;
+  }
   async socketIdentity(input: { origin: string | null; ticket: string }) {
     await this.lifecycle.start();
     const config = this.config();
@@ -1177,6 +1219,18 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     const admitted = await this.serial(async () => {
       this.assertAvailable();
       await this.finishActivation();
+      if (call.mcp !== undefined) {
+        const entry = Object.entries(this.metadata().manifest.functions).find(
+          ([, fn]) => fn.mcp?.name === call.mcp,
+        );
+        if (!entry || entry[1].auth === "internal") fail("FUNCTION_NOT_FOUND");
+        call = {
+          ...call,
+          path: entry[0],
+          kind: entry[1].kind,
+          internal: false,
+        };
+      }
       assertPath(call.path);
       const definition = this.metadata().manifest.functions[call.path];
       if (!definition || definition.kind !== call.kind)
@@ -1372,6 +1426,8 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       backup = await store.read(source, input.id);
     if (!backup) fail("NOT_FOUND");
     const state = this.restoreState();
+    if (!state && this.search().summary().remaining)
+      fail("SEARCH_CLEANUP_PENDING");
     if (
       state?.id === input.id &&
       state.source === source &&
@@ -1612,6 +1668,16 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         await this.recover();
         return { cancelled };
       }
+      if (op === "ai")
+        return {
+          search: this.search().summary(),
+          tools: mcpTools(this.metadata().manifest).map(
+            ({ name, description }) => ({ name, description }),
+          ),
+          auth: "app-session",
+          endpoint: `${this.env.RUNTIME_URL}/p/${this.config().scope}/v1/mcp`,
+        };
+      if (op === "search-clear") return this.search().clear();
       if (op === "functions") return this.metadata().manifest;
       if (op === "logs") return this.summaries.list();
       if (op === "history")
@@ -1623,7 +1689,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       if (op === "files") return this.files().list(input);
       if (op === "file-upload") return this.files().reserve(input);
       if (op === "file-download") return this.files().downloadUrl(input.id);
-      if (op === "file-delete") return this.files().remove(input.id);
+      if (op === "file-delete") {
+        await this.search().exclude(input.id);
+        return this.files().remove(input.id);
+      }
       if (op === "crons") return this.cronRows();
       if (op === "cron-set") return this.setCron(input);
       if (op === "cron-cancel") return this.cancelCron(input.name);
@@ -1751,6 +1820,32 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         }),
     );
   }
+  private searchStore?: SearchStore;
+  private search() {
+    return (this.searchStore ??= new SearchStore(
+      this.ctx.storage,
+      this.env,
+      this.ctx.id.name!,
+      () =>
+        this.lifecycle.jobs.push({
+          id: "search-reconcile",
+          fn: "search-reconcile",
+          time: Date.now() + 1000,
+          singleflight: true,
+        }),
+    ));
+  }
+  async searchCommand(op: string, input: any) {
+    await this.lifecycle.start();
+    this.assertAvailable();
+    // Provider calls never occupy the application transaction gate.
+    if (op === "index") return this.search().index(input.fileId);
+    if (op === "exclude") return this.search().exclude(input.fileId);
+    if (op === "status") return this.search().status(input.fileId);
+    if (op === "query") return this.search().query(input);
+    if (op === "validate") return this.search().validate(input.fileIds);
+    fail("INVALID_OPERATION");
+  }
   async fileCommand(op: string, input: any): Promise<any> {
     await this.lifecycle.start();
     const result = await this.serial(async () => {
@@ -1767,7 +1862,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       if (op === "preflight") return null;
       if (op === "reserve") return this.files().reserve(input);
       if (op === "list") return this.files().list(input);
-      if (op === "delete") return this.files().remove(input.id);
+      if (op === "delete") {
+        await this.search().exclude(input.id);
+        return this.files().remove(input.id);
+      }
       if (op === "download") return this.files().downloadUrl(input.id);
       if (op === "claim")
         return this.files().grant(input.ticket, input.operation);
@@ -1915,6 +2013,12 @@ export class AppCapability extends WorkerEntrypoint<Env, { scope: string }> {
   }
   secret(name: string) {
     return appSecret(this.env, this.ctx.props.scope, name);
+  }
+  searchCommand(op: string, input: any) {
+    return getSupervisor(this.env, this.ctx.props.scope).searchCommand(
+      op,
+      input,
+    );
   }
   fileCommand(op: string, input: any) {
     return getSupervisor(this.env, this.ctx.props.scope).fileCommand(op, input);
@@ -2208,6 +2312,9 @@ export default {
       scope = `${projectId}/${route.env}`;
       const supervisor = getSupervisor(env, scope);
       const requestedOrigin = request.headers.get("origin");
+      if (route.operation === "mcp")
+        return await mcpResponse(request, supervisor);
+
       if (
         route.operation === "live" &&
         request.headers.get("upgrade")?.toLowerCase() === "websocket"

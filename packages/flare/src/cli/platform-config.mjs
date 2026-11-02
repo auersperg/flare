@@ -6,10 +6,12 @@ export function validatePlatformConfig(value = {}) {
   const object = (v) => v && typeof v === "object" && !Array.isArray(v);
   if (
     !object(value) ||
-    Object.keys(value).some((k) => !["capabilities", "secrets"].includes(k))
+    Object.keys(value).some(
+      (k) => !["capabilities", "secrets", "search"].includes(k),
+    )
   )
     throw Error(
-      "Platform config accepts only capabilities and secrets references",
+      "Platform config accepts only capabilities, secrets and search references",
     );
   const capabilities = value.capabilities ?? {},
     secrets = value.secrets ?? [];
@@ -36,6 +38,36 @@ export function validatePlatformConfig(value = {}) {
       };
     })
     .sort((a, b) => a.binding.localeCompare(b.binding));
+  const search = value.search ?? [];
+  if (!Array.isArray(search) || search.length > 64)
+    throw Error("Invalid search references");
+  const searchNames = new Set(),
+    instances = new Set();
+  const searchReferences = search
+    .map((r) => {
+      if (
+        !object(r) ||
+        Object.keys(r).sort().join() !== "binding,instance_name,scope" ||
+        !/^APP_SEARCH_[A-Z0-9_]{1,64}$/.test(r.binding) ||
+        typeof r.instance_name !== "string" ||
+        r.instance_name.length > 64 ||
+        !/^[a-z0-9_]+(?:-[a-z0-9_]+)*$/.test(r.instance_name) ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/(dev|prod)$/.test(
+          r.scope,
+        ) ||
+        searchNames.has(r.binding) ||
+        instances.has(r.instance_name)
+      )
+        throw Error("Invalid or duplicate native search reference");
+      searchNames.add(r.binding);
+      instances.add(r.instance_name);
+      return {
+        binding: r.binding,
+        instance_name: r.instance_name,
+        scope: r.scope,
+      };
+    })
+    .sort((a, b) => a.binding.localeCompare(b.binding));
   const result = {};
   const used = new Set();
   for (const scope of Object.keys(capabilities).sort()) {
@@ -45,7 +77,7 @@ export function validatePlatformConfig(value = {}) {
         scope,
       ) ||
       !object(p) ||
-      Object.keys(p).some((k) => !["outbound", "secrets"].includes(k))
+      Object.keys(p).some((k) => !["outbound", "secrets", "search"].includes(k))
     )
       throw Error("Invalid capability scope");
     const hosts = p.outbound ?? [],
@@ -72,7 +104,15 @@ export function validatePlatformConfig(value = {}) {
         );
       used.add(binding);
     }
+    if (
+      p.search !== undefined &&
+      !searchReferences.some((r) => r.binding === p.search && r.scope === scope)
+    )
+      throw Error(
+        "Search grant must reference an instance owned by this environment",
+      );
     result[scope] = {
+      ...(p.search === undefined ? {} : { search: p.search }),
       outbound: [...new Set(hosts)].sort(),
       secrets: Object.fromEntries(Object.entries(mapping).sort()),
     };
@@ -81,7 +121,11 @@ export function validatePlatformConfig(value = {}) {
     throw Error("Unused secret binding; grant it explicitly or remove it");
   if (JSON.stringify(result).length > 16384)
     throw Error("Capabilities exceed 16 KiB");
-  return { capabilities: result, secrets: references };
+  return {
+    capabilities: result,
+    secrets: references,
+    ...(searchReferences.length ? { search: searchReferences } : {}),
+  };
 }
 export async function readPlatformConfig(path) {
   const bytes = await readFile(path);
@@ -110,4 +154,23 @@ export async function accessSnapshot(cf, id) {
     app,
     digest: configurationDigest(accessConfiguration(app, policies)),
   };
+}
+
+/** Disable a grant first while retaining its binding for cleanup. Drop the binding only after drain. */
+export async function validateSearchTransition(previous, next, inspect) {
+  const old = validatePlatformConfig(previous),
+    desired = validatePlatformConfig(next);
+  for (const ref of old.search ?? []) {
+    const retained = desired.search?.find((r) => r.binding === ref.binding);
+    if (retained && JSON.stringify(retained) === JSON.stringify(ref)) continue;
+    if (old.capabilities[ref.scope]?.search === ref.binding)
+      throw Error(
+        "Disable the search grant first, keeping its reference for durable cleanup",
+      );
+    const state = await inspect(ref.scope);
+    if (state?.search?.remaining !== 0)
+      throw Error(
+        "Search cleanup is pending; keep the old binding and retry after cleanup",
+      );
+  }
 }

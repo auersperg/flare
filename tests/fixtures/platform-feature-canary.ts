@@ -11,6 +11,9 @@ const schema = defineSchema({
     "title",
   ]),
   notes: canary.schema.tasks,
+  privateNotes: defineTable(
+    z.object({ owner: z.string(), title: z.string() }),
+  ).index("by_owner", ["owner"]),
 });
 const { action, query, mutation } = createFunctions<typeof schema>();
 export default defineApp({
@@ -18,6 +21,31 @@ export default defineApp({
   functions: {
     ...canary.functions,
     checks: {
+      mcpMine: query({
+        mcp: { name: "notes.mine", description: "List this user's notes" },
+        input: z.object({}),
+        output: z.array(z.string()),
+        handler: async ({ db, auth }) =>
+          (
+            await db
+              .query("privateNotes")
+              .withIndex("by_owner", (q) => q.eq("owner", auth!.subject))
+              .take(100)
+          ).map((row) => row.title),
+      }),
+      mcpWrite: mutation({
+        mcp: { name: "notes.write", description: "Write a private note" },
+        input: z.object({ title: z.string().max(100) }),
+        output: z.string(),
+        handler: ({ db, auth }, { title }) =>
+          db.insert("privateNotes", { owner: auth!.subject, title }),
+      }),
+      searchDisabled: action({
+        input: z.object({}),
+        output: z.array(z.unknown()),
+        handler: ({ search }) =>
+          search.query({ query: "not configured" }, async () => []),
+      }),
       writeBoth: mutation({
         auth: "public",
         input: z.object({ fail: z.boolean(), empty: z.boolean() }),

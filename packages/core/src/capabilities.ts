@@ -1,6 +1,10 @@
 import { boundedJson, FlareError } from "../../flare/src/sdk/protocol.js";
 
-export type AppPolicy = { outbound: string[]; secrets: Record<string, string> };
+export type AppPolicy = {
+  outbound: string[];
+  secrets: Record<string, string>;
+  search?: string;
+};
 export type PolicyEnv = { APP_CAPABILITIES?: string };
 const empty: AppPolicy = { outbound: [], secrets: {} };
 const policies = new WeakMap<object, Record<string, AppPolicy>>();
@@ -18,7 +22,9 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
       if (
         !/^[0-9a-f-]{36}\/(dev|prod)$/.test(key) ||
         !value ||
-        Object.keys(value).some((k) => !["outbound", "secrets"].includes(k))
+        Object.keys(value).some(
+          (k) => !["outbound", "secrets", "search"].includes(k),
+        )
       )
         throw new FlareError("INVALID_CONFIG", "Invalid capability scope");
       const outbound = value.outbound ?? [],
@@ -55,7 +61,14 @@ export function appPolicy(env: PolicyEnv, scope: string): AppPolicy {
             "INVALID_CONFIG",
             "Only app secret bindings are allowed",
           );
+      if (
+        value.search !== undefined &&
+        (typeof value.search !== "string" ||
+          !/^APP_SEARCH_[A-Z0-9_]{1,64}$/.test(value.search))
+      )
+        throw new FlareError("INVALID_CONFIG", "Invalid search binding");
       cached![key] = Object.freeze({
+        ...(value.search === undefined ? {} : { search: value.search }),
         outbound: Object.freeze([...new Set(outbound)]) as unknown as string[],
         secrets: Object.freeze({ ...secrets }),
       });

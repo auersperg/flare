@@ -27,7 +27,7 @@ const u=new URL(req.url),which=u.searchParams.get("env")??"dev";
 if(!["dev","prod"].includes(which))return new Response("Invalid",{status:400});
 const scope=project+"/"+which;
 if(u.pathname==="/ready")return Response.json({ready:project});
-if(u.pathname.startsWith("/runtime/")){const path=u.pathname.slice(8);if(path!=="/health"&&!path.startsWith("/p/"+project+"/"))return new Response("Forbidden",{status:403});u.pathname=path;const headers=new Headers(req.headers);headers.delete("authorization");return env.PUBLIC_RUNTIME.fetch(new Request(new Request(u,req),{headers}));}
+if(u.pathname.startsWith("/runtime/")){const path=u.pathname.slice(8);if(path!=="/health"&&!path.startsWith("/p/"+project+"/"))return new Response("Forbidden",{status:403});u.pathname=path;const headers=new Headers(req.headers);headers.delete("authorization");const appAuth=headers.get("x-flare-app-authorization");headers.delete("x-flare-app-authorization");if(appAuth)headers.set("authorization",appAuth);return env.PUBLIC_RUNTIME.fetch(new Request(new Request(u,req),{headers}));}
 if(u.pathname==="/live")return env.RUNTIME.fetch(new Request("https://dashboard.internal/"+scope,{headers:{upgrade:"websocket","x-flared-dashboard":JSON.stringify({email,expires:Date.now()+60000})}}));
 if(req.method!=="POST"||u.pathname!=="/command")return new Response("Not found",{status:404});
 const {op,input}=await req.json(); let args;

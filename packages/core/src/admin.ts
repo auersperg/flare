@@ -433,6 +433,7 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
         "schema",
         "data",
         "functions",
+        "ai",
         "logs",
         "history",
         "jobs",
@@ -531,6 +532,7 @@ async function api(request: Request, env: Env, a: Actor): Promise<Response> {
     [
       "file-upload",
       "file-delete",
+      "search-clear",
       "job-cancel",
       "cron-set",
       "cron-cancel",

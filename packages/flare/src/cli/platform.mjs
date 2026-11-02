@@ -1,3 +1,4 @@
+import { storedToken } from "./login.mjs";
 import { readFile, mkdir, mkdtemp, writeFile, rm, cp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -15,6 +16,7 @@ import {
 } from "./platform-state.mjs";
 import {
   validatePlatformConfig,
+  validateSearchTransition,
   readPlatformConfig,
   accessSnapshot,
 } from "./platform-config.mjs";
@@ -213,7 +215,16 @@ export function workerConfiguration(state, release, role, bootstrap = false) {
     ...common,
     worker_loaders: [{ binding: "LOADER" }],
     ...(state.config
-      ? { secrets_store_secrets: validatePlatformConfig(state.config).secrets }
+      ? {
+          secrets_store_secrets: validatePlatformConfig(state.config).secrets,
+          ...(validatePlatformConfig(state.config).search?.length
+            ? {
+                ai_search: validatePlatformConfig(state.config).search.map(
+                  ({ binding, instance_name }) => ({ binding, instance_name }),
+                ),
+              }
+            : {}),
+        }
       : {}),
     durable_objects: {
       bindings: [{ name: "SUPERVISORS", class_name: "EnvironmentSupervisor" }],
@@ -1019,6 +1030,42 @@ async function runPlatform(options, dependencies = {}) {
   )
     throw Error(
       "Pending config differs; resume with the original config or omit --config",
+    );
+  if (configChanged && !state.operation)
+    await validateSearchTransition(
+      state.config,
+      requestedConfig,
+      async (scope) => {
+        const [project, environment] = scope.split("/");
+        // Completed project deletion already drained derived copies before removing the catalogue row.
+        const environments = await cf.sql(
+          state.resources.catalog.id,
+          "SELECT 1 FROM environments WHERE projectId=? AND env=?",
+          [project, environment],
+        );
+        if (!environments.results.length) return { search: { remaining: 0 } };
+        const platform = "https://" + state.addresses.runtimeHost + "/control";
+        const token =
+          process.env.FLARE_DEPLOY_TOKEN ??
+          (await storedToken(platform, project));
+        if (!token)
+          throw Error(
+            "Sign in to the affected project before removing a search binding",
+          );
+        const response = await fetch(
+          `${platform}/api/projects/${project}/${environment}/ai`,
+          {
+            headers: { authorization: `Bearer ${token}` },
+            redirect: "error",
+            signal: AbortSignal.timeout(10000),
+          },
+        );
+        if (!response.ok)
+          throw Error(
+            "Cannot verify search cleanup; old binding must be retained",
+          );
+        return response.json();
+      },
     );
   let accessChanged = false;
   if (options["accept-access"]) {

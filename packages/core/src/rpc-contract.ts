@@ -25,6 +25,7 @@ export type SupervisorApi = Pick<
   EnvironmentSupervisor,
   | "authCommand"
   | "application"
+  | "mcp"
   | "socketIdentity"
   | "configuration"
   | "configure"
@@ -39,6 +40,7 @@ export type SupervisorApi = Pick<
   | "destroy"
   | "prepareDestroy"
   | "fileCommand"
+  | "searchCommand"
   | "scheduleCommand"
 >;
 

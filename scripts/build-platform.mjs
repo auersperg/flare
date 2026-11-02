@@ -49,10 +49,13 @@ for (const role of ["runtime", "admin"]) {
   });
   if (
     Object.keys(result.metafile.inputs).some((x) =>
-      /modelcontextprotocol|agents\/dist\/mcp\//.test(x),
+      (role === "admin"
+        ? /modelcontextprotocol|agents\/dist\/mcp\//
+        : /@modelcontextprotocol\/(?:sdk|client)\/|agents\/dist\/mcp\/index\.js/
+      ).test(x),
     )
   )
-    throw Error("Full MCP entered platform");
+    throw Error("Unexpected MCP client/legacy stack entered platform");
   await writeFile(
     `${out}/${role}-metafile.json`,
     JSON.stringify(result.metafile, null, 2),

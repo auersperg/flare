@@ -1,8 +1,13 @@
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile, rm, cp } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import { stableJson } from "../packages/flare/src/sdk/protocol.ts";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { loadPlatformRelease } from "../packages/flare/src/cli/platform-release.mjs";
@@ -474,6 +479,203 @@ try {
     seed,
   ]);
   await command("auth-configure", { enabled: true, registration: false });
+  // A real MCP client over HTTP -> Runtime -> supervisor -> facet, with native app sessions.
+  const password = "Fixture password only 42!";
+  await command("auth-create", { login: "mcp-first", password });
+  await command("auth-create", { login: "mcp-second", password });
+  const appRequest = async (suffix, body, token = "", which = "dev") =>
+    fetch(base + `/p/${project}/${which}/v1/` + suffix, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer " + proof.key,
+        ...(token ? { "x-flare-app-authorization": "Bearer " + token } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  const login = async (name) => {
+    const response = await appRequest("auth/login", { login: name, password });
+    assert.equal(response.status, 200);
+    return (await response.json()).token;
+  };
+  const firstSession = await login("mcp-first"),
+    secondSession = await login("mcp-second");
+  assert.ok(firstSession?.startsWith("flared_session_"));
+  const mcpClient = async (token) => {
+    const client = new Client({
+      name: "flare-native-acceptance",
+      version: "1",
+    });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(appBase + "/mcp"), {
+        requestInit: {
+          headers: {
+            authorization: "Bearer " + proof.key,
+            "x-flare-app-authorization": "Bearer " + token,
+          },
+        },
+      }),
+    );
+    return client;
+  };
+  const firstClient = await mcpClient(firstSession),
+    secondClient = await mcpClient(secondSession);
+  try {
+    assert.deepEqual(
+      (await firstClient.listTools()).tools.map((t) => t.name).sort(),
+      ["notes.mine", "notes.write"],
+    );
+    const ticket = (
+      await (await appRequest("live/ticket", {}, firstSession)).json()
+    ).result;
+    const notesLive = connectProofSocket(
+      appBase.replace("http:", "ws:") + "/live?ticket=" + ticket.ticket,
+      proof.key,
+    );
+    sockets.push(notesLive.ws);
+    await waitProof(() =>
+      notesLive.frames.some((f) => f.type === "ready"),
+    ).catch(() => {
+      throw Error(
+        "MCP subscription ready: " +
+          JSON.stringify({
+            frames: notesLive.frames,
+            closed: notesLive.closed,
+          }),
+      );
+    });
+    notesLive.ws.send(
+      JSON.stringify({
+        type: "subscribe",
+        id: "mine",
+        path: "checks/mcpMine",
+        args: {},
+      }),
+    );
+    await waitProof(() =>
+      notesLive.frames.some((f) => f.type === "snapshot" && f.id === "mine"),
+    ).catch(() => {
+      throw Error("MCP initial snapshot: " + JSON.stringify(notesLive.frames));
+    });
+    const firstSnapshot = notesLive.frames.find(
+      (f) => f.type === "snapshot" && f.id === "mine",
+    );
+    notesLive.ws.send(
+      JSON.stringify({
+        type: "ack",
+        id: "mine",
+        revision: firstSnapshot.revision,
+      }),
+    );
+    const written = await firstClient.callTool({
+      name: "notes.write",
+      arguments: { title: "private MCP note" },
+    });
+    assert.ok(!written.isError, JSON.stringify(written));
+    await waitProof(() =>
+      notesLive.frames.some(
+        (f) =>
+          f.type === "snapshot" &&
+          f.id === "mine" &&
+          f.result.includes("private MCP note"),
+      ),
+    ).catch(() => {
+      throw Error("MCP write snapshot: " + JSON.stringify(notesLive.frames));
+    });
+    const mine = await firstClient.callTool({
+      name: "notes.mine",
+      arguments: {},
+    });
+    assert.deepEqual(JSON.parse(mine.content[0].text), ["private MCP note"]);
+    const other = await secondClient.callTool({
+      name: "notes.mine",
+      arguments: {},
+    });
+    assert.deepEqual(JSON.parse(other.content[0].text), []);
+    assert.equal(
+      (await firstClient.callTool({ name: "checks/notes", arguments: {} }))
+        .isError,
+      true,
+    );
+    assert.equal(
+      (
+        await firstClient.callTool({
+          name: "notes.write",
+          arguments: { title: 7 },
+        })
+      ).isError,
+      true,
+    );
+    for (const token of [firstSession, proof.key]) {
+      const denied = await appRequest(
+        "mcp",
+        { jsonrpc: "2.0", id: 1, method: "tools/list" },
+        token,
+        token === firstSession ? "prod" : "dev",
+      );
+      assert.equal(denied.status, 401, await denied.clone().text());
+    }
+    const badOrigin = await fetch(appBase + "/mcp", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer " + proof.key,
+        "x-flare-app-authorization": "Bearer " + firstSession,
+        "content-type": "application/json",
+        origin: "https://untrusted.example",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    assert.equal(badOrigin.status, 403, await badOrigin.text());
+    // A client's cached tool catalogue cannot authorize a tool removed by a new release.
+    const hidden = structuredClone(bundle);
+    delete hidden.manifest.functions["checks/mcpWrite"].mcp;
+    const hash = (value) =>
+      createHash("sha256").update(stableJson(value)).digest("hex");
+    hidden.release.checksums.manifest = hash(hidden.manifest);
+    hidden.release.hash = hash({
+      protocol: 1,
+      compatibilityDate: hidden.release.compatibilityDate,
+      checksums: hidden.release.checksums,
+    });
+    await command("deploy", hidden);
+    assert.equal(
+      (
+        await firstClient.callTool({
+          name: "notes.write",
+          arguments: { title: "must not be written" },
+        })
+      ).isError,
+      true,
+    );
+    assert.deepEqual(
+      JSON.parse(
+        (await firstClient.callTool({ name: "notes.mine", arguments: {} }))
+          .content[0].text,
+      ),
+      ["private MCP note"],
+    );
+    await command("deploy", bundle);
+    const disabled = await appRequest(
+      "call",
+      { kind: "action", path: "checks/searchDisabled", args: {} },
+      firstSession,
+    );
+    assert.equal((await disabled.json()).error, "SEARCH_NOT_CONFIGURED");
+    assert.equal(
+      (await appRequest("auth/logout", {}, firstSession)).status,
+      200,
+    );
+    await assert.rejects(() => firstClient.listTools());
+    await assert.rejects(() =>
+      firstClient.callTool({ name: "notes.mine", arguments: {} }),
+    );
+  } finally {
+    await firstClient.close();
+    await secondClient.close();
+  }
+  console.log(
+    "PASS: real MCP client, opt-in tools, input validation, user/environment isolation, origin checks, removed tools after redeploy, revoked sessions, persisted mutation and live subscription",
+  );
   await waitProof(() => !!live.closed);
   assert.equal(live.closed.code, 1008);
   assert.equal(live.closed.reason, "Revoked");

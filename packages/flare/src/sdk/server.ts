@@ -1,3 +1,5 @@
+import type { SearchContext } from "./search.js";
+export type { SearchContext, SearchHit, SearchState } from "./search.js";
 export { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Validator, Schema } from "./schema.js";
@@ -15,6 +17,8 @@ export type {
 export type { ReadDatabase, WriteDatabase, Page } from "./database.js";
 import {
   assertPath,
+  assertMcpTools,
+  type McpTool,
   boundedJson,
   LIMITS,
   FlareError,
@@ -42,6 +46,7 @@ export interface MutationContext<S extends Schema = Schema> {
   };
 }
 export interface ActionContext {
+  readonly search: SearchContext;
   readonly auth: Auth | null;
   runQuery<I, O>(ref: FunctionRef<I, O>, args: I): Promise<O>;
   runMutation<I, O>(ref: FunctionRef<I, O>, args: I): Promise<O>;
@@ -101,6 +106,7 @@ export interface Definition<
   S extends Schema = Schema,
 > {
   readonly kind: K;
+  readonly mcp?: McpTool;
   readonly input: Validator<any, I>;
   readonly output: Validator<O, any>;
   readonly auth: "required" | "public" | "internal";
@@ -111,6 +117,7 @@ function declare<K extends FunctionKind, S extends Schema = Schema>(kind: K) {
     input: IV;
     output: OV;
     auth?: "required" | "public" | "internal";
+    mcp?: McpTool;
     handler: (
       ctx: Context<K, S>,
       args: StandardSchemaV1.InferOutput<IV>,
@@ -195,8 +202,15 @@ export function manifest(app: { functions: FunctionTree }): Manifest {
         "INVALID_CONTRACT",
         `${path} requires JSON Schema converters`,
       );
-    functions[path] = { kind: fn.kind, auth: fn.auth, input, output };
+    functions[path] = {
+      kind: fn.kind,
+      auth: fn.auth,
+      input,
+      output,
+      ...(fn.mcp !== undefined ? { mcp: fn.mcp } : {}),
+    };
   }
+  assertMcpTools(functions);
   boundedJson(functions, 1048576);
   return { protocol: 1, runtimeAbi: 4, functions };
 }

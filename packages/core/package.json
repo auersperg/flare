@@ -12,7 +12,8 @@
     "README.md"
   ],
   "dependencies": {
-    "agents": "0.28.0"
+    "agents": "0.28.0",
+    "@modelcontextprotocol/server": "2.3.0"
   },
   "repository": {
     "type": "git",

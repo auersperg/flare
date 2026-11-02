@@ -195,6 +195,7 @@ describe("Astro/shadcn dashboard", () => {
       "functions",
       "files",
       "schedules",
+      "ai",
       "auth",
       "logs",
     ]);

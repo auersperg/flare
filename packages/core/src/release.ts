@@ -2,6 +2,7 @@ import {
   boundedJson,
   stableJson,
   assertPath,
+  assertMcpTools,
   type Manifest,
 } from "../../flare/src/sdk/protocol.js";
 import {
@@ -62,6 +63,11 @@ export async function validateRelease(bundle: ReleaseUpload) {
       typeof fn.output !== "object"
     )
       fail("INVALID_RELEASE");
+  }
+  try {
+    assertMcpTools(bundle.manifest.functions);
+  } catch {
+    fail("INVALID_RELEASE");
   }
   if (
     !bundle.release.checksums ||

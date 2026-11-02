@@ -92,7 +92,7 @@ Worker names, catalogue IDs, R2/Queue identities, supervisor namespace, `app` fa
 
 `platform status` keeps installation `status` separate from `health`. Probes are read-only and bounded: expected Runtime/catalog/Admin payload readiness, unauthenticated dashboard closure and semantic Access app/policy digest. Network/permission errors mean unavailable, not healthy/not-installed. Actual owner sign-in is still separate. There is no monitoring timer.
 
-`platform install/update --config operator.json` accepts only complete desired `capabilities` and native `secrets` references. Omission on update preserves managed config; an explicit empty `{}` removes grants. The same release can deploy a config change without replacing data/namespace. Interrupted operations resume with their stored config; supplying a different config is refused. This does not accept arbitrary Wrangler settings or out-of-band bindings.
+`platform install/update --config operator.json` accepts complete desired `capabilities` and native `secrets` / `search` references. Omission on update preserves managed config; an explicit empty `{}` removes grants. The same release can deploy a config change without replacing data/namespace. Interrupted operations resume with their stored config; supplying a different config is refused. This does not accept arbitrary Wrangler settings or out-of-band bindings.
 
 ```json
 {
@@ -113,6 +113,33 @@ Worker names, catalogue IDs, R2/Queue identities, supervisor namespace, `app` fa
 ```
 
 Replace example project/store IDs with your own. Create the secret in Cloudflare Secrets Store with Workers scope first; Flare config contains only its reference, not its value. This optional capability requires **Account Secrets Store Edit** on the deployment token; Read alone cannot bind a secret to a Worker. The secret must include the `workers` scope. These are native [Cloudflare access checks](https://developers.cloudflare.com/secrets-store/access-control/), separate from the base installation permissions. Only Runtime receives bindings; grants are project/environment scoped and outbound remains exact HTTPS hosts, bounded bodies/deadline, no redirects. App code never receives the account token.
+
+### Optional AI Search connection (unreleased source capability)
+
+Create/approve a dedicated AI Search instance separately. The installer **does not provision it**. Connect a pre-existing instance in the default namespace, private (no public search/MCP bypass), without attaching the shared Flare files bucket:
+
+```json
+{
+  "capabilities": {
+    "00000000-0000-4000-8000-000000000001/dev": {
+      "search": "APP_SEARCH_DOCUMENTS"
+    }
+  },
+  "search": [
+    {
+      "binding": "APP_SEARCH_DOCUMENTS",
+      "instance_name": "documents-dev",
+      "scope": "00000000-0000-4000-8000-000000000001/dev"
+    }
+  ]
+}
+```
+
+Replace example identities; retain other desired grants/references when merging config. One instance cannot be assigned to multiple environments. Only Runtime receives `ai_search` bindings, never Admin/browser/app code. Permission to bind an existing instance and real provider operation must be verified in the target Cloudflare account; local tests are not cloud acceptance. Do not create a paid resource as an implicit update step.
+
+To disconnect: (1) remove the capability's `search` grant but **retain** its `search` reference and update; this fences retrieval/new indexing and starts durable cleanup, (2) wait for AI → remaining/error states to clear (explicit retry via Exclude all if necessary), (3) remove the reference in a second update. The CLI requires an authenticated read of the affected environment to verify cleanup; sign in through the existing project login or use its deploy token. Binding replacement/reassignment follows the same sequence. A deleted catalogue environment needs no session: project deletion itself drains the derived copies. `SEARCH_RECONCILE_REQUIRED` means an upload had an unknown outcome and no provider item is visible yet: retain the checkpoint/binding and reconcile with the provider before detaching, rather than claiming deletion succeeded. Never force-remove a binding with pending cleanup; no instance is deleted by Flare.
+
+Deploy a platform build containing this capability before application SDK code that calls it. This is not included in the already-published 0.3.10 package. Do not roll Runtime back to a pre-search implementation while search checkpoints exist: disable grants and drain first. Re-enabling after restore requires explicit application indexing, not a copied provider index.
 
 Access snapshots guard the app's security fields and separate policy list while excluding only known response timestamps. Unknown fields remain guarded. Legacy snapshots migrate only after the old exact hash matches; legacy drift requires explicit review. If an intentional Cloudflare Access change blocks update, inspect it in Cloudflare and take the current `health.access.snapshot` from `platform status`. Then run:
 

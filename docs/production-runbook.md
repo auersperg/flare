@@ -1,6 +1,6 @@
 # Production runbook: trusted-team installation
 
-Current 0.3.9 managed installs use [platform lifecycle](platform-lifecycle.md). Disposable install/recovery/cleanup have been exercised in the owner's account; the real 0.3.3 → 0.3.4 update preserved data/auth/files/pending jobs and owner Access sign-in was checked separately in the browser. Independent-account fresh-install acceptance remains pending; standard-layout adoption was exercised on the existing personal panel with the external compiled 0.3.5 CLI, and the exact 0.3.4 → candidate 0.3.5 cloud update passed separately. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
+Current 0.3.10 managed installs use [platform lifecycle](platform-lifecycle.md). Disposable install/recovery/cleanup have been exercised in the owner's account; the real 0.3.3 → 0.3.4 update preserved data/auth/files/pending jobs and owner Access sign-in was checked separately in the browser. Independent-account fresh-install acceptance remains pending; standard-layout adoption was exercised on the existing personal panel with the external compiled 0.3.5 CLI, and the exact 0.3.4 → candidate 0.3.5 cloud update passed separately. Historical operator recovery guidance remains below; an adopted installation must use the lifecycle CLI, not direct Worker deploys.
 
 Flare is a self-hosted backend, not a managed service with an operator SLA. Use the shared Cloudflare installation for trusted application code. Dev and prod have independent data, accounts, files and schedules. Promotion copies a backend release, not those resources.
 
@@ -24,12 +24,14 @@ Historical operator-layout cloud scripts require an idle adopted installation, e
 - Accepted personal-project policy: RPO at most 24 hours, RTO at most one hour. This is an operator objective, not an automatic service guarantee; acceptance requires a completed restore rehearsal for the selected workload.
 - The owner operates a daily backup cadence and a backup before risky changes. Check that the newest **completed** capsule is less than 24 hours old; a scheduled intention or an incomplete capsule does not satisfy RPO. Keep recovery metadata privately, and explicitly remove old capsules only after checking a newer recovery point. No automatic backup or retention timer is installed.
 - Before a risky change: pause cron, drain pending/running/failed jobs and actions, finish uploads. Inspect the selected environment, then create an on-demand logical backup in Settings → Backups or `flare backup create --env prod`.
+- Read-only checks and documentation/CI-only changes do not require extra capsules. For a risky rollout, create one complete pre-change capsule per affected environment; verify live state afterwards rather than creating a second capsule solely as evidence. This does not replace the daily recovery-point objective.
 - In 0.3.8 the bounded metadata inventory orders completed capsules newest-first and shows latest age/recoveryPoint. If inventory is partial, continue inventory: unknown is not within-RPO. This is metadata freshness, not checksum/recovery validation.
 - Record backup ID, source release hash, creation time, document/file counts and completion. Incomplete capsules cannot be used for restore. Verify recovery on an empty other environment before relying on it.
 - Current bounds: 10,000 documents / 4 MiB logical data; 100 files / 100 MiB. Password hashes are private credential data. Sessions, secrets, auth/origin configuration, cron and historical jobs are not copied.
 - Restore only into the other **empty** environment of the same project. Select source and backup ID explicitly. A failed restore remains fenced; retry the same capsule after repairing the cause. Do not clear fences/pins or overwrite a populated prod environment.
 - Verify document IDs/counts, file bytes, release hash and login/record permissions. Configure target capabilities/auth explicitly, then reopen traffic.
 - Delete obsolete backups explicitly after a newer restore is verified. No retention daemon or automatic periodic backup is configured. R2 storage remains billable while idle.
+- Matching release hashes, document revisions and row/file counts do not prove duplicate backups: user/password state and file contents can differ. Compare complete capsule contents before deduplication; do not delete recovery points based on list summaries alone.
 
 ## Jobs, errors and recovery
 
@@ -61,9 +63,13 @@ The current scoped platform token expires on 11 November 2026 at 22:59:59 UTC. R
 
 ## Release decision
 
+Deploy only affected components: documentation/CI-only changes need no cloud rollout; frontend-only changes need no platform or backend deployment. SDK implementation changes require rebuilding the application bundles that use them; platform changes use the managed updater. A single package does not require redeploying every application for every source change.
+
 A passed short acceptance supports a controlled pilot, not an unlimited production guarantee. Current exclusions: off-account disaster recovery/PITR, arbitrary tenant dashboard delegation, automatic DLQ replay, comprehensive telemetry/alerts, independent account installation, full-stack atomic publishing and arbitrary external identity-provider acceptance. Experimental native API compatibility also remains an operator risk.
 
 Do not label a cancelled 30-minute test as complete. Preserve exact reports, failing checks and cleanup outcome locally; private credentials and raw authenticated request logs never belong in Git.
+
+Remove disposable build workspaces after successful verification, including their installed dependencies. Preserve immutable registry archives, operator credentials and unresolved recovery directories; never sweep unrelated temporary directories by a broad filename prefix.
 
 ## Release evidence
 
