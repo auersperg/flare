@@ -413,6 +413,16 @@ describe("Production-only repository", () => {
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("bun run verify");
     expect(workflow).toContain("bun run test:kernel");
+    expect(workflow).toContain("bun scripts/platform-native-acceptance.mjs");
+    expect(workflow).toContain("bun run test:platform:reproducible");
+    expect(workflow.indexOf("bun audit")).toBeLessThan(
+      workflow.indexOf("bun run verify"),
+    );
+    expect(workflow.indexOf("actions/upload-artifact@")).toBeGreaterThan(
+      workflow.indexOf("git diff --exit-code"),
+    );
+    expect(workflow).toContain("name: npm-package");
+    expect(workflow).toContain("if-no-files-found: error");
     expect(workflow).toContain("persist-credentials: false");
     expect(workflow).not.toMatch(
       /secrets\.|wrangler deploy|npm publish|test:cloud/,
@@ -425,13 +435,70 @@ describe("Production-only repository", () => {
     expect(workflow).toContain("environment: npm");
     expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("persist-credentials: false");
-    expect(workflow).toContain("bun run verify");
-    expect(workflow).toContain("bun run test:kernel");
+    expect(workflow).toContain("actions: read");
+    expect(workflow).toContain('--commit "$GITHUB_SHA"');
+    expect(workflow).toContain("--workflow ci.yml --branch main");
+    expect(workflow).toContain("--status success");
+    expect(workflow).toContain("--name npm-package --dir artifacts");
+    expect(workflow).not.toMatch(/\bbun\b|pm pack/);
+    expect(
+      workflow.match(/node scripts\/verify-package-artifact.mjs/g),
+    ).toHaveLength(1);
     expect(workflow).toContain("--provenance");
     expect(workflow).not.toMatch(
       /secrets\.|NODE_AUTH_TOKEN|NPM_TOKEN|pull_request_target|wrangler deploy/,
     );
     expect(read("LICENSE")).toContain("MIT License");
+  });
+  it("stops publication without successful CI and downloads only the selected run", () => {
+    const workflow = Bun.YAML.parse(read(".github/workflows/publish.yml")) as {
+      jobs: { publish: { steps: { name?: string; run?: string }[] } };
+    };
+    const script = workflow.jobs.publish.steps.find((step) =>
+      step.name?.startsWith("Download the accepted archive"),
+    )!.run!;
+    for (const run of ["", "12345"]) {
+      const result = spawnSync(
+        "bash",
+        [
+          "-euo",
+          "pipefail",
+          "-c",
+          `gh() {
+            if [ "$1 $2" = "run list" ]; then
+              printf '%s\\n' "$*" >&2
+              printf '%s' "$TEST_CI_RUN"
+            elif [ "$1 $2" = "run download" ]; then
+              printf '%s\\n' "$*"
+            else return 1; fi
+          }
+          ${script}`,
+        ],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            GITHUB_REPOSITORY: "auersperg/flare",
+            GITHUB_SHA: "a".repeat(40),
+            TEST_CI_RUN: run,
+          },
+        },
+      );
+      expect(result.status).toBe(run ? 0 : 1);
+      expect(result.stderr).toContain(`--commit ${"a".repeat(40)}`);
+      expect(result.stderr).toContain("--status success");
+      expect(result.stderr).toContain(
+        '.event == "push" or .event == "workflow_dispatch"',
+      );
+      if (run)
+        expect(result.stdout.trim()).toBe(
+          "run download 12345 --repo auersperg/flare --name npm-package --dir artifacts",
+        );
+      else {
+        expect(result.stderr).toContain("No successful CI for this commit");
+        expect(result.stdout).toBe("");
+      }
+    }
   });
   it("has no demo workspaces or build-time demo dependencies", () => {
     const pkg = JSON.parse(read("package.json"));

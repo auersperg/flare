@@ -434,23 +434,25 @@ Triggers: push main, pull_request, workflow_dispatch. Ubuntu 24.04, timeout 15 m
 ```text
 checkout → setup Node/Bun
   → bun install --frozen-lockfile --ignore-scripts
+  → bun audit --production --audit-level=high
   → bun run verify
        build → type/astro checks → unit tests → format check
        → verify-build (bundles/CSP/bootstrap)
        → package-acceptance (real tarball, external disposable app)
   → bun run test:kernel (local native workerd)
   → bun scripts/platform-native-acceptance.mjs
-  → bun audit --production --audit-level=high
+  → bun run test:platform:reproducible
   → git diff --exit-code
+  → upload npm-package artifact (main only)
 ```
 
 CI **не имеет Cloudflare credentials**, не создаёт cloud resources, не деплоит core/customer apps и не публикует npm. Native kernel — локальная проверка, не облачная production certification. `git diff` ловит изменения tracked source от verification; secrets/configs не выдаются pull requests.
 
 ### 18.2 GitHub `publish.yml`
 
-Отдельный manual workflow_dispatch, только `auersperg/flare`, ref main. Inputs: exact version из package manifest и dist-tag `next|latest`; environment `npm` (в текущей настройке репозитория — approval gate). Timeout 20 minutes, publishing concurrency сериализован и не cancel-ится новым run.
+Отдельный manual workflow_dispatch, только `auersperg/flare`, ref main. Inputs: exact version из package manifest и dist-tag `next|latest`; environment `npm` (в текущей настройке репозитория — approval gate). Timeout 5 minutes, publishing concurrency сериализован и не cancel-ится новым run.
 
-Workflow проверяет имя/version/license MIT/private flag, повторяет verify/kernel/native-platform/reproducibility/audit/clean diff, затем проверяет SHA-256 **того же tarball packages/flare**, который независимо установлен и проверен package acceptance. Повторного repack перед публикацией нет. Устанавливает pinned npm `12.1.0`; публикует tarball через `npm publish --access public --tag ... --provenance`.
+Workflow проверяет имя/version/license MIT/private flag, скачивает `npm-package` из успешного `ci.yml` для того же commit на main (push или workflow_dispatch, не PR), затем перед публикацией проверяет SHA-256 архива по package acceptance. Все build/native/reproducibility/audit gates выполняются в CI один раз. В publication нет установки зависимостей проекта, повторной сборки, тестов или repack. Если успешного CI или сохранённого артефакта нет, публикация останавливается; нужно завершить или повторить CI для того же commit. Устанавливает pinned npm `12.1.0`; публикует tarball через `npm publish --access public --tag ... --provenance`.
 
 Publish job имеет `id-token: write`; npm Trusted Publisher связан с repo → `publish.yml` → environment `npm`. Постоянный npm publish token workflow не использует. Это [OIDC trusted publishing](https://docs.npmjs.com/trusted-publishers/), не авторизация Cloudflare.
 

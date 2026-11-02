@@ -70,7 +70,7 @@ Use a CLI containing this command (published 0.3.5; the older 0.3.4 CLI cannot a
 
 The dashboard is a client-only React application mounted by Astro's native bundled script, not an unnecessary SSR/hydration island. No path-derived island IDs enter HTML. Tailwind scans only maintained dashboard source; the private dashboard consumes the same workspace SDK, not a stale registry alias. No generated HTML rewrite or hash exception is used.
 
-`bun run test:platform:reproducible` builds twice with a frozen lockfile in isolated directories at different absolute paths and requires identical complete platform manifests and all file hashes. The protected publish workflow runs this gate and publishes only the exact independently installed/tested tarball, with SHA-256 checked immediately before npm publish. Releases remain immutable; retain the exact registry archive for future upgrade tests. Version 0.3.4 is untouched; these changes shipped in the new immutable 0.3.5 release.
+`bun run test:platform:reproducible` builds twice with a frozen lockfile in isolated directories at different absolute paths and requires identical complete platform manifests and all file hashes. CI runs this gate and stores the independently installed/tested tarball as a GitHub Actions artifact. The protected publish workflow downloads that artifact only from successful main-branch CI for the exact release commit, checks its SHA-256 and publishes it without reinstalling dependencies, rebuilding or rerunning tests. Releases remain immutable; retain the exact registry archive for future upgrade tests. Version 0.3.4 is untouched; these changes shipped in the new immutable 0.3.5 release.
 
 ## Update semantics
 
@@ -125,6 +125,6 @@ This accepts exactly the reviewed app/policies under the existing installation C
 
 ## Release and verification
 
-The same npm archive contains the CLI and verified platform payload. CI runs local source/type/package/native checks without cloud credentials. Protected publication adds clean-build reproducibility and publishes the exact accepted archive, without repacking. Cloud lifecycle acceptance is manual, against disposable installations, never retained customer environments.
+The same npm archive contains the CLI and verified platform payload. CI runs local source/type/package/native checks without cloud credentials. CI includes clean-build reproducibility and uploads the accepted archive only after all checks pass. Protected publication reuses that exact-commit artifact without rebuilding or repacking. Wait for successful CI before dispatching publication; if the artifact has expired, rerun CI for the same commit. Cloud lifecycle acceptance is manual, against disposable installations, never retained customer environments.
 
 Independent-account installation, full graceful drain and off-account disaster recovery are not verified. A same-release no-op is not a cross-version proof. See the [runbook](production-runbook.md) for recovery and operational limitations. Historical release evidence is retained in `docs/archive/`, not in the current command guide.
