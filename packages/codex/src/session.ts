@@ -7,7 +7,10 @@ const dir = "/run/flare";
 const retentionMs = 7 * 86400000;
 const timeoutMs = 10 * 60000;
 const pollMs = 5000;
-type RecordTask = CodexTask & { fingerprint: string };
+type RecordTask = CodexTask & {
+  fingerprint: string;
+  artifactDiscarded?: boolean;
+};
 export interface Settings {
   FLARE_SCOPE: string;
   AUTH_REVISION: string;
@@ -59,7 +62,7 @@ export class Session {
   }
   private visible(task?: RecordTask): CodexTask | null {
     if (!task) return null;
-    const { fingerprint: _, ...result } = task;
+    const { fingerprint: _, artifactDiscarded: __, ...result } = task;
     return result;
   }
   async command(op: string, input: any): Promise<CodexTask | null> {
@@ -69,6 +72,31 @@ export class Session {
       throw Error("CODEX_SCOPE_MISMATCH");
     if (!owner) this.storage.kv.put("scope", this.env.FLARE_SCOPE);
     if (op === "status") return this.visible(this.task(input.id));
+    if (op === "discardArtifact") {
+      const task = this.task(input.id);
+      // A forgotten submission must not race a later start with the same ID.
+      if (
+        !task &&
+        Number(
+          this.storage.sql
+            .exec("SELECT COUNT(*) AS count FROM codex_tasks")
+            .one().count,
+        ) >= 1000
+      )
+        throw Error("CODEX_HISTORY_FULL");
+      const record: RecordTask = task ?? {
+        id: input.id,
+        state: "cancelled",
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+        fingerprint: "",
+      };
+      delete record.artifact;
+      record.artifactDiscarded = true;
+      this.put(record);
+      await this.storage.sync();
+      return this.visible(record);
+    }
     if (op === "cancel") {
       if (
         this.storage.kv.get("active") === input.id &&
@@ -294,7 +322,9 @@ export class Session {
         );
     }
     // Commit result and rotated credentials before destroying ephemeral disk.
-    this.put({ ...task, ...outcome, finishedAt: Date.now() });
+    const record = { ...task, ...outcome, finishedAt: Date.now() };
+    if (record.artifactDiscarded) delete record.artifact;
+    this.put(record);
     await this.storage.sync();
     await this.stop();
   }
@@ -365,7 +395,9 @@ export class Session {
         );
       else {
         const result = await this.read(`${dir}/result.txt`, 65536);
-        const artifact = await this.read(`${dir}/artifact.json`, 16384);
+        const artifact = task.artifactDiscarded
+          ? undefined
+          : await this.read(`${dir}/artifact.json`, 16384);
         await this.finish(
           task,
           result === undefined

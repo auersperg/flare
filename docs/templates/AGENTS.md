@@ -6,7 +6,7 @@
 
 - Назначение приложения: **заполнить**.
 - Frontend framework и версия: **заполнить по package.json**.
-- SDK: `@auersperg/flare@0.3.14` (проверенная база; изменение версии требует проверки совместимости).
+- SDK: `@auersperg/flare@0.3.15` (проверенная база; изменение версии требует проверки совместимости).
 - Runtime URL установленной платформы: **заполнить публичный URL**.
 - Dashboard URL: **заполнить публичный URL**.
 - Project UUID: **заполнить после browser approval**; не чужой пример UUID.
@@ -33,8 +33,8 @@
 ## Flow
 
 ```sh
-bun add --exact @auersperg/flare@0.3.14
-bunx --bun --package @auersperg/flare@0.3.14 flare dev
+bun add --exact @auersperg/flare@0.3.15
+bunx --bun --package @auersperg/flare@0.3.15 flare dev
 ```
 
 Bun 1.4.3+. Перед install проверьте существующие dependencies, не переписывайте lockfile без необходимости. CLI owner approval проходит через Access-protected dashboard; scoped credential хранится вне приложения. `flare dev` собирает/генерирует и пишет в **реальный cloud dev**, это не emulator. Frontend запускается отдельно своей согласованной командой. Runtime URL для CLI и project environment URL для client — разные адреса; используйте выданный `.env.local` и framework-правильный prefix.
@@ -58,7 +58,7 @@ Bun 1.4.3+. Перед install проверьте существующие depen
 
 Работайте только внутри согласованного app scope. Не устанавливайте/обновляйте платформу, не изменяйте Access/DNS/Cloudflare resources, не удаляйте данные/backup, не публикуйте SDK. Account API token приложению не нужен. Не открывайте регистрацию ради теста. Production activation и frontend hosting выполняйте только после отдельного явного разрешения владельца.
 
-После такого разрешения обычная команда backend+frontend build — `bunx --bun --package @auersperg/flare@0.3.14 flare deploy --cmd "bun run build"`, если `build` действительно существует. Frontend output доставляется отдельным hosting flow. Не считайте их одной atomic transaction; обеспечьте API compatibility. Не переносите dev env/данные/учётные записи в prod автоматически.
+После такого разрешения обычная команда backend+frontend build — `bunx --bun --package @auersperg/flare@0.3.15 flare deploy --cmd "bun run build"`, если `build` действительно существует. Frontend output доставляется отдельным hosting flow. Не считайте их одной atomic transaction; обеспечьте API compatibility. Не переносите dev env/данные/учётные записи в prod автоматически.
 
 ## Definition of done
 

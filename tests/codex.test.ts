@@ -462,3 +462,26 @@ describe("Optional same-turn JSON artifact", () => {
     expect((await f.command("status", { id }))?.artifact).toBeUndefined();
   });
 });
+
+it("erases consumed artifacts, fences delayed artifacts and never starts a forgotten ID", async () => {
+  const f = fixture(),
+    id = crypto.randomUUID();
+  await f.command("start", {
+    id,
+    prompt: "artifact",
+    outputFile: "memory.json",
+  });
+  await f.command("discardArtifact", { id });
+  f.complete();
+  f.disk.set("/run/flare/artifact.json", '{"private":"forgotten"}');
+  await f.tick();
+  const result = await f.command("status", { id });
+  expect(result?.state).toBe("succeeded");
+  expect(result?.artifact).toBeUndefined();
+  expect(JSON.stringify(result)).not.toContain("artifactDiscarded");
+  const unknown = crypto.randomUUID();
+  await f.command("discardArtifact", { id: unknown });
+  await expect(
+    f.command("start", { id: unknown, prompt: "do not resurrect" }),
+  ).rejects.toThrow("CODEX_ID_CONFLICT");
+});

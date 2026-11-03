@@ -180,10 +180,17 @@ export default { async fetch(req,env,ctx) {
     }
     if (prompt === "wait") await call("cancel", { id: input.id });
     const task = await done(input.id);
-    if (prompt === "artifact")
+    if (prompt === "artifact") {
       assert.deepEqual(JSON.parse(task.artifact), {
         facts: [{ quote: "fixture only" }],
       });
+      await call("discardArtifact", { id: input.id });
+      assert.equal(
+        (await call("status", { id: input.id })).artifact,
+        undefined,
+      );
+      delete task.artifact;
+    }
     assert.equal(
       task.state,
       prompt === "fail"

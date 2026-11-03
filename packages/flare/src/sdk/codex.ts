@@ -22,6 +22,8 @@ export interface CodexContext {
   start(input: CodexTaskInput): Promise<CodexTask>;
   status(id: string): Promise<CodexTask | null>;
   cancel(id: string): Promise<CodexTask | null>;
+  /** Erase the temporary artifact and prevent its later retention. An unstarted ID is fenced. */
+  discardArtifact(id: string): Promise<void>;
 }
 export function codexInput(op: string, input: any): void {
   boundedJson(input, 40000);
@@ -31,7 +33,7 @@ export function codexInput(op: string, input: any): void {
     !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
       input.id,
     ) ||
-    !["start", "status", "cancel"].includes(op) ||
+    !["start", "status", "cancel", "discardArtifact"].includes(op) ||
     Object.keys(input).some(
       (k) =>
         ![
@@ -63,5 +65,8 @@ export function codexContext(
     start: (input) => invoke("start", input),
     status: (id) => invoke("status", { id }),
     cancel: (id) => invoke("cancel", { id }),
+    discardArtifact: async (id) => {
+      await invoke("discardArtifact", { id });
+    },
   };
 }

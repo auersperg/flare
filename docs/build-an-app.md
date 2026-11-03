@@ -1,6 +1,6 @@
 # Создание приложения на Flare — руководство для агента
 
-Проверенная база: **`@auersperg/flare@0.3.14`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
+Проверенная база: **`@auersperg/flare@0.3.15`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
 
 Это инструкция для **отдельного приложения**, а не для изменения Flare. Полная реализация — в [архитектуре](architecture.md); установка самой платформы — в [platform lifecycle](platform-lifecycle.md); эксплуатационные ограничения — в [runbook](production-runbook.md).
 
@@ -55,8 +55,8 @@ my-app/
 В отдельном frontend-проекте с `package.json`:
 
 ```sh
-bun add --exact @auersperg/flare@0.3.14
-bunx --bun --package @auersperg/flare@0.3.14 flare dev
+bun add --exact @auersperg/flare@0.3.15
+bunx --bun --package @auersperg/flare@0.3.15 flare dev
 ```
 
 1. Укажите **Runtime URL установленной платформы**, полученный от владельца. Это не project dev URL и не адрес dashboard.
@@ -228,7 +228,7 @@ export function Tasks({ signedIn }: { signedIn: boolean }) {
 После dev acceptance и **явного подтверждения владельца**:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.14 flare deploy --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.15 flare deploy --cmd "bun run build"
 ```
 
 Команда собирает backend, генерирует API, запускает frontend build с URL целевой **prod** среды, затем активирует backend с подтверждением проекта. Подставьте реальную build-команду вашего framework. Ошибка build не должна активировать backend. `.env.local` продолжает указывать на dev. Обычный `flare deploy` без `--cmd` тоже поддерживается, но frontend build/target URL тогда обеспечьте отдельно.
@@ -236,8 +236,8 @@ bunx --bun --package @auersperg/flare@0.3.14 flare deploy --cmd "bun run build"
 Для продвижения уже проверенного immutable dev release:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.14 flare releases --env dev
-bunx --bun --package @auersperg/flare@0.3.14 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.15 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.15 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
 ```
 
 Frontend output публикуется **отдельным hosting flow**. Backend activation и frontend deployment не являются общей atomic transaction: используйте совместимые additive API изменения и проверяйте обе стороны. Перед prod проверьте prod auth, origins, capabilities и восстановление согласно требованиям проекта; не копируйте dev пользователей/данные автоматически.
@@ -294,7 +294,7 @@ Endpoint: `https://<runtime>/p/<project>/<dev|prod>/v1/mcp`. Используй�
 
 Панель AI отображает managed binding, last-observed состояния и опубликованные tools. Проверка использует явно введённую app session и существующую action; не impersonation владельца панели. Разрешите origin панели в app settings, если хотите пользоваться этой проверкой. Session хранится только в памяти открытой вкладки, не localStorage. Тестовый вызов action может иметь побочные эффекты: выбирайте именно свою поисковую функцию.
 
-## Версионные текстовые записи в AI Search (0.3.14)
+## Версионные текстовые записи в AI Search (0.3.15)
 
 `ctx.search.records` — capability только action. SQLite приложения остаётся источником;
 мутация меняет запись и вызывает `jobs.schedule("records/index", {id})` в одной
@@ -335,3 +335,8 @@ Codex может вернуть необязательный JSON artifact из 
 `task.artifact` и сохраняет данные только после `state === "succeeded"`; artifact
 не является доказательством выполненного действия. Это один запуск Codex, не второй
 агентный цикл. Отсутствующий/невалидный artifact не превращается в выдуманный результат.
+
+После транзакционного сохранения вызовите `await codex.discardArtifact(id)`:
+временный JSON стирается из runner и больше не сохраняется при завершении.
+Повтор безопасен; для ещё не стартовавшего ID операция закрывает возможность
+позднего запуска с тем же ID. Обычный ответ/видимый журнал задачи не удаляются.
