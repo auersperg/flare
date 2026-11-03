@@ -428,17 +428,32 @@ export function database<S extends Schema>(
         boundedJson(patch, 65536);
         if (!patch || Array.isArray(patch) || typeof patch !== "object")
           throw new FlareError("INVALID_INPUT", "Invalid patch");
-        const row = sql
-          .exec(`SELECT _data FROM ${quote(name)} WHERE _id=?`, id)
-          .toArray()[0];
-        if (!row) throw new FlareError("NOT_FOUND", "Document not found");
-        const value = await documentJson(definition, {
-          ...JSON.parse(String(row._data)),
-          ...patch,
-        });
-        writing();
-        sql.exec(`UPDATE ${quote(name)} SET _data=? WHERE _id=?`, value, id);
-        changed.add(name);
+        while (true) {
+          const row = sql
+            .exec(`SELECT _data FROM ${quote(name)} WHERE _id=?`, id)
+            .toArray()[0];
+          if (!row) throw new FlareError("NOT_FOUND", "Document not found");
+          const value = await documentJson(definition, {
+            ...JSON.parse(String(row._data)),
+            ...patch,
+          });
+          writing();
+          // Validation can yield to another write in this invocation. Merge and
+          // validate again rather than overwrite a concurrently changed document.
+          if (
+            sql
+              .exec(
+                `UPDATE ${quote(name)} SET _data=? WHERE _id=? AND _data=? RETURNING _id`,
+                value,
+                id,
+                row._data,
+              )
+              .toArray().length
+          ) {
+            changed.add(name);
+            return;
+          }
+        }
       });
     },
     replace(name: string, id: string, input: any) {

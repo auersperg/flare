@@ -175,6 +175,59 @@ describe("native SQLite document capability", () => {
       s.sqlite.close();
     }
   });
+  it.each(["patch", "replace", "delete"] as const)(
+    "respects a concurrent %s while patch validation is pending",
+    async (operation) => {
+      const s = await setup();
+      try {
+        let release!: () => void;
+        const waiting = new Promise<void>((resolve) => (release = resolve));
+        const base = schema.tasks.validator;
+        const concurrent = defineSchema({
+          ...schema,
+          tasks: defineTable({
+            "~standard": {
+              ...base["~standard"],
+              validate: async (input: unknown) => {
+                if ((input as { title?: string }).title === "renamed")
+                  await waiting;
+                return base["~standard"].validate(input);
+              },
+            },
+          }),
+        });
+        const c = database(s.sql, concurrent, true);
+        const id = await c.db.insert("tasks", value("original"));
+        const patches = Promise.all([
+          c.db.patch("tasks", id, { title: "renamed" }),
+          (operation === "patch"
+            ? c.db.patch("tasks", id, { done: true })
+            : operation === "replace"
+              ? c.db.replace("tasks", id, {
+                  ...value("replacement", 2),
+                  done: true,
+                })
+              : c.db.delete("tasks", id)
+          ).then(release),
+        ]);
+        if (operation === "delete") {
+          await expect(patches).rejects.toMatchObject({ code: "NOT_FOUND" });
+          expect(await c.db.get("tasks", id)).toBeNull();
+          await expect(c.finish()).rejects.toMatchObject({ code: "NOT_FOUND" });
+        } else {
+          await patches;
+          expect(await c.db.get("tasks", id)).toMatchObject({
+            title: "renamed",
+            done: true,
+            score: operation === "replace" ? 2 : 1,
+          });
+          await c.finish();
+        }
+      } finally {
+        s.sqlite.close();
+      }
+    },
+  );
   it("read capability never exposes writes, raw SQL, storage or a session", async () => {
     const s = await setup();
     try {

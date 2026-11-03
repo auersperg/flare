@@ -10,6 +10,7 @@ export type {
   SearchRecordRef,
   SearchRecordState,
   SearchRecordHit,
+  SearchRecordFilters,
   SearchRecords,
 } from "./search.js";
 export { z } from "zod";

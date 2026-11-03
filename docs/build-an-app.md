@@ -1,6 +1,6 @@
 # Создание приложения на Flare — руководство для агента
 
-Проверенная база: **`@auersperg/flare@0.3.19`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
+Проверенная база: **`@auersperg/flare@0.3.20`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
 
 Это инструкция для **отдельного приложения**, а не для изменения Flare. Полная реализация — в [архитектуре](architecture.md); установка самой платформы — в [platform lifecycle](platform-lifecycle.md); эксплуатационные ограничения — в [runbook](production-runbook.md).
 
@@ -55,8 +55,8 @@ my-app/
 В отдельном frontend-проекте с `package.json`:
 
 ```sh
-bun add --exact @auersperg/flare@0.3.19
-bunx --bun --package @auersperg/flare@0.3.19 flare dev
+bun add --exact @auersperg/flare@0.3.20
+bunx --bun --package @auersperg/flare@0.3.20 flare dev
 ```
 
 1. Укажите **Runtime URL установленной платформы**, полученный от владельца. Это не project dev URL и не адрес dashboard.
@@ -228,7 +228,7 @@ export function Tasks({ signedIn }: { signedIn: boolean }) {
 После dev acceptance и **явного подтверждения владельца**:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.19 flare deploy --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.20 flare deploy --cmd "bun run build"
 ```
 
 Команда собирает backend, генерирует API, запускает frontend build с URL целевой **prod** среды, затем активирует backend с подтверждением проекта. Подставьте реальную build-команду вашего framework. Ошибка build не должна активировать backend. `.env.local` продолжает указывать на dev. Обычный `flare deploy` без `--cmd` тоже поддерживается, но frontend build/target URL тогда обеспечьте отдельно.
@@ -236,8 +236,8 @@ bunx --bun --package @auersperg/flare@0.3.19 flare deploy --cmd "bun run build"
 Для продвижения уже проверенного immutable dev release:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.19 flare releases --env dev
-bunx --bun --package @auersperg/flare@0.3.19 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.20 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.20 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
 ```
 
 Frontend output публикуется **отдельным hosting flow**. Backend activation и frontend deployment не являются общей atomic transaction: используйте совместимые additive API изменения и проверяйте обе стороны. Перед prod проверьте prod auth, origins, capabilities и восстановление согласно требованиям проекта; не копируйте dev пользователей/данные автоматически.
@@ -308,9 +308,14 @@ await search.records.sync({
   version: record.version,
   partition: record.owner,
   text: record.deleted ? null : record.text,
+  metadata: { scope: record.scope, kind: record.kind },
 });
 const hits = await search.records.query(
-  { query, partition: authenticatedOwner },
+  {
+    query,
+    partition: authenticatedOwner,
+    filters: { scope: { $in: ["global", selectedScope] }, kind: "fact" },
+  },
   async (refs) => currentAuthorizedRevisionsFromSQLite(refs),
 );
 ```
@@ -325,6 +330,21 @@ tombstone до подтверждения очистки: запоздавшие
 Индекс использует нативный Items API, без промежуточного Flare File/R2.
 Metadata необязательна: до пяти предварительно настроенных на instance строковых
 полей, до 64 UTF-8 байт каждое; системные folder/filename/timestamp зарезервированы.
+`filters` необязателен: строка означает точное равенство, `{ $in: [...] }` — одно
+из 1..20 строковых значений. До пяти полей объединяются AND; пустой объект
+запрещён — для поиска без metadata-фильтра просто не передавайте `filters`.
+Фильтры требуют совместимого обновления SDK и платформы; прежний runtime,
+поддерживающий только query/partition/limit, отклонит этот аргумент.
+Имена полей: `[a-z][a-z0-9_]{0,31}`, значения — до 64 UTF-8 байт. Поле без metadata
+не совпадает с фильтром. Runtime добавляет свой `folder`, проверяет metadata
+найденных записей по SQLite и сохраняет обязательную проверку прав/версий.
+Фильтр сужает поиск **до отбора top результатов**, но не заменяет авторизацию.
+
+До использования такого примера оператор должен настроить `scope` и `kind`
+как text-поля `custom_metadata` на подключённом AI Search instance. Изменение
+схемы запускает переиндексацию; query не меняет конфигурацию автоматически.
+См. [metadata](https://developers.cloudflare.com/ai-search/configuration/indexing/metadata/)
+и [нативные фильтры](https://developers.cloudflare.com/ai-search/configuration/retrieval/filtering/).
 Проверяйте `records.status({id, partition})`: pending/queued — не completed.
 Сбой сохраняет checkpoint; повтор sync той же версии безопасен, другая нагрузка
 с той же версией — CONFLICT. Для повторной индексации после operator clear или

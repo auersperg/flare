@@ -33,6 +33,7 @@ function fixture(onWake?: (count: number) => Promise<void>) {
       4,
     );
   const items = new Map<string, AiSearchItemInfo>();
+  const searches: any[] = [];
   let uploads = 0,
     wakes = 0,
     failUpload = false,
@@ -75,6 +76,7 @@ function fixture(onWake?: (count: number) => Promise<void>) {
       },
     },
     search: async (input: any) => {
+      searches.push(input);
       if (
         typeof input.ai_search_options.retrieval.filters?.folder === "string"
       ) {
@@ -132,6 +134,7 @@ function fixture(onWake?: (count: number) => Promise<void>) {
     id,
     other,
     items,
+    searches,
     get uploads() {
       return uploads;
     },
@@ -488,6 +491,114 @@ describe("Versioned text records on the existing search reconciler", () => {
     text: string | null = "I prefer short answers",
     partition = "alice",
   ) => ({ id, version, text, partition });
+  it("sends native metadata filters before ranking and rechecks stored metadata", async () => {
+    const f = fixture();
+    const missing = crypto.randomUUID(),
+      wrongKind = crypto.randomUUID();
+    for (const input of [
+      { ...record(f.id), metadata: { scope: "global", kind: "fact" } },
+      { ...record(f.other), metadata: { scope: "case-a", kind: "fact" } },
+      { ...record(wrongKind), metadata: { scope: "case-a", kind: "draft" } },
+      record(missing),
+      {
+        ...record(crypto.randomUUID()),
+        metadata: { scope: "case-b", kind: "fact" },
+      },
+    ])
+      await f.sdk.records.sync(input);
+    await f.store.work();
+    const filters = { scope: { $in: ["global", "case-a"] }, kind: "fact" };
+    const hits = await f.sdk.records.query(
+      { query: "facts", partition: "alice", filters },
+      async (refs) => refs,
+    );
+    // This fixture deliberately ignores provider filtering; local metadata still fences hits.
+    expect(hits.map((h) => h.id)).toEqual([f.id, f.other]);
+    expect(f.searches[0].ai_search_options.retrieval.filters).toEqual({
+      folder: expect.stringMatching(/^[a-f0-9]{32}\/$/),
+      scope: { $in: ["global", "case-a"] },
+      kind: "fact",
+    });
+    expect(
+      (
+        await f.sdk.records.query(
+          { query: "facts", partition: "alice", filters: { scope: "case-a" } },
+          async (refs) => refs,
+        )
+      ).map((h) => h.id),
+    ).toEqual([f.other, wrongKind]);
+  });
+  it("keeps source authorization and version fencing for filtered records", async () => {
+    const f = fixture();
+    await f.sdk.records.sync({
+      ...record(f.id),
+      metadata: { scope: "case-a" },
+    });
+    await f.store.work();
+    const input = {
+      query: "facts",
+      partition: "alice",
+      filters: { scope: "case-a" },
+    };
+    expect(await f.sdk.records.query(input, async () => [])).toEqual([]);
+    expect(
+      await f.sdk.records.query(input, async (refs) => {
+        await f.sdk.records.sync({
+          ...record(f.id, 2),
+          metadata: { scope: "case-b" },
+        });
+        return refs;
+      }),
+    ).toEqual([]);
+  });
+  it("validates metadata filters without permitting scope or operator injection", async () => {
+    const f = fixture();
+    for (const filters of [
+      null,
+      [],
+      {},
+      { folder: "foreign/" },
+      { Folder: "foreign/" },
+      { filename: "foreign.txt" },
+      { timestamp: "1" },
+      { $or: [] },
+      { scope: { $ne: "case-a" } },
+      { scope: { $in: ["a"], $eq: "b" } },
+      { scope: { $in: [] } },
+      { scope: { $in: Array(21).fill("a") } },
+      { scope: { $in: ["a", 1] } },
+      { scope: ["a"] },
+      { scope: 1 },
+      { scope: "я".repeat(33) },
+      { scope: { $in: ["я".repeat(33)] } },
+      { a: "1", b: "2", c: "3", d: "4", e: "5", f: "6" },
+    ])
+      await expect(
+        f.store.queryRecords({
+          query: "x",
+          partition: "alice",
+          filters,
+        } as any),
+      ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    expect(f.searches).toHaveLength(0);
+    await f.sdk.records.sync({
+      ...record(f.id),
+      metadata: { scope: "я".repeat(32) },
+    });
+    await f.store.work();
+    expect(
+      (
+        await f.sdk.records.query(
+          {
+            query: "x",
+            partition: "alice",
+            filters: { scope: "я".repeat(32) },
+          },
+          async (refs) => refs,
+        )
+      ).map((h) => h.id),
+    ).toEqual([f.id]);
+  });
   it("uploads text directly without Files, deduplicates deliveries and fences old revisions", async () => {
     const f = fixture();
     f.env.FILES = undefined;

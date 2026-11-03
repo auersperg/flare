@@ -11,6 +11,7 @@ import type {
   SearchRecordRef,
   SearchRecordState,
   SearchRecordHit,
+  SearchRecordFilters,
 } from "../../flare/src/sdk/search.js";
 import { appPolicy, type PolicyEnv } from "./capabilities.js";
 import { fileKey } from "./files.js";
@@ -41,6 +42,36 @@ const states = new Set([
   "skipped",
   "outdated",
 ]);
+const metadataKey = (key: string) =>
+  /^[a-z][a-z0-9_]{0,31}$/.test(key) &&
+  !["folder", "filename", "timestamp"].includes(key);
+const metadataValue = (value: unknown): value is string =>
+  typeof value === "string" && new TextEncoder().encode(value).length <= 64;
+
+function recordFilters(input?: SearchRecordFilters): SearchRecordFilters {
+  if (input === undefined) return {};
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    fail("INVALID_INPUT");
+  const entries = Object.entries(input);
+  if (!entries.length || entries.length > 5) fail("INVALID_INPUT");
+  for (const [key, value] of entries) {
+    if (!metadataKey(key)) fail("INVALID_INPUT");
+    if (metadataValue(value)) continue;
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      Object.keys(value).length !== 1 ||
+      !Object.hasOwn(value, "$in") ||
+      !Array.isArray(value.$in) ||
+      !value.$in.length ||
+      value.$in.length > 20 ||
+      !value.$in.every(metadataValue)
+    )
+      fail("INVALID_INPUT");
+  }
+  return input;
+}
 
 /** Derived-data checkpoints in the existing environment supervisor, not application ACLs. */
 export class SearchStore {
@@ -408,11 +439,7 @@ export class SearchStore {
       typeof metadata !== "object" ||
       Object.keys(metadata).length > 5 ||
       Object.entries(metadata).some(
-        ([k, v]) =>
-          !/^[a-z][a-z0-9_]{0,31}$/.test(k) ||
-          ["folder", "filename", "timestamp"].includes(k) ||
-          typeof v !== "string" ||
-          new TextEncoder().encode(v).length > 64,
+        ([k, v]) => !metadataKey(k) || !metadataValue(v),
       )
     )
       fail("INVALID_INPUT");
@@ -529,6 +556,7 @@ export class SearchStore {
     query: string;
     partition: string;
     limit?: number;
+    filters?: SearchRecordFilters;
   }): Promise<SearchRecordHit[]> {
     boundedJson(input, 10000);
     if (
@@ -537,7 +565,7 @@ export class SearchStore {
       !input.query.trim() ||
       input.query.length > 2000 ||
       Object.keys(input).some(
-        (k) => !["query", "partition", "limit"].includes(k),
+        (k) => !["query", "partition", "limit", "filters"].includes(k),
       )
     )
       fail("INVALID_INPUT");
@@ -545,6 +573,7 @@ export class SearchStore {
     const limit = input.limit ?? 10;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20)
       fail("INVALID_INPUT");
+    const filters = recordFilters(input.filters);
     const binding = appPolicy(this.env, this.scope).search;
     const instance = this.binding(binding);
     const folder = await this.folder(input.partition);
@@ -556,7 +585,7 @@ export class SearchStore {
           retrieval: {
             max_num_results: limit,
             return_on_failure: false,
-            filters: { folder },
+            filters: { ...filters, folder },
           },
           query_rewrite: { enabled: false },
           reranking: { enabled: false },
@@ -570,13 +599,25 @@ export class SearchStore {
     for (const chunk of result.chunks.slice(0, limit)) {
       const row = this.storage.sql
         .exec(
-          "SELECT s.record_id,h.version FROM search_items s JOIN search_records h ON h.current=s.id WHERE s.key=? AND s.binding=? AND s.partition=? AND s.wanted=1 AND h.wanted=1",
+          "SELECT s.record_id,s.metadata,h.version FROM search_items s JOIN search_records h ON h.current=s.id WHERE s.key=? AND s.binding=? AND s.partition=? AND s.wanted=1 AND h.wanted=1",
           chunk.item.key,
           binding!,
           input.partition,
         )
         .toArray()[0];
       if (!row) continue;
+      // Provider filters improve recall; persisted metadata still enforces the selection.
+      const metadata: Record<string, string> = JSON.parse(
+        String(row.metadata ?? "{}"),
+      );
+      if (
+        !Object.entries(filters).every(([key, value]) =>
+          typeof value === "string"
+            ? metadata[key] === value
+            : value.$in.includes(metadata[key]),
+        )
+      )
+        continue;
       if (typeof chunk.text !== "string" || !Number.isFinite(chunk.score))
         fail("SEARCH_UNAVAILABLE");
       hits.push({

@@ -35,12 +35,20 @@ export type SearchRecord = {
 export type SearchRecordRef = Pick<SearchRecord, "id" | "version">;
 export type SearchRecordState = SearchRecordRef & Omit<SearchState, "fileId">;
 export type SearchRecordHit = SearchRecordRef & { text: string; score: number };
+/** Native equality / membership filters on preconfigured string metadata fields. */
+export type SearchRecordFilters = Record<string, string | { $in: string[] }>;
 export interface SearchRecords {
   /** Schedule from a source mutation's transactional outbox; re-read source in the job. */
   sync(input: SearchRecord): Promise<SearchRecordState>;
   status(input: { id: string; partition: string }): Promise<SearchRecordState>;
   query(
-    input: { query: string; partition: string; limit?: number },
+    input: {
+      query: string;
+      partition: string;
+      limit?: number;
+      /** AND across fields; cannot override the server-selected access partition. */
+      filters?: SearchRecordFilters;
+    },
     authorize: (records: SearchRecordRef[]) => Promise<SearchRecordRef[]>,
   ): Promise<SearchRecordHit[]>;
 }
