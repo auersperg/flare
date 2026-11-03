@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   mcpMetadata,
+  mcpChallenge,
   mcpResource,
   validateMcpToken,
 } from "../packages/core/src/mcp-auth";
@@ -29,6 +30,19 @@ test("OAuth authorization services are explicit, scope-owned operator bindings",
       mcpAuth: [...config.mcpAuth, config.mcpAuth[0]],
     }),
   ).toThrow();
+});
+test("MCP scope challenges preserve least-privilege discovery and request read plus write only for step-up", () => {
+  const env = {
+    RUNTIME_URL: "https://api.example.com",
+    APP_CAPABILITIES: JSON.stringify(config.capabilities),
+  };
+  expect(mcpMetadata(env, scope)?.scopes_supported).toEqual(["mcp:read"]);
+  expect(mcpChallenge(env, scope)).toBe(
+    `Bearer resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/p/${scope}/v1/mcp", scope="mcp:read"`,
+  );
+  expect(mcpChallenge(env, scope, true)).toBe(
+    `Bearer resource_metadata="https://api.example.com/.well-known/oauth-protected-resource/p/${scope}/v1/mcp", error="insufficient_scope", scope="mcp:read mcp:write"`,
+  );
 });
 test("MCP accepts only the configured resource, current token, read scope and matching delegated identity", async () => {
   const env = {

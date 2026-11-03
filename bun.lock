@@ -20,14 +20,14 @@
     },
     "packages/codex": {
       "name": "@flare/codex-runner",
-      "version": "0.3.21",
+      "version": "0.3.22",
       "dependencies": {
         "@cloudflare/sandbox": "1.0.3",
       },
     },
     "packages/core": {
       "name": "@flare/platform",
-      "version": "0.3.21",
+      "version": "0.3.22",
       "dependencies": {
         "@modelcontextprotocol/server": "2.3.0",
         "agents": "0.28.0",
@@ -59,7 +59,7 @@
     },
     "packages/flare": {
       "name": "@auersperg/flare",
-      "version": "0.3.21",
+      "version": "0.3.22",
       "bin": {
         "flare": "./dist/cli/flare.js",
       },
@@ -77,7 +77,7 @@
     },
     "packages/mcp-auth": {
       "name": "@flare/mcp-auth",
-      "version": "0.3.21",
+      "version": "0.3.22",
       "dependencies": {
         "@cloudflare/workers-oauth-provider": "1.2.4",
       },

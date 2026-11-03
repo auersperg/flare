@@ -35,6 +35,15 @@ export function mcpTools(manifest: Manifest, scopes?: string[]): Tool[] {
 export function mcpDescriptor(manifest: Manifest, scopes?: string[]) {
   return {
     tools: mcpTools(manifest, scopes),
+    // Supervisor-to-transport metadata only; never included in tools/list or initialize.
+    // Distinguish insufficient OAuth scope from unknown tools and application ACL failures.
+    ...(scopes && !scopes.includes("mcp:write")
+      ? {
+          scopeRestrictedTools: mcpTools(manifest)
+            .filter((tool) => tool.annotations?.readOnlyHint !== true)
+            .map((tool) => tool.name),
+        }
+      : {}),
     ...(manifest.mcp === undefined
       ? {}
       : { instructions: manifest.mcp.instructions }),
@@ -52,12 +61,13 @@ export async function mcpResponse(
       args?: Json;
     }): Promise<unknown>;
   },
+  writeScopeChallenge?: string,
 ) {
   const identity = {
     origin: request.headers.get("origin"),
     authorization: request.headers.get("authorization"),
   };
-  const { tools, instructions } = (await supervisor.mcp(
+  const { tools, instructions, scopeRestrictedTools } = (await supervisor.mcp(
     identity,
   )) as ReturnType<typeof mcpDescriptor>;
   const headers = new Headers({
@@ -72,6 +82,19 @@ export async function mcpResponse(
   if (request.method !== "POST")
     return new Response(null, { status: 405, headers });
   const body = await jsonBody(request);
+  // Authorize before executing any tool. A native OAuth client can then step up
+  // and retry the original request safely: this response has caused no mutation.
+  if (
+    body?.method === "tools/call" &&
+    scopeRestrictedTools?.includes(body.params?.name)
+  ) {
+    if (writeScopeChallenge)
+      headers.set("www-authenticate", writeScopeChallenge);
+    return Response.json(
+      { error: "insufficient_scope" },
+      { status: 403, headers },
+    );
+  }
   // Ordinary HTTP/live calls need only manifest helpers, not MCP schema/transport initialization.
   const [{ createMcpHandler }, { Server }] = await Promise.all([
     import("agents/mcp/server"),

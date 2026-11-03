@@ -167,6 +167,101 @@ describe("Stateless MCP transport", () => {
         }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
+  it("challenges a known write before execution and executes only after scope upgrade", async () => {
+    const base = {
+      input: z.object({}),
+      output: z.string(),
+      handler: () => "ok",
+    };
+    const contract = manifest({
+      functions: {
+        read: query({ ...base, mcp: { name: "read", description: "Read" } }),
+        write: mutation({
+          ...base,
+          mcp: { name: "write", description: "Write" },
+        }),
+      },
+    });
+    let scopes = ["mcp:read"],
+      calls = 0;
+    const supervisor = {
+      mcp: async (input: any) => {
+        if (input.name === undefined) return mcpDescriptor(contract, scopes);
+        if (!mcpTools(contract, scopes).some((t) => t.name === input.name))
+          throw new FlareError("FORBIDDEN", "private detail");
+        calls++;
+        return "saved";
+      },
+    };
+    const challenge =
+      'Bearer error="insufficient_scope", scope="mcp:read mcp:write", resource_metadata="https://flare.test/.well-known/oauth-protected-resource/p/test/dev/v1/mcp"';
+    const blocked = await mcpResponse(
+      request("tools/call", {
+        name: "write",
+        arguments: { secret: "never-echo" },
+      }),
+      supervisor,
+      challenge,
+    );
+    expect(blocked.status).toBe(403);
+    expect(blocked.headers.get("www-authenticate")).toBe(challenge);
+    expect(blocked.headers.get("cache-control")).toBe("no-store");
+    expect(await blocked.text()).toBe('{"error":"insufficient_scope"}');
+    expect(calls).toBe(0);
+    const listed = await mcpResponse(
+      request("tools/list"),
+      supervisor,
+      challenge,
+    );
+    const listBody = await listed.text();
+    expect(listBody).not.toContain('"name":"write"');
+    expect(listBody).not.toContain("scopeRestrictedTools");
+    scopes = ["mcp:read", "mcp:write"];
+    const allowed = await mcpResponse(
+      request("tools/call", { name: "write", arguments: {} }),
+      supervisor,
+      challenge,
+    );
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("www-authenticate")).toBeNull();
+    expect(await allowed.text()).toContain("saved");
+    expect(calls).toBe(1);
+  });
+  it("does not turn unknown, internal, private or application-forbidden calls into scope upgrades", async () => {
+    const base = {
+      input: z.object({}),
+      output: z.string(),
+      handler: () => "ok",
+    };
+    const contract = manifest({
+      functions: {
+        public: query({
+          ...base,
+          mcp: { name: "public", description: "Read" },
+        }),
+        internal: mutation({ ...base, auth: "internal" }),
+        private: mutation(base),
+      },
+    });
+    for (const name of ["unknown", "internal", "private", "public"]) {
+      const response = await mcpResponse(
+        request("tools/call", { name }),
+        {
+          mcp: async (input: any) => {
+            if (input.name === undefined)
+              return mcpDescriptor(contract, ["mcp:read"]);
+            throw new FlareError("FORBIDDEN", "private detail");
+          },
+        },
+        'Bearer error="insufficient_scope", scope="mcp:read mcp:write"',
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("www-authenticate")).toBeNull();
+      const body = await response.text();
+      expect(body).toContain("FORBIDDEN");
+      expect(body).not.toContain("private detail");
+    }
+  });
 });
 
 it("validates instructions at release upload and binds changes to the release checksum", async () => {

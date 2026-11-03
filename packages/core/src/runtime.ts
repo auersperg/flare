@@ -2387,7 +2387,11 @@ export default {
       const supervisor = getSupervisor(env, scope);
       const requestedOrigin = request.headers.get("origin");
       if (route.operation === "mcp")
-        return await mcpResponse(request, supervisor);
+        return await mcpResponse(
+          request,
+          supervisor,
+          mcpChallenge(env, scope, true),
+        );
 
       if (
         route.operation === "live" &&

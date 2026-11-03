@@ -25,8 +25,11 @@ export function mcpMetadata(env: Env, scope: string) {
     resource_name: "Flare application MCP",
   };
 }
-export function mcpChallenge(env: Env, scope: string) {
-  return `Bearer resource_metadata="${env.RUNTIME_URL}/.well-known/oauth-protected-resource/p/${scope}/v1/mcp", scope="mcp:read"`;
+export function mcpChallenge(env: Env, scope: string, writeRequired = false) {
+  const metadata = `Bearer resource_metadata="${env.RUNTIME_URL}/.well-known/oauth-protected-resource/p/${scope}/v1/mcp"`;
+  return writeRequired
+    ? `${metadata}, error="insufficient_scope", scope="mcp:read mcp:write"`
+    : `${metadata}, scope="mcp:read"`;
 }
 /** Only the operator-bound authorization service can assert identity. Never accept client JWT claims directly. */
 export async function validateMcpToken(
