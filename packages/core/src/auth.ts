@@ -99,6 +99,7 @@ export class PasswordAuth {
       "CREATE TABLE IF NOT EXISTS auth_config (id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL DEFAULT 0,registration INTEGER NOT NULL DEFAULT 0)",
       "INSERT OR IGNORE INTO auth_config VALUES (1,0,0)",
       "CREATE TABLE IF NOT EXISTS auth_limits (id TEXT PRIMARY KEY,at INTEGER NOT NULL,count INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS auth_delegations (userId TEXT PRIMARY KEY,epoch TEXT NOT NULL)",
     ])
       storage.sql.exec(sql);
   }
@@ -125,6 +126,7 @@ export class PasswordAuth {
     validateAuthBackup(users);
     this.storage.transactionSync(() => {
       this.storage.sql.exec("DELETE FROM auth_sessions");
+      this.storage.sql.exec("DELETE FROM auth_delegations");
       this.storage.sql.exec("DELETE FROM auth_users");
       for (const u of users)
         this.storage.sql.exec(
@@ -249,7 +251,63 @@ export class PasswordAuth {
       claims: { flaredSession: id, login: String(row.login) },
     };
   }
+  private async delegation(userId: string) {
+    this.storage.sql.exec(
+      "INSERT OR IGNORE INTO auth_delegations VALUES (?,?)",
+      userId,
+      crypto.randomUUID(),
+    );
+    const epoch = String(
+      this.storage.sql
+        .exec("SELECT epoch FROM auth_delegations WHERE userId=?", userId)
+        .one().epoch,
+    );
+    await this.storage.sync();
+    return { userId, epoch, login: this.user(userId).login, scope: this.scope };
+  }
+  /** OAuth props are accepted only after the configured native authorization service validates its token. */
+  delegated(
+    userId: string,
+    epoch: string,
+    expiresAt: number,
+    clientId: string,
+  ): Auth {
+    if (
+      !this.settings().enabled ||
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Date.now()
+    )
+      fail("UNAUTHORIZED");
+    const row = this.storage.sql
+      .exec(
+        "SELECT u.login FROM auth_users u JOIN auth_delegations d ON d.userId=u.id WHERE u.id=? AND d.epoch=? AND u.disabled=0",
+        userId,
+        epoch,
+      )
+      .toArray()[0];
+    if (!row) fail("UNAUTHORIZED");
+    return {
+      subject: userId,
+      issuer: this.issuer + "/auth/" + this.scope,
+      expiresAt,
+      claims: {
+        login: String(row.login),
+        flaredDelegation: epoch,
+        flaredMcp: true,
+        flaredMcpClient: clientId,
+      },
+    };
+  }
   assert(auth: Auth | null) {
+    if (typeof auth?.claims.flaredDelegation === "string") {
+      this.delegated(
+        auth.subject,
+        auth.claims.flaredDelegation,
+        auth.expiresAt,
+        String(auth.claims.flaredMcpClient ?? ""),
+      );
+      return;
+    }
     const session = auth?.claims.flaredSession;
     if (typeof session !== "string") return;
     if (
@@ -267,7 +325,7 @@ export class PasswordAuth {
   }
   async public(op: string, input: any, token: string | null) {
     if (!this.settings().enabled) fail("AUTH_DISABLED");
-    if (op === "register" || op === "login") {
+    if (op === "register" || op === "login" || op === "delegate") {
       this.limit("global", 30);
       const login = loginName(input.login);
       this.limit("login:" + login, 5);
@@ -287,10 +345,12 @@ export class PasswordAuth {
         row ? String(row.password) : undefined,
       );
       if (!valid || !row || row.disabled) fail("UNAUTHORIZED");
+      if (op === "delegate") return this.delegation(String(row.id));
       return this.issue(String(row.id));
     }
     if (!token) fail("UNAUTHORIZED");
     const auth = await this.authenticate(token);
+    if (op === "mcp-identity") return this.delegation(auth.subject);
     if (op === "me") return this.user(auth.subject);
     if (op === "logout") {
       this.storage.sql.exec(
@@ -322,6 +382,7 @@ export class PasswordAuth {
         id,
       );
       this.storage.sql.exec("DELETE FROM auth_sessions WHERE userId=?", id);
+      this.storage.sql.exec("DELETE FROM auth_delegations WHERE userId=?", id);
     });
   }
   async admin(op: string, input: any) {
@@ -338,7 +399,10 @@ export class PasswordAuth {
           +input.enabled,
           +input.registration,
         );
-        if (!input.enabled) this.storage.sql.exec("DELETE FROM auth_sessions");
+        if (!input.enabled) {
+          this.storage.sql.exec("DELETE FROM auth_sessions");
+          this.storage.sql.exec("DELETE FROM auth_delegations");
+        }
       });
       await this.storage.sync();
       return this.settings();
@@ -376,6 +440,10 @@ export class PasswordAuth {
         }
         this.storage.sql.exec(
           "DELETE FROM auth_sessions WHERE userId=?",
+          input.id,
+        );
+        this.storage.sql.exec(
+          "DELETE FROM auth_delegations WHERE userId=?",
           input.id,
         );
       });

@@ -7,11 +7,12 @@ export function validatePlatformConfig(value = {}) {
   if (
     !object(value) ||
     Object.keys(value).some(
-      (k) => !["capabilities", "secrets", "search", "codex"].includes(k),
+      (k) =>
+        !["capabilities", "secrets", "search", "codex", "mcpAuth"].includes(k),
     )
   )
     throw Error(
-      "Platform config accepts only capabilities, secrets, search and codex references",
+      "Platform config accepts only capabilities, secrets, search, codex and mcpAuth references",
     );
   const capabilities = value.capabilities ?? {},
     secrets = value.secrets ?? [];
@@ -94,6 +95,41 @@ export function validatePlatformConfig(value = {}) {
       return { binding: r.binding, service: r.service, scope: r.scope };
     })
     .sort((a, b) => a.binding.localeCompare(b.binding));
+  const mcpAuth = value.mcpAuth ?? [];
+  if (!Array.isArray(mcpAuth) || mcpAuth.length > 16)
+    throw Error("Invalid MCP auth references");
+  const authNames = new Set(),
+    authServices = new Set(),
+    authIssuers = new Set();
+  const authReferences = mcpAuth
+    .map((r) => {
+      if (
+        !object(r) ||
+        Object.keys(r).sort().join() !== "binding,issuer,scope,service" ||
+        !/^APP_MCP_AUTH_[A-Z0-9_]{1,64}$/.test(r.binding) ||
+        !/^[a-z0-9][a-z0-9-]{0,62}$/.test(r.service) ||
+        !/^https:\/\/[a-z0-9]+(?:[.-][a-z0-9]+)*\.[a-z]{2,63}$/.test(
+          r.issuer,
+        ) ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\/(dev|prod)$/.test(
+          r.scope,
+        ) ||
+        authNames.has(r.binding) ||
+        authServices.has(r.service) ||
+        authIssuers.has(r.issuer)
+      )
+        throw Error("Invalid or duplicate MCP authorization reference");
+      authNames.add(r.binding);
+      authServices.add(r.service);
+      authIssuers.add(r.issuer);
+      return {
+        binding: r.binding,
+        service: r.service,
+        issuer: r.issuer,
+        scope: r.scope,
+      };
+    })
+    .sort((a, b) => a.binding.localeCompare(b.binding));
   const result = {};
   const used = new Set();
   for (const scope of Object.keys(capabilities).sort()) {
@@ -104,7 +140,8 @@ export function validatePlatformConfig(value = {}) {
       ) ||
       !object(p) ||
       Object.keys(p).some(
-        (k) => !["outbound", "secrets", "search", "codex"].includes(k),
+        (k) =>
+          !["outbound", "secrets", "search", "codex", "mcpAuth"].includes(k),
       )
     )
       throw Error("Invalid capability scope");
@@ -146,7 +183,22 @@ export function validatePlatformConfig(value = {}) {
       throw Error(
         "Codex grant must reference a runner owned by this environment",
       );
+    if (
+      p.mcpAuth !== undefined &&
+      (!object(p.mcpAuth) ||
+        Object.keys(p.mcpAuth).sort().join() !== "binding,issuer" ||
+        !authReferences.some(
+          (r) =>
+            r.binding === p.mcpAuth.binding &&
+            r.issuer === p.mcpAuth.issuer &&
+            r.scope === scope,
+        ))
+    )
+      throw Error(
+        "MCP auth grant must reference its environment's authorization service",
+      );
     result[scope] = {
+      ...(p.mcpAuth === undefined ? {} : { mcpAuth: { ...p.mcpAuth } }),
       ...(p.codex === undefined ? {} : { codex: p.codex }),
       ...(p.search === undefined ? {} : { search: p.search }),
       outbound: [...new Set(hosts)].sort(),
@@ -159,6 +211,7 @@ export function validatePlatformConfig(value = {}) {
     throw Error("Capabilities exceed 16 KiB");
   return {
     capabilities: result,
+    ...(authReferences.length ? { mcpAuth: authReferences } : {}),
     secrets: references,
     ...(codexReferences.length ? { codex: codexReferences } : {}),
     ...(searchReferences.length ? { search: searchReferences } : {}),

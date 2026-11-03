@@ -228,3 +228,59 @@ describe("password authentication", () => {
     expect(requests.some((r) => r.url.includes("test-token"))).toBe(false);
   });
 });
+
+it("keeps MCP delegation separate from browser sessions and invalidates it on security changes", async () => {
+  const { auth } = store();
+  await auth.admin("auth-configure", { enabled: true, registration: false });
+  const user = await auth.admin("auth-create", {
+    login: "owner@example.test",
+    password,
+  });
+  const session = await auth.public(
+    "login",
+    { login: "owner@example.test", password },
+    null,
+  );
+  const delegated = await auth.public(
+    "delegate",
+    { login: "owner@example.test", password },
+    null,
+  );
+  if (!("id" in user) || !("epoch" in delegated) || !("token" in session))
+    throw Error("Invalid auth fixture");
+  const identity = auth.delegated(
+    user.id,
+    delegated.epoch,
+    Date.now() + 300000,
+    "client-a",
+  );
+  expect(identity.claims.flaredSession).toBeUndefined();
+  expect(identity.claims.flaredMcpClient).toBe("client-a");
+  await auth.public("logout", {}, session.token);
+  expect(() => auth.assert(identity)).not.toThrow();
+  await auth.admin("auth-revoke", { id: user.id });
+  expect(() => auth.assert(identity)).toThrow();
+  const next = await auth.public(
+    "delegate",
+    { login: "owner@example.test", password },
+    null,
+  );
+  if (!("epoch" in next)) throw Error("Invalid delegation fixture");
+  expect(next.epoch).not.toBe(delegated.epoch);
+  await auth.admin("auth-disable", { id: user.id, disabled: true });
+  await auth.admin("auth-disable", { id: user.id, disabled: false });
+  expect(() =>
+    auth.delegated(user.id, next.epoch, Date.now() + 300000, "client-a"),
+  ).toThrow();
+  const third = await auth.public(
+    "delegate",
+    { login: "owner@example.test", password },
+    null,
+  );
+  if (!("epoch" in third)) throw Error("Invalid delegation fixture");
+  const backup = auth.backupUsers();
+  auth.restoreUsers(backup);
+  expect(() =>
+    auth.delegated(user.id, third.epoch, Date.now() + 300000, "client-a"),
+  ).toThrow();
+});

@@ -68,6 +68,25 @@ const proof = await prepareFeatureProof({
   email,
 });
 const proofConfig = JSON.parse(await readFile(proof.config, "utf8"));
+// Local-only authorization-service fixture tests the production resource-server
+// boundary. The separate mcp-auth acceptance runs the real OAuth provider.
+state.config.mcpAuth = [
+  {
+    binding: "APP_MCP_AUTH_FIXTURE",
+    issuer: "https://auth.example.test",
+    scope: project + "/dev",
+    service: proof.name,
+  },
+];
+state.config.capabilities[project + "/dev"].mcpAuth = {
+  binding: "APP_MCP_AUTH_FIXTURE",
+  issuer: "https://auth.example.test",
+};
+await writeFile(
+  proofConfig.main,
+  (await readFile(proofConfig.main, "utf8")) +
+    '\nimport {WorkerEntrypoint} from "cloudflare:workers"; export class McpAuthorization extends WorkerEntrypoint { validateToken(resource, token) { try { const value=JSON.parse(atob(token)); return {...value,audience:value.audience??resource}; } catch { return null; } } }\n',
+);
 delete proofConfig.account_id;
 proofConfig.vars = { KEY: proof.key };
 await writeFile(proof.config, JSON.stringify(proofConfig));
@@ -626,6 +645,81 @@ try {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
     assert.equal(badOrigin.status, 403, await badOrigin.text());
+    const delegationResponse = await appRequest("auth/delegate", {
+      login: "mcp-first",
+      password,
+    });
+    assert.equal(delegationResponse.status, 200);
+    const delegatedIdentity = await delegationResponse.json();
+    assert.ok(delegatedIdentity.epoch);
+    assert.equal(delegatedIdentity.token, undefined);
+    const delegatedToken = (scope) =>
+      Buffer.from(
+        JSON.stringify({
+          props: delegatedIdentity,
+          userId: delegatedIdentity.userId,
+          clientId: "local-native-client",
+          scope,
+          expiresAt: Date.now() / 1000 + 300,
+        }),
+      ).toString("base64");
+    const readToken = delegatedToken(["mcp:read"]),
+      writeToken = delegatedToken(["mcp:read", "mcp:write"]);
+    const readClient = await mcpClient(readToken),
+      writeClient = await mcpClient(writeToken);
+    try {
+      assert.deepEqual(
+        (await readClient.listTools()).tools.map((t) => t.name),
+        ["notes.mine"],
+      );
+      assert.deepEqual(
+        JSON.parse(
+          (await readClient.callTool({ name: "notes.mine", arguments: {} }))
+            .content[0].text,
+        ),
+        ["private MCP note"],
+      );
+      assert.equal(
+        (
+          await readClient.callTool({
+            name: "notes.write",
+            arguments: { title: "forbidden" },
+          })
+        ).isError,
+        true,
+      );
+      assert.deepEqual(
+        (await writeClient.listTools()).tools.map((t) => t.name).sort(),
+        ["notes.mine", "notes.write"],
+      );
+      const foreign = await appRequest(
+        "mcp",
+        { jsonrpc: "2.0", id: 1, method: "tools/list" },
+        readToken,
+        "prod",
+      );
+      assert.equal(foreign.status, 401);
+      const sdk = await appRequest(
+        "call",
+        { kind: "query", path: "checks/mcpMine", args: {} },
+        readToken,
+      );
+      assert.equal(sdk.status, 401);
+      const absent = await appRequest("mcp", {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+      });
+      assert.equal(absent.status, 401);
+      assert.ok(
+        absent.headers
+          .get("www-authenticate")
+          .includes("oauth-protected-resource"),
+      );
+    } finally {
+      await readClient.close();
+      await writeClient.close();
+    }
     // A client's cached tool catalogue cannot authorize a tool removed by a new release.
     const hidden = structuredClone(bundle);
     delete hidden.manifest.functions["checks/mcpWrite"].mcp;

@@ -35,6 +35,7 @@ jobs:
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun audit --production --audit-level=high
       - run: bun run verify
+      - run: bun run test:mcp-auth:local
       - run: bun run test:kernel
       - run: bun scripts/platform-native-acceptance.mjs
       - run: bun run test:platform:reproducible

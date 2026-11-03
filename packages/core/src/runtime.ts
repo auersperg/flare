@@ -1,6 +1,7 @@
 import { codexCommand, codexEvents } from "./codex.js";
 import { SearchStore } from "./search.js";
 import { mcpResponse, mcpTools } from "./mcp.js";
+import { mcpMetadata, mcpChallenge, validateMcpToken } from "./mcp-auth.js";
 import { PasswordAuth } from "./auth.js";
 import { dashboardIdentity, type DashboardIdentity } from "./dashboard-live.js";
 import packageInfo from "../package.json" with { type: "json" };
@@ -1048,6 +1049,11 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         fail("FORBIDDEN");
       allowedOrigin = input.origin;
       if (input.operation === "preflight") return null;
+      if (
+        ["delegate", "mcp-identity"].includes(input.operation) &&
+        !appPolicy(this.env, this.config().scope).mcpAuth
+      )
+        fail("FORBIDDEN");
       if (input.authorization && !input.authorization.startsWith("Bearer "))
         fail("UNAUTHORIZED");
       const auth = await this.authenticate(
@@ -1104,14 +1110,32 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     if (input.origin && !this.config().origins.includes(input.origin))
       fail("FORBIDDEN");
     const token = input.authorization;
-    if (!token?.startsWith("Bearer flared_session_")) fail("UNAUTHORIZED");
-    const auth = await this.passwords().authenticate(token.slice(7));
-    if (input.name === undefined) return mcpTools(this.metadata().manifest);
+    if (!token?.startsWith("Bearer ")) fail("UNAUTHORIZED");
+    let auth: Auth, scopes: string[] | undefined;
+    if (token.startsWith("Bearer flared_session_"))
+      auth = await this.passwords().authenticate(token.slice(7));
+    else {
+      const validated = await validateMcpToken(
+        this.env,
+        this.config().scope,
+        token.slice(7),
+      );
+      auth = this.passwords().delegated(
+        validated.props.userId,
+        validated.props.epoch,
+        validated.expiresAt * 1000,
+        validated.clientId,
+      );
+      scopes = validated.scope;
+    }
+    const tools = mcpTools(this.metadata().manifest, scopes);
+    if (input.name === undefined) return tools;
+    if (!tools.some((tool) => tool.name === input.name)) fail("FORBIDDEN");
     const result = await this.call({
       path: "mcp",
       kind: "query",
       args: input.args ?? {},
-      auth,
+      auth: { ...auth, claims: { ...auth.claims, flaredMcp: true } },
       mcp: input.name,
     });
     this.checkPasswordSession(auth);
@@ -1134,7 +1158,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     ));
   }
   private checkPasswordSession(auth: Auth | null) {
-    if (typeof auth?.claims.flaredSession === "string")
+    if (
+      typeof auth?.claims.flaredSession === "string" ||
+      typeof auth?.claims.flaredDelegation === "string"
+    )
       this.passwords().assert(auth);
   }
   private closeRevokedSockets() {
@@ -1696,6 +1723,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
             ({ name, description }) => ({ name, description }),
           ),
           auth: "app-session",
+          oauth: mcpMetadata(this.env, this.config().scope),
           endpoint: `${this.env.RUNTIME_URL}/p/${this.config().scope}/v1/mcp`,
         };
       if (op === "search-clear") return this.search().clear();
@@ -2324,7 +2352,13 @@ export default {
       target.pathname = target.pathname.slice("/control".length);
       return env.ADMIN_API.request(new Request(target, request));
     }
-    const route = applicationRoute(url.pathname);
+    const metadataPrefix = "/.well-known/oauth-protected-resource";
+    const metadataRequest = url.pathname.startsWith(metadataPrefix + "/");
+    const route = applicationRoute(
+      metadataRequest
+        ? url.pathname.slice(metadataPrefix.length)
+        : url.pathname,
+    );
     if (!route) return new Response("Not found", { status: 404 });
     if (
       !(await env.RATE_LIMITER.limit({
@@ -2338,6 +2372,17 @@ export default {
       const projectId = route.id ?? (await aliases(env).resolve(route.alias!));
       if (!projectId) return new Response("Not found", { status: 404 });
       scope = `${projectId}/${route.env}`;
+      if (metadataRequest) {
+        const metadata = route.operation === "mcp" && mcpMetadata(env, scope);
+        if (!metadata || request.method !== "GET")
+          return new Response("Not found", { status: 404 });
+        return Response.json(metadata, {
+          headers: {
+            "cache-control": "no-store",
+            "access-control-allow-origin": "*",
+          },
+        });
+      }
       const supervisor = getSupervisor(env, scope);
       const requestedOrigin = request.headers.get("origin");
       if (route.operation === "mcp")
@@ -2472,6 +2517,12 @@ export default {
           status: out.status,
           headers: {
             "cache-control": "no-store",
+            ...(route.operation === "mcp" &&
+            scope &&
+            out.status === 401 &&
+            mcpMetadata(env, scope)
+              ? { "www-authenticate": mcpChallenge(env, scope) }
+              : {}),
             ...(origin
               ? { "access-control-allow-origin": origin, vary: "Origin" }
               : {}),

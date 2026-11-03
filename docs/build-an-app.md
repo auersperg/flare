@@ -1,6 +1,6 @@
 # Создание приложения на Flare — руководство для агента
 
-Проверенная база: **`@auersperg/flare@0.3.17`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
+Проверенная база: **`@auersperg/flare@0.3.18`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
 
 Это инструкция для **отдельного приложения**, а не для изменения Flare. Полная реализация — в [архитектуре](architecture.md); установка самой платформы — в [platform lifecycle](platform-lifecycle.md); эксплуатационные ограничения — в [runbook](production-runbook.md).
 
@@ -55,8 +55,8 @@ my-app/
 В отдельном frontend-проекте с `package.json`:
 
 ```sh
-bun add --exact @auersperg/flare@0.3.17
-bunx --bun --package @auersperg/flare@0.3.17 flare dev
+bun add --exact @auersperg/flare@0.3.18
+bunx --bun --package @auersperg/flare@0.3.18 flare dev
 ```
 
 1. Укажите **Runtime URL установленной платформы**, полученный от владельца. Это не project dev URL и не адрес dashboard.
@@ -228,7 +228,7 @@ export function Tasks({ signedIn }: { signedIn: boolean }) {
 После dev acceptance и **явного подтверждения владельца**:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.17 flare deploy --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.18 flare deploy --cmd "bun run build"
 ```
 
 Команда собирает backend, генерирует API, запускает frontend build с URL целевой **prod** среды, затем активирует backend с подтверждением проекта. Подставьте реальную build-команду вашего framework. Ошибка build не должна активировать backend. `.env.local` продолжает указывать на dev. Обычный `flare deploy` без `--cmd` тоже поддерживается, но frontend build/target URL тогда обеспечьте отдельно.
@@ -236,8 +236,8 @@ bunx --bun --package @auersperg/flare@0.3.17 flare deploy --cmd "bun run build"
 Для продвижения уже проверенного immutable dev release:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.17 flare releases --env dev
-bunx --bun --package @auersperg/flare@0.3.17 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.18 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.18 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
 ```
 
 Frontend output публикуется **отдельным hosting flow**. Backend activation и frontend deployment не являются общей atomic transaction: используйте совместимые additive API изменения и проверяйте обе стороны. Перед prod проверьте prod auth, origins, capabilities и восстановление согласно требованиям проекта; не копируйте dev пользователей/данные автоматически.
@@ -290,7 +290,9 @@ Query возвращает `{fileId,name,text,score}[]`, без публично
 
 Чтобы открыть существующую функцию агенту, добавьте к её серверному определению `mcp: { name: "documents.search", description: "Search documents accessible to the current user" }`. Имена уникальны, input — object schema, `internal` запрещён. Оставьте обычные `auth`, input/output validators и проверки прав. Для поиска публикуйте **action приложения с ACL**, не сырую capability. Mutation сохраняет данные и уведомляет обычные подписки; транспорт ничего не повторяет автоматически.
 
-Endpoint: `https://<runtime>/p/<project>/<dev|prod>/v1/mcp`. Используйте MCP-клиент с custom Authorization header, например официальный MCP SDK client. Передайте отдельную native app session этого пользователя через `Authorization: Bearer …`; создайте её существующим login, не копируйте admin/deploy/dev token. Не сохраняйте credentials в примере, репозитории или URL. Logout/expiry/disable отзывают доступ; OAuth discovery/автопродление не предоставляются. Несколько sessions всё ещё подчиняются существующему ограничению sessions пользователя.
+Endpoint: `https://<runtime>/p/<project>/<dev|prod>/v1/mcp`. Используйте MCP-клиент с custom Authorization header, например официальный MCP SDK client. Передайте отдельную native app session этого пользователя через `Authorization: Bearer …`; создайте её существующим login, не копируйте admin/deploy/dev token. Не сохраняйте credentials в примере, репозитории или URL. Logout/expiry/disable отзывают доступ этой session. Несколько sessions подчиняются существующему ограничению sessions пользователя.
+
+Для внешних агентов оператор может подключить официальный OAuth Worker: [настройка](../packages/mcp-auth/README.md). Стандартное discovery, PKCE S256, отдельные read/write grants, refresh и отзыв доступа; OAuth-токены работают только на MCP, а не в SDK или Codex API. Обычный logout приложения не отключает независимые grants. Смена пароля, отзыв всех сессий и disable пользователя инвалидируют делегированную identity. Запросы, поисковые actions и формирование контекста помечайте `mcp.readOnly: true`; это разрешает их read-only grants. Не помечайте так actions с пользовательскими изменениями. Mutations всегда требуют `mcp:write`. Хранилище, ACL и версии принадлежат приложению, MCP только вызывает те же функции.
 
 Панель AI отображает managed binding, last-observed состояния и опубликованные tools. Проверка использует явно введённую app session и существующую action; не impersonation владельца панели. Разрешите origin панели в app settings, если хотите пользоваться этой проверкой. Session хранится только в памяти открытой вкладки, не localStorage. Тестовый вызов action может иметь побочные эффекты: выбирайте именно свою поисковую функцию.
 

@@ -261,6 +261,13 @@ export function workerConfiguration(state, release, role, bootstrap = false) {
     services: bootstrap
       ? []
       : [
+          ...(validatePlatformConfig(state.config).mcpAuth ?? []).map(
+            ({ binding, service }) => ({
+              binding,
+              service,
+              entrypoint: "McpAuthorization",
+            }),
+          ),
           ...(validatePlatformConfig(state.config).codex ?? []).map(
             ({ binding, service }) => ({
               binding,

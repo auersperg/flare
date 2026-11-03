@@ -20,6 +20,7 @@
     "packages/core/dashboard",
     "**/dist/**",
     "**/node_modules/**",
-    "packages/codex"
+    "packages/codex",
+    "packages/mcp-auth"
   ]
 }

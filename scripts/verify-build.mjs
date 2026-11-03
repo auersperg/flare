@@ -24,6 +24,10 @@ assertUpgrade(
   { version: "0.3.16", runtimeAbi: 4, protocol: 1 },
   payload.manifest,
 );
+assertUpgrade(
+  { version: "0.3.17", runtimeAbi: 4, protocol: 1 },
+  payload.manifest,
+);
 for (const role of ["admin", "runtime"])
   assert.deepEqual(
     await readFile(`packages/flare/dist/platform/${role}.js`),

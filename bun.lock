@@ -20,14 +20,14 @@
     },
     "packages/codex": {
       "name": "@flare/codex-runner",
-      "version": "0.3.17",
+      "version": "0.3.18",
       "dependencies": {
         "@cloudflare/sandbox": "1.0.3",
       },
     },
     "packages/core": {
       "name": "@flare/platform",
-      "version": "0.3.17",
+      "version": "0.3.18",
       "dependencies": {
         "@modelcontextprotocol/server": "2.3.0",
         "agents": "0.28.0",
@@ -35,7 +35,7 @@
     },
     "packages/core/dashboard": {
       "name": "@flare/dashboard",
-      "version": "0.3.17",
+      "version": "0.3.18",
       "dependencies": {
         "@astrojs/react": "7.0.1",
         "@auersperg/flare": "workspace:*",
@@ -59,7 +59,7 @@
     },
     "packages/flare": {
       "name": "@auersperg/flare",
-      "version": "0.3.17",
+      "version": "0.3.18",
       "bin": {
         "flare": "./dist/cli/flare.js",
       },
@@ -74,6 +74,13 @@
       "optionalPeers": [
         "react",
       ],
+    },
+    "packages/mcp-auth": {
+      "name": "@flare/mcp-auth",
+      "version": "0.3.18",
+      "dependencies": {
+        "@cloudflare/workers-oauth-provider": "1.2.4",
+      },
     },
   },
   "overrides": {
@@ -238,6 +245,8 @@
 
     "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20261006.1", "", { "os": "win32", "cpu": "x64" }, "sha512-nWP0URNqOBN9fa/gZ7eh/w051DwjOXN8j4lDZDYVXyQPsux6sV3DfyYZT+CjR/rt9nKBSmJT9QE9/bWT18+84w=="],
 
+    "@cloudflare/workers-oauth-provider": ["@cloudflare/workers-oauth-provider@1.2.4", "", {}, "sha512-ayo6Z8DBHdAxwDpplFU8BrEoxoSn6wNo+E7ypTENRHUOc8R89A8/+nZ+a8pMZjjXzF0JXfpYXhw/7qqG+DC18Q=="],
+
     "@cloudflare/workers-types": ["@cloudflare/workers-types@5.20261013.1", "", {}, "sha512-0SfkM/MA+oSIAzFFmjr0wZLH54oeCtugaOn8GpJDBnerQiML+rOPq2W6j6bBGE51o+N4DOd0tvMruLmkAQzlpw=="],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
@@ -321,6 +330,8 @@
     "@flare/codex-runner": ["@flare/codex-runner@workspace:packages/codex"],
 
     "@flare/dashboard": ["@flare/dashboard@workspace:packages/core/dashboard"],
+
+    "@flare/mcp-auth": ["@flare/mcp-auth@workspace:packages/mcp-auth"],
 
     "@flare/platform": ["@flare/platform@workspace:packages/core"],
 

@@ -508,6 +508,7 @@ describe("Production-only repository", () => {
       "packages/core",
       "packages/core/dashboard",
       "packages/codex",
+      "packages/mcp-auth",
     ]);
     expect(pkg.scripts.dev).toBeUndefined();
     expect(pkg.scripts["build:demo"]).toBeUndefined();

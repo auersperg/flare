@@ -105,7 +105,12 @@ export function boundedJson(value: unknown, maxBytes: number): string {
     throw new FlareError("TOO_LARGE", "JSON payload exceeds limit");
   return json;
 }
-export type McpTool = { name: string; description: string };
+export type McpTool = {
+  name: string;
+  description: string;
+  /** A reviewed action may be read-only even though it performs external I/O. Not an authorization grant. */
+  readOnly?: boolean;
+};
 
 export function assertMcpTools(functions: Record<string, FunctionContract>) {
   const names = new Set<string>();
@@ -115,7 +120,12 @@ export function assertMcpTools(functions: Record<string, FunctionContract>) {
     if (
       !m ||
       typeof m !== "object" ||
-      Object.keys(m).sort().join() !== "description,name" ||
+      Object.keys(m).some(
+        (key) => !["name", "description", "readOnly"].includes(key),
+      ) ||
+      (m.readOnly !== undefined && typeof m.readOnly !== "boolean") ||
+      (fn.kind === "mutation" && m.readOnly === true) ||
+      (fn.kind === "query" && m.readOnly === false) ||
       typeof m.name !== "string" ||
       !/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(m.name) ||
       typeof m.description !== "string" ||

@@ -1,17 +1,18 @@
 {
   "name": "flare-workspace",
   "private": true,
-  "version": "0.3.17",
+  "version": "0.3.18",
   "type": "module",
   "workspaces": [
     "packages/flare",
     "packages/core",
     "packages/core/dashboard",
-    "packages/codex"
+    "packages/codex",
+    "packages/mcp-auth"
   ],
   "scripts": {
     "build": "bun scripts/build-packages.mjs && bun scripts/build-platform.mjs && bun scripts/package-platform.mjs",
-    "check": "bun x --bun tsc --noEmit && bun x --bun tsc --noEmit -p packages/codex/tsconfig.json && bun run --bun --cwd packages/core/dashboard check",
+    "check": "bun x --bun tsc --noEmit && bun x --bun tsc --noEmit -p packages/codex/tsconfig.json && bun x --bun tsc --noEmit -p packages/mcp-auth/tsconfig.json && bun run --bun --cwd packages/core/dashboard check",
     "test": "bun test ./tests",
     "test:kernel": "bun scripts/build-kernel.mjs && bun scripts/kernel-acceptance.mjs",
     "test:platform:local": "bun run build && bun scripts/platform-native-acceptance.mjs",
@@ -31,7 +32,8 @@
     "verify": "bun run build && bun run check && bun run test && bun run format:check && bun scripts/verify-build.mjs && bun scripts/package-acceptance.mjs",
     "clean": "bun scripts/clean.mjs",
     "test:deletion:cloud": "bun scripts/project-deletion-acceptance.mjs",
-    "test:codex:local": "node scripts/codex-native-acceptance.mjs"
+    "test:codex:local": "node scripts/codex-native-acceptance.mjs",
+    "test:mcp-auth:local": "node scripts/mcp-auth-native-acceptance.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261013.1",

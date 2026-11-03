@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { query, manifest, z } from "../packages/flare/src/sdk/server";
+import {
+  action,
+  mutation,
+  query,
+  manifest,
+  z,
+} from "../packages/flare/src/sdk/server";
 import { mcpResponse, mcpTools } from "../packages/core/src/mcp";
 import { FlareError } from "../packages/flare/src/sdk/protocol";
 import { applicationRoute } from "../packages/core/src/routing";
@@ -85,4 +91,40 @@ describe("Stateless MCP transport", () => {
         }),
       ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
+});
+
+it("distinguishes read-only actions and filters write tools for read-only grants", () => {
+  const base = { input: z.object({}), output: z.string(), handler: () => "ok" };
+  const m = manifest({
+    functions: {
+      read: query({ ...base, mcp: { name: "read", description: "Read" } }),
+      search: action({
+        ...base,
+        mcp: { name: "search", description: "Search", readOnly: true },
+      }),
+      write: mutation({
+        ...base,
+        mcp: { name: "write", description: "Write" },
+      }),
+    },
+  });
+  expect(mcpTools(m, ["mcp:read"]).map((t) => t.name)).toEqual([
+    "read",
+    "search",
+  ]);
+  expect(mcpTools(m, ["mcp:read", "mcp:write"])).toHaveLength(3);
+  expect(mcpTools(m)[1].annotations).toMatchObject({
+    readOnlyHint: true,
+    destructiveHint: false,
+  });
+  expect(() =>
+    manifest({
+      functions: {
+        invalid: mutation({
+          ...base,
+          mcp: { name: "bad", description: "Bad", readOnly: true },
+        }),
+      },
+    }),
+  ).toThrow();
 });

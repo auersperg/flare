@@ -16,6 +16,7 @@ type AiState = {
   };
   endpoint: string;
   auth: string;
+  oauth: { authorization_servers: string[] } | null;
   tools: { name: string; description: string }[];
 };
 
@@ -174,10 +175,12 @@ export default function AiView({ project, env, session }: Scope) {
             <h2 className="text-lg font-medium">MCP</h2>
             <code className="break-all">{r.data.endpoint}</code>
             <p className="text-sm text-muted-foreground">
-              Stateless HTTP. Use a client supporting an Authorization: Bearer
-              application-session header. No OAuth discovery. Admin, deploy and
-              dev tokens are not accepted. Logout, expiry and disabling the user
-              revoke access.
+              {r.data.oauth
+                ? `OAuth enabled: ${r.data.oauth.authorization_servers[0]}. Connect this URL from an OAuth-capable MCP client. Read and write grants are separate; manage them in the application.`
+                : "OAuth is not configured for this environment. Use a dedicated application-session Bearer header from a compatible MCP client."}{" "}
+              Admin, deploy and dev tokens are not accepted. Application logout
+              ends that session, not independent OAuth connections. Disabling
+              the user revokes both.
             </p>
             {r.data.tools.length ? (
               r.data.tools.map((tool) => (

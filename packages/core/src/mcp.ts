@@ -7,18 +7,23 @@ import {
 } from "../../flare/src/sdk/protocol.js";
 import { jsonBody, status } from "./security.js";
 
-export function mcpTools(manifest: Manifest): Tool[] {
+export function mcpTools(manifest: Manifest, scopes?: string[]): Tool[] {
   return Object.values(manifest.functions).flatMap((fn) =>
-    fn.mcp && fn.auth !== "internal"
+    fn.mcp &&
+    fn.auth !== "internal" &&
+    (!scopes ||
+      scopes.includes("mcp:write") ||
+      fn.kind === "query" ||
+      fn.mcp.readOnly === true)
       ? [
           {
             name: fn.mcp.name,
             description: fn.mcp.description,
             inputSchema: fn.input as Tool["inputSchema"],
             annotations: {
-              readOnlyHint: fn.kind === "query",
-              destructiveHint: fn.kind !== "query",
-              idempotentHint: fn.kind === "query",
+              readOnlyHint: fn.kind === "query" || fn.mcp.readOnly === true,
+              destructiveHint: fn.kind !== "query" && fn.mcp.readOnly !== true,
+              idempotentHint: fn.kind === "query" || fn.mcp.readOnly === true,
               openWorldHint: fn.kind === "action",
             },
           },
