@@ -209,7 +209,7 @@ describe("release compatibility", () => {
     expect(() => compatibleSchema(null, next)).not.toThrow());
   it("rejects unverified bundles before activation", async () =>
     await expect(validateRelease({} as any)).rejects.toMatchObject({
-      code: "INVALID_RELEASE",
+      code: "INVALID_RELEASE_FORMAT",
     }));
 });
 

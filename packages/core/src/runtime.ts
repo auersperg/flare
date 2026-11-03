@@ -560,7 +560,7 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         if (!blob) fail("NOT_READY");
         const code = await blob.text();
         if ((await digest(code)) !== meta.release.checksums[role])
-          fail("INVALID_RELEASE");
+          fail("INVALID_RELEASE_BUNDLE_INTEGRITY");
         return {
           compatibilityDate: meta.release.compatibilityDate,
           mainModule: "app.js",
@@ -689,13 +689,13 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
         metadata.manifest.functions[String(cron.path)]?.kind !== "action" ||
         metadata.manifest.functions[String(cron.path)]?.auth === "required"
       )
-        fail("INVALID_RELEASE");
+        fail("INVALID_RELEASE_CRON_REFERENCE");
     if (old) {
       const references = await this.facet().pendingJobReferences();
       if (references.truncated) fail("LIMIT_EXCEEDED");
       for (const path of references.paths)
         if (metadata.manifest.functions[path]?.kind !== "action")
-          fail("INVALID_RELEASE");
+          fail("INVALID_RELEASE_JOB_REFERENCE");
     }
     this.ctx.storage.sql.exec(
       "INSERT OR IGNORE INTO releases VALUES (?,?,?)",
