@@ -1,6 +1,6 @@
 # Создание приложения на Flare — руководство для агента
 
-Проверенная база: **`@auersperg/flare@0.3.13`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
+Проверенная база: **`@auersperg/flare@0.3.14`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
 
 Это инструкция для **отдельного приложения**, а не для изменения Flare. Полная реализация — в [архитектуре](architecture.md); установка самой платформы — в [platform lifecycle](platform-lifecycle.md); эксплуатационные ограничения — в [runbook](production-runbook.md).
 
@@ -55,8 +55,8 @@ my-app/
 В отдельном frontend-проекте с `package.json`:
 
 ```sh
-bun add --exact @auersperg/flare@0.3.13
-bunx --bun --package @auersperg/flare@0.3.13 flare dev
+bun add --exact @auersperg/flare@0.3.14
+bunx --bun --package @auersperg/flare@0.3.14 flare dev
 ```
 
 1. Укажите **Runtime URL установленной платформы**, полученный от владельца. Это не project dev URL и не адрес dashboard.
@@ -228,7 +228,7 @@ export function Tasks({ signedIn }: { signedIn: boolean }) {
 После dev acceptance и **явного подтверждения владельца**:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.13 flare deploy --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.14 flare deploy --cmd "bun run build"
 ```
 
 Команда собирает backend, генерирует API, запускает frontend build с URL целевой **prod** среды, затем активирует backend с подтверждением проекта. Подставьте реальную build-команду вашего framework. Ошибка build не должна активировать backend. `.env.local` продолжает указывать на dev. Обычный `flare deploy` без `--cmd` тоже поддерживается, но frontend build/target URL тогда обеспечьте отдельно.
@@ -236,8 +236,8 @@ bunx --bun --package @auersperg/flare@0.3.13 flare deploy --cmd "bun run build"
 Для продвижения уже проверенного immutable dev release:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.13 flare releases --env dev
-bunx --bun --package @auersperg/flare@0.3.13 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.14 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.14 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
 ```
 
 Frontend output публикуется **отдельным hosting flow**. Backend activation и frontend deployment не являются общей atomic transaction: используйте совместимые additive API изменения и проверяйте обе стороны. Перед prod проверьте prod auth, origins, capabilities и восстановление согласно требованиям проекта; не копируйте dev пользователей/данные автоматически.
@@ -293,3 +293,45 @@ Query возвращает `{fileId,name,text,score}[]`, без публично
 Endpoint: `https://<runtime>/p/<project>/<dev|prod>/v1/mcp`. Используйте MCP-клиент с custom Authorization header, например официальный MCP SDK client. Передайте отдельную native app session этого пользователя через `Authorization: Bearer …`; создайте её существующим login, не копируйте admin/deploy/dev token. Не сохраняйте credentials в примере, репозитории или URL. Logout/expiry/disable отзывают доступ; OAuth discovery/автопродление не предоставляются. Несколько sessions всё ещё подчиняются существующему ограничению sessions пользователя.
 
 Панель AI отображает managed binding, last-observed состояния и опубликованные tools. Проверка использует явно введённую app session и существующую action; не impersonation владельца панели. Разрешите origin панели в app settings, если хотите пользоваться этой проверкой. Session хранится только в памяти открытой вкладки, не localStorage. Тестовый вызов action может иметь побочные эффекты: выбирайте именно свою поисковую функцию.
+
+## Версионные текстовые записи в AI Search (0.3.14)
+
+`ctx.search.records` — capability только action. SQLite приложения остаётся источником;
+мутация меняет запись и вызывает `jobs.schedule("records/index", {id})` в одной
+транзакции. Внутренний action перечитывает запись и отправляет текущую версию:
+
+```ts
+await search.records.sync({
+  id: record._id,
+  version: record.version,
+  partition: record.owner,
+  text: record.deleted ? null : record.text,
+});
+const hits = await search.records.query(
+  { query, partition: authenticatedOwner },
+  async (refs) => currentAuthorizedRevisionsFromSQLite(refs),
+);
+```
+
+`id` — UUID, `version` — монотонно возрастающее целое, `text` — до 16 КиБ или `null`
+для исключения. Partition выбирает сервер, не пользовательский фильтр. Callback
+возвращает только разрешённые `{id, version}`; после него runtime повторно проверяет
+своё состояние. Приложение должно возвращать/использовать актуальный текст SQLite,
+а не считать найденный фрагмент доверенной инструкцией. Нельзя удалять source
+tombstone до подтверждения очистки: запоздавшие jobs должны видеть удаление.
+
+Индекс использует нативный Items API, без промежуточного Flare File/R2.
+Metadata необязательна: до пяти предварительно настроенных на instance строковых
+полей, до 64 UTF-8 байт каждое; системные folder/filename/timestamp зарезервированы.
+Проверяйте `records.status({id, partition})`: pending/queued — не completed.
+Сбой сохраняет checkpoint; повтор sync той же версии безопасен, другая нагрузка
+с той же версией — CONFLICT. Для повторной индексации после operator clear или
+restore увеличьте source version и поставьте штатные jobs. Копия backup не содержит
+поисковый индекс; ключи включают среду, чужой индекс не подхватывается.
+
+Codex может вернуть необязательный JSON artifact из `/workspace/<outputFile>`
+(до 16 КиБ), отдельно от обычного потокового ответа. `instructions` — доверенные
+инструкции приложения, `prompt` — пользовательский запрос. Приложение валидирует
+`task.artifact` и сохраняет данные только после `state === "succeeded"`; artifact
+не является доказательством выполненного действия. Это один запуск Codex, не второй
+агентный цикл. Отсутствующий/невалидный artifact не превращается в выдуманный результат.

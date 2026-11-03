@@ -84,7 +84,15 @@ export class Session {
       new Uint8Array(
         await crypto.subtle.digest(
           "SHA-256",
-          new TextEncoder().encode(input.prompt),
+          new TextEncoder().encode(
+            input.instructions === undefined && input.outputFile === undefined
+              ? input.prompt
+              : JSON.stringify([
+                  input.prompt,
+                  input.instructions ?? null,
+                  input.outputFile ?? null,
+                ]),
+          ),
         ),
       ),
     )
@@ -143,7 +151,13 @@ export class Session {
       await this.files.writeFile(`${dir}/events.ndjson`, "");
       await this.files.writeFile(
         `${dir}/input.json`,
-        JSON.stringify({ prompt: input.prompt, mcpUrl: url, timeoutMs }),
+        JSON.stringify({
+          prompt: input.prompt,
+          instructions: input.instructions,
+          outputFile: input.outputFile,
+          mcpUrl: url,
+          timeoutMs,
+        }),
       );
       const ca = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
       launchAttempted = true;
@@ -351,11 +365,16 @@ export class Session {
         );
       else {
         const result = await this.read(`${dir}/result.txt`, 65536);
+        const artifact = await this.read(`${dir}/artifact.json`, 16384);
         await this.finish(
           task,
           result === undefined
             ? { state: "failed", error: "CODEX_RESULT_MISSING" }
-            : { state: "succeeded", result },
+            : {
+                state: "succeeded",
+                result,
+                ...(artifact !== undefined ? { artifact } : {}),
+              },
           true,
         );
       }

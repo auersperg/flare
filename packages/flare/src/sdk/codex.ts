@@ -4,6 +4,10 @@ export interface CodexTaskInput {
   /** Stable UUID for retries of the same submission; retained for seven days. */
   id: string;
   prompt: string;
+  /** Trusted application instructions, separate from the user's request. */
+  instructions?: string;
+  /** Optional JSON artifact in /workspace; collected only on successful completion. */
+  outputFile?: string;
 }
 export interface CodexTask {
   id: string;
@@ -11,6 +15,7 @@ export interface CodexTask {
   startedAt: number;
   finishedAt?: number;
   result?: string;
+  artifact?: string;
   error?: string;
 }
 export interface CodexContext {
@@ -19,7 +24,7 @@ export interface CodexContext {
   cancel(id: string): Promise<CodexTask | null>;
 }
 export function codexInput(op: string, input: any): void {
-  boundedJson(input, 20000);
+  boundedJson(input, 40000);
   if (
     !input ||
     Array.isArray(input) ||
@@ -28,12 +33,22 @@ export function codexInput(op: string, input: any): void {
     ) ||
     !["start", "status", "cancel"].includes(op) ||
     Object.keys(input).some(
-      (k) => !["id", ...(op === "start" ? ["prompt"] : [])].includes(k),
+      (k) =>
+        ![
+          "id",
+          ...(op === "start" ? ["prompt", "instructions", "outputFile"] : []),
+        ].includes(k),
     ) ||
     (op === "start" &&
       (typeof input.prompt !== "string" ||
         !input.prompt.trim() ||
-        new TextEncoder().encode(input.prompt).length > 16384))
+        new TextEncoder().encode(input.prompt).length > 16384 ||
+        (input.instructions !== undefined &&
+          (typeof input.instructions !== "string" ||
+            new TextEncoder().encode(input.instructions).length > 16384)) ||
+        (input.outputFile !== undefined &&
+          (typeof input.outputFile !== "string" ||
+            !/^[a-zA-Z0-9_-]{1,64}\.json$/.test(input.outputFile)))))
   )
     throw new FlareError("INVALID_ARGUMENT", "Invalid Codex task");
 }

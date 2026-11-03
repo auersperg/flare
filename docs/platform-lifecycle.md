@@ -20,8 +20,8 @@ Do not paste credentials into command arguments or commit them. Set `CLOUDFLARE_
 For the published preview:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.13 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
-bunx --bun --package @auersperg/flare@0.3.13 flare platform install --account ACCOUNT_ID --owner owner@example.com
+bunx --bun --package @auersperg/flare@0.3.14 flare platform install --account ACCOUNT_ID --owner owner@example.com --dry-run
+bunx --bun --package @auersperg/flare@0.3.14 flare platform install --account ACCOUNT_ID --owner owner@example.com
 ```
 
 For a source checkout, build and use the **compiled** CLI:

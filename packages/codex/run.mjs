@@ -6,6 +6,7 @@ import {
   appendFile,
   rename,
   stat,
+  lstat,
 } from "node:fs/promises";
 import { Redactor, secretsFrom, EVENT_BYTES } from "./events.mjs";
 const dir = "/run/flare";
@@ -275,6 +276,9 @@ try {
     approvalPolicy: "never",
     sandbox: "danger-full-access",
     serviceName: "flare",
+    ...(input.instructions
+      ? { developerInstructions: input.instructions }
+      : {}),
   });
   await request("turn/start", {
     threadId: started.thread.id,
@@ -291,8 +295,24 @@ clearTimeout(killTimer);
 try {
   process.kill(-child.pid, "SIGKILL");
 } catch {}
-if (completed && turnStatus === "completed" && !reason)
+if (completed && turnStatus === "completed" && !reason) {
   await writeFile(`${dir}/result.txt`, finalText, { mode: 0o600 });
+  if (input.outputFile) {
+    try {
+      // The process group has stopped. Do not follow a model-created symlink.
+      const path = `/workspace/${input.outputFile}`;
+      const info = await lstat(path);
+      if (info.isFile() && info.size <= 16384) {
+        const value = JSON.parse(await readFile(path, "utf8"));
+        const safe = new Redactor(secrets).text(JSON.stringify(value));
+        if (Buffer.byteLength(safe) <= 16384)
+          await writeFile(`${dir}/artifact.json`, safe, { mode: 0o600 });
+      }
+    } catch {
+      /* A missing/invalid artifact never fabricates a result. The app decides whether it is required. */
+    }
+  }
+}
 await writeFile(
   `${dir}/outcome.tmp`,
   JSON.stringify({

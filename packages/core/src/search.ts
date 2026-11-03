@@ -2,8 +2,16 @@ import {
   boundedJson,
   LIMITS,
   errorCode,
+  stableJson,
 } from "../../flare/src/sdk/protocol.js";
-import type { SearchHit, SearchState } from "../../flare/src/sdk/search.js";
+import type {
+  SearchHit,
+  SearchState,
+  SearchRecord,
+  SearchRecordRef,
+  SearchRecordState,
+  SearchRecordHit,
+} from "../../flare/src/sdk/search.js";
 import { appPolicy, type PolicyEnv } from "./capabilities.js";
 import { fileKey } from "./files.js";
 import { fail } from "./security.js";
@@ -19,6 +27,10 @@ type Row = {
   attempts: number;
   uncertain: number;
   error: string | null;
+  record_id: string | null;
+  partition: string | null;
+  text: string | null;
+  metadata: string | null;
 };
 type SearchEnv = PolicyEnv & { FILES?: R2Bucket };
 const states = new Set([
@@ -43,6 +55,62 @@ export class SearchStore {
     storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS search_items (id TEXT PRIMARY KEY,key TEXT NOT NULL,version TEXT NOT NULL,binding TEXT NOT NULL,item TEXT,status TEXT NOT NULL,wanted INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,uncertain INTEGER NOT NULL DEFAULT 0,error TEXT)",
     );
+    const columns = new Set(
+      storage.sql
+        .exec("PRAGMA table_info(search_items)")
+        .toArray()
+        .map((r) => r.name),
+    );
+    for (const name of ["record_id", "partition", "text", "metadata"])
+      if (!columns.has(name))
+        storage.sql.exec(`ALTER TABLE search_items ADD COLUMN ${name} TEXT`);
+    storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS search_records (id TEXT NOT NULL,partition TEXT NOT NULL,version INTEGER NOT NULL,digest TEXT NOT NULL,wanted INTEGER NOT NULL,current TEXT,PRIMARY KEY(id,partition))",
+    );
+    storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS search_record_versions ON search_items(record_id,partition)",
+    );
+  }
+  private head(id: string, partition: string) {
+    this.recordRef(id, partition);
+    return this.storage.sql
+      .exec<{
+        id: string;
+        partition: string;
+        version: number;
+        digest: string;
+        wanted: number;
+        current: string | null;
+      }>(
+        "SELECT * FROM search_records WHERE id=? AND partition=?",
+        id,
+        partition,
+      )
+      .toArray()[0];
+  }
+  private recordRef(id: string, partition: string) {
+    fileKey(this.scope, id);
+    if (
+      typeof partition !== "string" ||
+      !partition ||
+      new TextEncoder().encode(partition).length > 128
+    )
+      fail("INVALID_INPUT");
+  }
+  private async hash(value: string) {
+    return Array.from(
+      new Uint8Array(
+        await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+      ),
+    )
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  private async folder(partition: string) {
+    return (
+      (await this.hash(JSON.stringify([this.scope, partition]))).slice(0, 32) +
+      "/"
+    );
   }
   private row(id: string): Row | undefined {
     fileKey(this.scope, id);
@@ -51,6 +119,13 @@ export class SearchStore {
       .toArray()[0] as Row | undefined;
   }
   private original(id: string) {
+    const row = this.row(id);
+    if (row?.record_id) {
+      const head = this.head(row.record_id, row.partition!);
+      return head?.wanted && head.current === id
+        ? { name: row.record_id, type: "text/plain" }
+        : undefined;
+    }
     return this.storage.sql
       .exec("SELECT name,type FROM files WHERE id=? AND state='ready'", id)
       .toArray()[0];
@@ -76,7 +151,7 @@ export class SearchStore {
   }
   async reconcile() {
     this.storage.sql.exec(
-      "UPDATE search_items SET wanted=0,attempts=0,error=NULL WHERE binding!=? AND wanted=1",
+      "UPDATE search_items SET wanted=0,attempts=0,error=NULL,text=NULL,metadata=NULL WHERE binding!=? AND wanted=1",
       appPolicy(this.env, this.scope).search ?? "",
     );
     // A reset on the final attempt must not leave a permanently "sending" item without an error.
@@ -162,8 +237,9 @@ export class SearchStore {
     return this.state(id);
   }
   async clear() {
+    this.storage.sql.exec("UPDATE search_records SET wanted=0");
     this.storage.sql.exec(
-      "UPDATE search_items SET wanted=0,attempts=0,error=NULL",
+      "UPDATE search_items SET wanted=0,attempts=0,error=NULL,text=NULL,metadata=NULL",
     );
     await this.wake();
     return this.summary();
@@ -190,6 +266,14 @@ export class SearchStore {
   private updateInfo(row: Row, info: AiSearchItemInfo) {
     if (info.key !== row.key || !states.has(info.status))
       fail("SEARCH_UNAVAILABLE");
+    if (
+      row.record_id &&
+      ["queued", "running", "completed"].includes(info.status)
+    )
+      this.storage.sql.exec(
+        "UPDATE search_items SET text=NULL WHERE id=?",
+        row.id,
+      );
     this.storage.sql.exec(
       "UPDATE search_items SET item=?,status=?,error=?,uncertain=0 WHERE id=? AND key=? AND wanted=1",
       info.id,
@@ -298,6 +382,212 @@ export class SearchStore {
     boundedJson(hits, LIMITS.outputBytes);
     return hits;
   }
+  async syncRecord(input: SearchRecord): Promise<SearchRecordState> {
+    boundedJson(input, 20000);
+    if (
+      !input ||
+      Object.keys(input).some(
+        (k) => !["id", "partition", "version", "text", "metadata"].includes(k),
+      )
+    )
+      fail("INVALID_INPUT");
+    this.recordRef(input.id, input.partition);
+    if (
+      !Number.isSafeInteger(input.version) ||
+      input.version < 1 ||
+      (input.text !== null &&
+        (typeof input.text !== "string" ||
+          !input.text.trim() ||
+          new TextEncoder().encode(input.text).length > 16384))
+    )
+      fail("INVALID_INPUT");
+    const metadata = input.metadata ?? {};
+    if (
+      !metadata ||
+      Array.isArray(metadata) ||
+      typeof metadata !== "object" ||
+      Object.keys(metadata).length > 5 ||
+      Object.entries(metadata).some(
+        ([k, v]) =>
+          !/^[a-z][a-z0-9_]{0,31}$/.test(k) ||
+          ["folder", "filename", "timestamp"].includes(k) ||
+          typeof v !== "string" ||
+          new TextEncoder().encode(v).length > 64,
+      )
+    )
+      fail("INVALID_INPUT");
+    const digest = await this.hash(stableJson({ text: input.text, metadata }));
+    const folder = await this.folder(input.partition);
+    const head = this.head(input.id, input.partition);
+    const binding = appPolicy(this.env, this.scope).search;
+    if (head && input.version < head.version) return this.recordState(input);
+    if (
+      head &&
+      input.version === head.version &&
+      (digest !== head.digest || Boolean(head.wanted) !== (input.text !== null))
+    )
+      fail("CONFLICT");
+    const current = head?.current ? this.row(head.current) : undefined;
+    if (input.text !== null) this.binding(binding);
+    if (
+      head?.version === input.version &&
+      (input.text === null || (current?.wanted && current.binding === binding))
+    ) {
+      if (current && ["error", "skipped", "outdated"].includes(current.status))
+        this.storage.sql.exec(
+          "UPDATE search_items SET status='pending',attempts=0,error=NULL,text=? WHERE id=?",
+          input.text,
+          current.id,
+        );
+      await this.wake();
+      return this.recordState(input);
+    }
+    // No await between fencing old versions and installing the new head.
+    this.storage.sql.exec(
+      "UPDATE search_items SET wanted=0,text=NULL,metadata=NULL,attempts=0,error=NULL WHERE record_id=? AND partition=?",
+      input.id,
+      input.partition,
+    );
+    const id = input.text === null ? null : crypto.randomUUID();
+    if (id)
+      this.storage.sql.exec(
+        "INSERT INTO search_items (id,key,version,binding,status,wanted,record_id,partition,text,metadata) VALUES (?,?,?,?,'pending',1,?,?,?,?)",
+        id,
+        folder + id + ".txt",
+        String(input.version),
+        binding!,
+        input.id,
+        input.partition,
+        input.text,
+        Object.keys(metadata).length ? JSON.stringify(metadata) : null,
+      );
+    this.storage.sql.exec(
+      "INSERT OR REPLACE INTO search_records VALUES (?,?,?,?,?,?)",
+      input.id,
+      input.partition,
+      input.version,
+      digest,
+      Number(input.text !== null),
+      id,
+    );
+    await this.wake();
+    return this.recordState(input);
+  }
+  private recordState(input: {
+    id: string;
+    partition: string;
+  }): SearchRecordState {
+    const head = this.head(input.id, input.partition);
+    const row = head?.current ? this.row(head.current) : undefined;
+    const pending = this.storage.sql
+      .exec(
+        "SELECT error FROM search_items WHERE record_id=? AND partition=? AND wanted=0",
+        input.id,
+        input.partition,
+      )
+      .toArray();
+    return {
+      id: input.id,
+      version: head?.version ?? 0,
+      enabled: Boolean(
+        head?.wanted &&
+        row?.wanted &&
+        row.binding === appPolicy(this.env, this.scope).search,
+      ),
+      status:
+        head?.wanted && row?.wanted
+          ? (row.status as SearchState["status"])
+          : pending.length
+            ? "deleting"
+            : "excluded",
+      error:
+        row?.error ??
+        (pending.find((r) => r.error)?.error as string | undefined) ??
+        null,
+    };
+  }
+  async recordStatus(input: { id: string; partition: string }) {
+    const head = this.head(input.id, input.partition);
+    if (head?.current) await this.status(head.current);
+    return this.recordState(input);
+  }
+  validateRecords(input: { partition: string; records: SearchRecordRef[] }) {
+    if (!Array.isArray(input?.records) || input.records.length > 20)
+      fail("INVALID_INPUT");
+    return input.records.filter(({ id, version }) => {
+      const head = this.head(id, input.partition);
+      const row = head?.current ? this.row(head.current) : undefined;
+      return (
+        head?.wanted &&
+        head.version === version &&
+        row?.wanted &&
+        row.binding === appPolicy(this.env, this.scope).search
+      );
+    });
+  }
+  async queryRecords(input: {
+    query: string;
+    partition: string;
+    limit?: number;
+  }): Promise<SearchRecordHit[]> {
+    boundedJson(input, 10000);
+    if (
+      !input ||
+      typeof input.query !== "string" ||
+      !input.query.trim() ||
+      input.query.length > 2000 ||
+      Object.keys(input).some(
+        (k) => !["query", "partition", "limit"].includes(k),
+      )
+    )
+      fail("INVALID_INPUT");
+    this.recordRef("00000000-0000-4000-8000-000000000000", input.partition);
+    const limit = input.limit ?? 10;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20)
+      fail("INVALID_INPUT");
+    const binding = appPolicy(this.env, this.scope).search;
+    const instance = this.binding(binding);
+    const folder = await this.folder(input.partition);
+    let result: AiSearchSearchResponse;
+    try {
+      result = await instance.search({
+        query: input.query,
+        ai_search_options: {
+          retrieval: {
+            max_num_results: limit,
+            return_on_failure: false,
+            filters: { folder },
+          },
+          query_rewrite: { enabled: false },
+          reranking: { enabled: false },
+          cache: { enabled: false },
+        },
+      });
+    } catch {
+      fail("SEARCH_UNAVAILABLE");
+    }
+    const hits: SearchRecordHit[] = [];
+    for (const chunk of result.chunks.slice(0, limit)) {
+      const row = this.storage.sql
+        .exec(
+          "SELECT s.record_id,h.version FROM search_items s JOIN search_records h ON h.current=s.id WHERE s.key=? AND s.binding=? AND s.partition=? AND s.wanted=1 AND h.wanted=1",
+          chunk.item.key,
+          binding!,
+          input.partition,
+        )
+        .toArray()[0];
+      if (!row) continue;
+      if (typeof chunk.text !== "string" || !Number.isFinite(chunk.score))
+        fail("SEARCH_UNAVAILABLE");
+      hits.push({
+        id: String(row.record_id),
+        version: Number(row.version),
+        text: chunk.text.slice(0, 2000),
+        score: chunk.score,
+      });
+    }
+    return hits;
+  }
   /** One bounded native recovery batch; never holds the supervisor's application gate. */
   work() {
     return (this.working ??= this.process().finally(() => {
@@ -370,26 +660,30 @@ export class SearchStore {
         ) {
           this.updateInfo(row, existing[0]);
         } else {
-          const object = await this.env.FILES?.get(fileKey(this.scope, row.id));
-          if (!object) fail("NOT_FOUND");
-          if (row.version && object.version !== row.version) {
+          const object = row.record_id
+            ? null
+            : await this.env.FILES?.get(fileKey(this.scope, row.id));
+          const content = row.record_id ? this.row(row.id)?.text : object?.body;
+          if (content == null) fail("NOT_FOUND");
+          if (object && row.version && object.version !== row.version) {
             await object.body.cancel();
             fail("NOT_FOUND");
           }
           if (!this.row(row.id)?.wanted || !this.original(row.id)) {
-            await object.body.cancel();
+            await object?.body.cancel();
             continue;
           }
           this.storage.sql.exec(
             "UPDATE search_items SET status='sending',uncertain=1,version=? WHERE id=? AND wanted=1",
-            object.version,
+            object?.version ?? row.version,
             row.id,
           );
           this.updateInfo(
             row,
-            await instance.items.uploadAndPoll(row.key, object.body, {
+            await instance.items.uploadAndPoll(row.key, content, {
               timeoutMs: 30_000,
               pollIntervalMs: 2_000,
+              ...(row.metadata ? { metadata: JSON.parse(row.metadata) } : {}),
             }),
           );
         }

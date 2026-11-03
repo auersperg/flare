@@ -1860,6 +1860,10 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
     await this.lifecycle.start();
     this.assertAvailable();
     // Provider calls never occupy the application transaction gate.
+    if (op === "record-sync") return this.search().syncRecord(input);
+    if (op === "record-status") return this.search().recordStatus(input);
+    if (op === "record-query") return this.search().queryRecords(input);
+    if (op === "record-validate") return this.search().validateRecords(input);
     if (op === "index") return this.search().index(input.fileId);
     if (op === "exclude") return this.search().exclude(input.fileId);
     if (op === "status") return this.search().status(input.fileId);

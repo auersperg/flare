@@ -2,7 +2,16 @@ export type { CodexSubscription } from "./codex-stream.js";
 import type { CodexContext } from "./codex.js";
 export type { CodexContext, CodexTask, CodexTaskInput } from "./codex.js";
 import type { SearchContext } from "./search.js";
-export type { SearchContext, SearchHit, SearchState } from "./search.js";
+export type {
+  SearchContext,
+  SearchHit,
+  SearchState,
+  SearchRecord,
+  SearchRecordRef,
+  SearchRecordState,
+  SearchRecordHit,
+  SearchRecords,
+} from "./search.js";
 export { z } from "zod";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Validator, Schema } from "./schema.js";

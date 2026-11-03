@@ -16,11 +16,22 @@ const reply = (id, result) =>
 for await (const line of createInterface({ input: process.stdin })) {
   const m = JSON.parse(line);
   if (m.method === "initialize") reply(m.id, {});
-  if (m.method === "thread/start")
+  if (m.method === "thread/start") {
+    if (
+      m.params.developerInstructions &&
+      m.params.developerInstructions !== "artifact fixture instructions"
+    )
+      process.exit(4);
     reply(m.id, { thread: { id: "fixture-thread" } });
+  }
   if (m.method !== "turn/start") continue;
   reply(m.id, { turn: { id: "fixture-turn" } });
   const prompt = m.params.input[0].text;
+  if (prompt === "artifact")
+    await writeFile(
+      "/workspace/memory.json",
+      JSON.stringify({ facts: [{ quote: "fixture only" }] }),
+    );
   const path = `${process.env.CODEX_HOME}/auth.json`;
   const auth = JSON.parse(await readFile(path, "utf8"));
   if (prompt === "restored" && auth.tokens.access_token !== "fixture-rotated")

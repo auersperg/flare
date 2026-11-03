@@ -137,8 +137,17 @@ export default { async fetch(req,env,ctx) {
       await new Promise((r) => setTimeout(r, 500));
     }
   }
-  for (const prompt of ["first", "restored", "fail", "wait"]) {
-    const input = { id: crypto.randomUUID(), prompt };
+  for (const prompt of ["first", "restored", "artifact", "fail", "wait"]) {
+    const input = {
+      id: crypto.randomUUID(),
+      prompt,
+      ...(prompt === "artifact"
+        ? {
+            instructions: "artifact fixture instructions",
+            outputFile: "memory.json",
+          }
+        : {}),
+    };
     const admitted = await call("start", input);
     assert.equal(admitted.state, "running");
     if (prompt === "first") {
@@ -171,6 +180,10 @@ export default { async fetch(req,env,ctx) {
     }
     if (prompt === "wait") await call("cancel", { id: input.id });
     const task = await done(input.id);
+    if (prompt === "artifact")
+      assert.deepEqual(JSON.parse(task.artifact), {
+        facts: [{ quote: "fixture only" }],
+      });
     assert.equal(
       task.state,
       prompt === "fail"

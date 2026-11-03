@@ -410,3 +410,55 @@ describe("Codex capability boundaries", () => {
     ).rejects.toMatchObject({ code: "CODEX_DISABLED" });
   });
 });
+
+describe("Optional same-turn JSON artifact", () => {
+  it("validates paths and includes instructions/artifact selection in task idempotency", async () => {
+    const f = fixture(),
+      id = crypto.randomUUID();
+    for (const outputFile of [
+      "../auth.json",
+      "/run/flare/auth.json",
+      "secret.txt",
+      "a/b.json",
+    ])
+      expect(() =>
+        codexInput("start", { id, prompt: "test", outputFile }),
+      ).toThrow();
+    await f.command("start", {
+      id,
+      prompt: "test",
+      instructions: "trusted application instructions",
+      outputFile: "memory.json",
+    });
+    await expect(
+      f.command("start", {
+        id,
+        prompt: "test",
+        instructions: "changed",
+        outputFile: "memory.json",
+      }),
+    ).rejects.toThrow("CODEX_ID_CONFLICT");
+    const input = JSON.parse(f.disk.get("/run/flare/input.json")!);
+    expect(input.instructions).toBe("trusted application instructions");
+    expect(input.outputFile).toBe("memory.json");
+    f.complete();
+    f.disk.set("/run/flare/artifact.json", '{"facts":[]}');
+    await f.tick();
+    expect(await f.command("status", { id })).toMatchObject({
+      state: "succeeded",
+      artifact: '{"facts":[]}',
+    });
+  });
+  it("does not publish artifacts from failed or cancelled tasks", async () => {
+    const f = fixture(),
+      id = crypto.randomUUID();
+    await f.command("start", { id, prompt: "test", outputFile: "memory.json" });
+    f.complete(1, "CANCELLED");
+    f.disk.set("/run/flare/artifact.json", '{"facts":["false"]}');
+    await f.tick();
+    expect(await f.command("status", { id })).toMatchObject({
+      state: "cancelled",
+    });
+    expect((await f.command("status", { id }))?.artifact).toBeUndefined();
+  });
+});

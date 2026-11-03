@@ -80,7 +80,13 @@ function fixture(onWake?: (count: number) => Promise<void>) {
       },
     },
     search: async (input: any) => {
-      if (input.ai_search_options.retrieval.filters) {
+      if (
+        typeof input.ai_search_options.retrieval.filters?.folder === "string"
+      ) {
+        expect(input.ai_search_options.retrieval.filters.folder).toMatch(
+          /^[a-f0-9]{32}\/$/,
+        );
+      } else if (input.ai_search_options.retrieval.filters) {
         expect(input.ai_search_options.retrieval.filters).toEqual({
           folder: { $in: [other + "/"] },
         });
@@ -114,6 +120,10 @@ function fixture(onWake?: (count: number) => Promise<void>) {
     await onWake?.(wakes);
   });
   const sdk = searchContext(async (op, input: any) => {
+    if (op === "record-sync") return store.syncRecord(input);
+    if (op === "record-status") return store.recordStatus(input);
+    if (op === "record-query") return store.queryRecords(input);
+    if (op === "record-validate") return store.validateRecords(input);
     if (op === "query") return store.query(input);
     if (op === "validate") return store.validate(input.fileIds);
     return (store as any)[op](input.fileId);
@@ -473,5 +483,184 @@ describe("Scoped derived search", () => {
     await f.store.clear();
     await f.store.work();
     expect(f.items.size).toBe(1);
+  });
+});
+
+describe("Versioned text records on the existing search reconciler", () => {
+  const record = (
+    id: string,
+    version = 1,
+    text: string | null = "I prefer short answers",
+    partition = "alice",
+  ) => ({ id, version, text, partition });
+  it("uploads text directly without Files, deduplicates deliveries and fences old revisions", async () => {
+    const f = fixture();
+    f.env.FILES = undefined;
+    await f.sdk.records.sync(record(f.id));
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    expect(f.uploads).toBe(1);
+    expect(
+      (await f.sdk.records.status({ id: f.id, partition: "alice" })).status,
+    ).toBe("queued");
+    for (const item of f.items.values()) item.status = "completed";
+    expect(
+      (await f.sdk.records.status({ id: f.id, partition: "alice" })).status,
+    ).toBe("completed");
+    await f.sdk.records.sync(record(f.id, 2, "I prefer detailed answers"));
+    await f.sdk.records.sync(record(f.id));
+    await expect(
+      f.sdk.records.sync(record(f.id, 2, "different bytes")),
+    ).rejects.toThrow();
+    await f.store.work();
+    expect(f.items.size).toBe(1);
+    const hits = await f.sdk.records.query(
+      { query: "answers", partition: "alice" },
+      async (refs) => refs,
+    );
+    expect(hits.map((h) => h.version)).toEqual([2]);
+    expect(f.db.query("SELECT text FROM search_items").all()).toEqual([
+      { text: null },
+    ]);
+  });
+  it("keeps forgetting immediate through SDK and deletes provider data even after delayed jobs", async () => {
+    const f = fixture();
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    await f.sdk.records.sync(record(f.id, 2, null));
+    expect(
+      await f.sdk.records.query(
+        { query: "answers", partition: "alice" },
+        async (refs) => refs,
+      ),
+    ).toEqual([]);
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    expect(f.items.size).toBe(0);
+    expect(
+      (await f.sdk.records.status({ id: f.id, partition: "alice" })).status,
+    ).toBe("excluded");
+    expect(
+      JSON.stringify(f.db.query("SELECT * FROM search_records").all()),
+    ).not.toContain("answers");
+  });
+  it("deletes an older upload completed concurrently with correction", async () => {
+    const f = fixture();
+    let changed = false;
+    f.during(async () => {
+      if (!changed) {
+        changed = true;
+        await f.sdk.records.sync(record(f.id, 2, "new fact"));
+      }
+    });
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    await f.store.work();
+    expect(f.items.size).toBe(1);
+    expect(
+      (
+        await f.sdk.records.query(
+          { query: "fact", partition: "alice" },
+          async (refs) => refs,
+        )
+      ).map((h) => h.version),
+    ).toEqual([2]);
+  });
+  it("isolates owners and environments even if the provider ignores filtering", async () => {
+    const f = fixture();
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    expect(
+      await f.sdk.records.query(
+        { query: "answers", partition: "bob" },
+        async (refs) => refs,
+      ),
+    ).toEqual([]);
+    const otherScope = scope.replace("dev", "prod");
+    f.env.APP_CAPABILITIES = JSON.stringify({
+      [scope]: { search: "APP_SEARCH_TEST" },
+      [otherScope]: { search: "APP_SEARCH_TEST" },
+    });
+    // Real environments have separate SQLite; a new empty store cannot adopt provider objects.
+    const fresh = fixture();
+    fresh.env.APP_SEARCH_TEST = f.env.APP_SEARCH_TEST;
+    expect(
+      await fresh.store.queryRecords({ query: "answers", partition: "alice" }),
+    ).toEqual([]);
+    await f.sdk.records.sync(record(f.other, 1, "private", "bob"));
+    await f.store.work();
+    const keys = [...f.items.keys()];
+    expect(keys[0].split("/")[0]).not.toBe(keys[1].split("/")[0]);
+  });
+  it("requires current source ACL/revision checks and rechecks after authorization", async () => {
+    const f = fixture();
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    await expect(
+      f.sdk.records.query({ query: "x", partition: "alice" }, undefined as any),
+    ).rejects.toThrow();
+    expect(
+      await f.sdk.records.query(
+        { query: "x", partition: "alice" },
+        async () => [],
+      ),
+    ).toEqual([]);
+    await expect(
+      f.sdk.records.query({ query: "x", partition: "alice" }, async () => [
+        { id: f.id, version: 42 },
+      ]),
+    ).rejects.toThrow();
+    expect(
+      await f.sdk.records.query(
+        { query: "x", partition: "alice" },
+        async (refs) => {
+          await f.sdk.records.sync(record(f.id, 2, null));
+          return refs;
+        },
+      ),
+    ).toEqual([]);
+  });
+  it("keeps bounded recoverable failures honest and does not expose staging bytes in status", async () => {
+    const f = fixture();
+    f.fault("upload");
+    await f.sdk.records.sync(record(f.id));
+    await f.store.work();
+    const state = await f.sdk.records.status({ id: f.id, partition: "alice" });
+    expect(state.status).not.toBe("completed");
+    expect(JSON.stringify(state)).not.toContain("answers");
+    f.fault("");
+    await f.store.work();
+    expect(
+      (await f.sdk.records.status({ id: f.id, partition: "alice" })).status,
+    ).toBe("queued");
+    f.fault("delete");
+    await f.sdk.records.sync(record(f.id, 2, null));
+    await f.store.work();
+    expect(
+      (await f.sdk.records.status({ id: f.id, partition: "alice" })).status,
+    ).toBe("deleting");
+    f.fault("");
+    await f.store.work();
+    expect(f.items.size).toBe(0);
+  });
+  it("validates metadata and prevents filter/scope injection", async () => {
+    const f = fixture();
+    for (const bad of [
+      { version: 0 },
+      { text: "x".repeat(16385) },
+      { metadata: { folder: "other/" } },
+      { metadata: { tag: "я".repeat(33) } },
+      { scope: "other" },
+    ])
+      await expect(
+        f.sdk.records.sync({ ...record(f.id), ...bad } as any),
+      ).rejects.toThrow();
+    await expect(
+      f.store.queryRecords({
+        query: "x",
+        partition: "alice",
+        filters: {},
+      } as any),
+    ).rejects.toThrow();
   });
 });
