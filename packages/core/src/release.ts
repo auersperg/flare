@@ -3,6 +3,7 @@ import {
   stableJson,
   assertPath,
   assertMcpTools,
+  assertMcpServer,
   type Manifest,
 } from "../../flare/src/sdk/protocol.js";
 import {
@@ -66,6 +67,7 @@ export async function validateRelease(bundle: ReleaseUpload) {
   }
   try {
     assertMcpTools(bundle.manifest.functions);
+    assertMcpServer(bundle.manifest.mcp);
   } catch {
     fail("INVALID_RELEASE_MCP");
   }

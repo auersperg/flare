@@ -140,6 +140,48 @@ it("discovers schema/functions and generates typed API/server without SQL journa
     await rm(dir, { recursive: true, force: true });
   }
 }, 60000);
+it("carries optional app MCP instructions through normal builds and release hashes", async () => {
+  const dir = await temporaryCli("app-mcp-config-");
+  try {
+    const script = `
+ import {prepare} from ${JSON.stringify(resolve("packages/flare/src/cli/project.mjs"))};
+ import {buildApplication} from ${JSON.stringify(resolve("packages/flare/src/cli/build.mjs"))};
+ import {writeFile,readFile,mkdir} from 'node:fs/promises';import assert from 'node:assert/strict';
+ await writeFile('package.json','{"type":"module","private":true}');await mkdir('flare');
+ await writeFile('flare/schema.ts','import {defineSchema} from "@auersperg/flare/server";export default defineSchema({});');
+ await writeFile('flare/notes.ts','import {query} from "./_generated/server";import {z} from "@auersperg/flare/server";export const list=query({input:z.object({}),output:z.string(),mcp:{name:"notes.list",description:"Read notes"},handler:()=>"ok"});');
+ const build=async(outdir)=>{await buildApplication({...await prepare(),outdir});return {manifest:JSON.parse(await readFile(outdir+'/manifest.json','utf8')),release:JSON.parse(await readFile(outdir+'/release.json','utf8'))};};
+ const original=await build('original');assert(!('mcp' in original.manifest));
+ const originalSource=await readFile('.flare/build/app.ts','utf8');assert(!originalSource.includes('appConfig'));assert(originalSource.endsWith('export default defineApp({schema,functions:tree});\\n'));
+ const config=(instructions)=>'import type {AppConfig} from "@auersperg/flare/server";export default '+JSON.stringify({mcp:{instructions}})+' satisfies AppConfig;';
+ await writeFile('flare/_app.ts',config('Recall before answering personal questions.'));
+ const configured=await build('configured');
+ assert.deepEqual(configured.manifest.mcp,{instructions:'Recall before answering personal questions.'});
+ assert.deepEqual(Object.keys(configured.manifest.functions),['notes/list']);
+ assert.deepEqual(configured.manifest.functions,original.manifest.functions);
+ assert.notEqual(configured.release.hash,original.release.hash);
+ await writeFile('flare/_app.ts',config('Recall first, then save only authorized changes.'));
+ const updated=await build('updated');
+ assert.equal(updated.manifest.mcp.instructions,'Recall first, then save only authorized changes.');
+ assert.notEqual(updated.release.hash,configured.release.hash);
+ assert.notEqual(updated.release.checksums.manifest,configured.release.checksums.manifest);
+ assert.equal(JSON.parse(await readFile('configured/manifest.json','utf8')).mcp.instructions,'Recall before answering personal questions.');
+ for(const invalid of [null,[],"instructions",{functions:{}},{mcpInstructions:"typo"}]){
+   await writeFile('flare/_app.ts','export default '+JSON.stringify(invalid)+';');
+   await assert.rejects(prepare(),/Invalid app configuration/);
+ }
+ console.log('PASS release-bound MCP app config');`;
+    const result = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      { cwd: dir, encoding: "utf8", timeout: 60000 },
+    );
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.stdout).toContain("PASS release-bound MCP app config");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 60000);
 it("backup CLI is explicit, project-scoped and never retries writes", async () => {
   const directory = await temporaryCli("backup-cli-");
   try {

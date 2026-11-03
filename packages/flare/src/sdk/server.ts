@@ -31,6 +31,8 @@ export type { ReadDatabase, WriteDatabase, Page } from "./database.js";
 import {
   assertPath,
   assertMcpTools,
+  assertMcpServer,
+  type McpServerConfig,
   type McpTool,
   boundedJson,
   LIMITS,
@@ -158,12 +160,18 @@ export function createFunctions<S extends Schema>() {
 export interface FunctionTree {
   [key: string]: Definition<any, any, any, any> | FunctionTree;
 }
-export function defineApp<const T extends FunctionTree>(options: {
-  functions: T;
-  schema: Schema;
-}) {
+export interface AppConfig {
+  mcp?: McpServerConfig;
+}
+export function defineApp<const T extends FunctionTree>(
+  options: AppConfig & {
+    functions: T;
+    schema: Schema;
+  },
+) {
   flatten(options.functions);
   schemaContract(options.schema);
+  assertMcpServer(options.mcp);
   return Object.freeze(options);
 }
 export function flatten(
@@ -202,7 +210,10 @@ export function flatten(
   walk(tree, "", 0);
   return out;
 }
-export function manifest(app: { functions: FunctionTree }): Manifest {
+export function manifest(
+  app: AppConfig & { functions: FunctionTree },
+): Manifest {
+  assertMcpServer(app.mcp);
   const functions: Manifest["functions"] = Object.create(null);
   for (const [path, fn] of Object.entries(flatten(app.functions))) {
     const input = fn.input["~standard"].jsonSchema?.input({
@@ -226,7 +237,14 @@ export function manifest(app: { functions: FunctionTree }): Manifest {
   }
   assertMcpTools(functions);
   boundedJson(functions, 1048576);
-  return { protocol: 1, runtimeAbi: 4, functions };
+  return {
+    protocol: 1,
+    runtimeAbi: 4,
+    functions,
+    ...(app.mcp === undefined
+      ? {}
+      : { mcp: { instructions: app.mcp.instructions } }),
+  };
 }
 export async function validate<V extends StandardSchemaV1>(
   validator: V,

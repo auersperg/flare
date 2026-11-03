@@ -112,6 +112,28 @@ export type McpTool = {
   readOnly?: boolean;
 };
 
+export type McpServerConfig = {
+  /** Public, release-bound cross-tool guidance. Not an authorization grant. UTF-8 limit: 8192 bytes. */
+  instructions: string;
+};
+
+export function assertMcpServer(
+  config: unknown,
+): asserts config is McpServerConfig | undefined {
+  if (config === undefined) return;
+  if (
+    !config ||
+    typeof config !== "object" ||
+    Array.isArray(config) ||
+    Object.keys(config).some((key) => key !== "instructions") ||
+    !("instructions" in config) ||
+    typeof config.instructions !== "string" ||
+    !config.instructions.trim() ||
+    new TextEncoder().encode(config.instructions).byteLength > 8192
+  )
+    throw new FlareError("INVALID_CONTRACT", "Invalid MCP server contract");
+}
+
 export function assertMcpTools(functions: Record<string, FunctionContract>) {
   const names = new Set<string>();
   for (const fn of Object.values(functions)) {
@@ -151,5 +173,6 @@ export interface FunctionContract {
 export interface Manifest {
   protocol: 1;
   runtimeAbi: 4;
+  mcp?: McpServerConfig;
   functions: Record<string, FunctionContract>;
 }

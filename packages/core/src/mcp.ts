@@ -32,6 +32,15 @@ export function mcpTools(manifest: Manifest, scopes?: string[]): Tool[] {
   );
 }
 
+export function mcpDescriptor(manifest: Manifest, scopes?: string[]) {
+  return {
+    tools: mcpTools(manifest, scopes),
+    ...(manifest.mcp === undefined
+      ? {}
+      : { instructions: manifest.mcp.instructions }),
+  };
+}
+
 /** Transport only. Identity, release selection and all writes remain in the supervisor. */
 export async function mcpResponse(
   request: Request,
@@ -48,7 +57,9 @@ export async function mcpResponse(
     origin: request.headers.get("origin"),
     authorization: request.headers.get("authorization"),
   };
-  const tools = (await supervisor.mcp(identity)) as ReturnType<typeof mcpTools>;
+  const { tools, instructions } = (await supervisor.mcp(
+    identity,
+  )) as ReturnType<typeof mcpDescriptor>;
   const headers = new Headers({
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
@@ -70,7 +81,10 @@ export async function mcpResponse(
     () => {
       const server = new Server(
         { name: "Flare", version: "1" },
-        { capabilities: { tools: {} } },
+        {
+          capabilities: { tools: {} },
+          ...(instructions === undefined ? {} : { instructions }),
+        },
       );
       server.setRequestHandler("tools/list", async ({ params }) => {
         const cursor = params?.cursor ?? "0";

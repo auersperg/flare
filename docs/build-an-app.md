@@ -1,6 +1,6 @@
 # Создание приложения на Flare — руководство для агента
 
-Проверенная база: **`@auersperg/flare@0.3.20`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
+Проверенная база: **`@auersperg/flare@0.3.21`**, Bun **1.4.3+**. Это trusted-team preview, не обещание полного Convex parity или SLA. Не выбирайте автоматически `latest`: он может указывать на другую версию. При обновлении SDK сначала проверяйте совместимость с установленной платформой.
 
 Это инструкция для **отдельного приложения**, а не для изменения Flare. Полная реализация — в [архитектуре](architecture.md); установка самой платформы — в [platform lifecycle](platform-lifecycle.md); эксплуатационные ограничения — в [runbook](production-runbook.md).
 
@@ -55,8 +55,8 @@ my-app/
 В отдельном frontend-проекте с `package.json`:
 
 ```sh
-bun add --exact @auersperg/flare@0.3.20
-bunx --bun --package @auersperg/flare@0.3.20 flare dev
+bun add --exact @auersperg/flare@0.3.21
+bunx --bun --package @auersperg/flare@0.3.21 flare dev
 ```
 
 1. Укажите **Runtime URL установленной платформы**, полученный от владельца. Это не project dev URL и не адрес dashboard.
@@ -228,7 +228,7 @@ export function Tasks({ signedIn }: { signedIn: boolean }) {
 После dev acceptance и **явного подтверждения владельца**:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.20 flare deploy --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.21 flare deploy --cmd "bun run build"
 ```
 
 Команда собирает backend, генерирует API, запускает frontend build с URL целевой **prod** среды, затем активирует backend с подтверждением проекта. Подставьте реальную build-команду вашего framework. Ошибка build не должна активировать backend. `.env.local` продолжает указывать на dev. Обычный `flare deploy` без `--cmd` тоже поддерживается, но frontend build/target URL тогда обеспечьте отдельно.
@@ -236,8 +236,8 @@ bunx --bun --package @auersperg/flare@0.3.20 flare deploy --cmd "bun run build"
 Для продвижения уже проверенного immutable dev release:
 
 ```sh
-bunx --bun --package @auersperg/flare@0.3.20 flare releases --env dev
-bunx --bun --package @auersperg/flare@0.3.20 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
+bunx --bun --package @auersperg/flare@0.3.21 flare releases --env dev
+bunx --bun --package @auersperg/flare@0.3.21 flare promote --hash <verified-dev-release-hash> --cmd "bun run build"
 ```
 
 Frontend output публикуется **отдельным hosting flow**. Backend activation и frontend deployment не являются общей atomic transaction: используйте совместимые additive API изменения и проверяйте обе стороны. Перед prod проверьте prod auth, origins, capabilities и восстановление согласно требованиям проекта; не копируйте dev пользователей/данные автоматически.
@@ -289,6 +289,21 @@ CI использует scoped `FLARE_DEPLOY_TOKEN`, корректную projec
 Query возвращает `{fileId,name,text,score}[]`, без публичной ссылки на оригинал. Получать original/download grant можно только отдельной разрешённой action. Для отзывов доступа достаточно изменения app ACL; очистка индекса может отставать. При переполнении top-K чужими документами результатов может быть меньше лимита: предварительно сузьте область серверным `fileIds`, не добирайте бесконечным поиском. Сеть/индекс недоступны внутри query/mutation.
 
 Чтобы открыть существующую функцию агенту, добавьте к её серверному определению `mcp: { name: "documents.search", description: "Search documents accessible to the current user" }`. Имена уникальны, input — object schema, `internal` запрещён. Оставьте обычные `auth`, input/output validators и проверки прав. Для поиска публикуйте **action приложения с ACL**, не сырую capability. Mutation сохраняет данные и уведомляет обычные подписки; транспорт ничего не повторяет автоматически.
+
+Общий порядок работы нескольких tools можно задать один раз в необязательном `flare/_app.ts`:
+
+```ts
+import type { AppConfig } from "@auersperg/flare/server";
+
+export default {
+  mcp: {
+    instructions:
+      "Use documents.search to find relevant documents, then read only permitted sources. Do not claim a write succeeded before its tool result.",
+  },
+} satisfies AppConfig;
+```
+
+Нужны SDK/CLI и Runtime с поддержкой этого поля. Строка непустая, максимум 8192 UTF-8 bytes; она публична для авторизованных MCP-клиентов, поэтому не содержит секретов или данных пользователей. В advanced entry передайте тот же `mcp` в `defineApp({schema, functions, mcp})`. Штатный CLI включает текст в immutable release manifest: публикация, promotion и rollback меняют его вместе с кодом, а native `initialize` отдаёт `instructions` только после обычной аутентификации. Старые приложения без поля продолжают работать. Это рекомендации клиенту по использованию tools, не новые разрешения и не гарантия автоматического вызова MCP на каждом ходе; уже инициализированному клиенту может понадобиться новое MCP-подключение для получения обновления.
 
 Endpoint: `https://<runtime>/p/<project>/<dev|prod>/v1/mcp`. Используйте MCP-клиент с custom Authorization header, например официальный MCP SDK client. Передайте отдельную native app session этого пользователя через `Authorization: Bearer …`; создайте её существующим login, не копируйте admin/deploy/dev token. Не сохраняйте credentials в примере, репозитории или URL. Logout/expiry/disable отзывают доступ этой session. Несколько sessions подчиняются существующему ограничению sessions пользователя.
 

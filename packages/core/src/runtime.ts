@@ -1,6 +1,6 @@
 import { codexCommand, codexEvents } from "./codex.js";
 import { SearchStore } from "./search.js";
-import { mcpResponse, mcpTools } from "./mcp.js";
+import { mcpResponse, mcpTools, mcpDescriptor } from "./mcp.js";
 import { mcpMetadata, mcpChallenge, validateMcpToken } from "./mcp-auth.js";
 import { PasswordAuth } from "./auth.js";
 import { dashboardIdentity, type DashboardIdentity } from "./dashboard-live.js";
@@ -1128,8 +1128,9 @@ export class EnvironmentSupervisor extends DurableObject<Env> {
       );
       scopes = validated.scope;
     }
-    const tools = mcpTools(this.metadata().manifest, scopes);
-    if (input.name === undefined) return tools;
+    const descriptor = mcpDescriptor(this.metadata().manifest, scopes);
+    if (input.name === undefined) return descriptor;
+    const { tools } = descriptor;
     if (!tools.some((tool) => tool.name === input.name)) fail("FORBIDDEN");
     const result = await this.call({
       path: "mcp",

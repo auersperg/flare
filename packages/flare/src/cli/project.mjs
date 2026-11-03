@@ -68,12 +68,20 @@ export async function prepare() {
   const files = await modules("flare");
   const schema = resolve("flare/schema.ts"),
     entry = resolve(".flare/build/app.ts");
+  const config = resolve("flare/_app.ts");
+  const hasConfig = await access(config).then(
+    () => true,
+    (error) => {
+      if (error.code !== "ENOENT") throw error;
+      return false;
+    },
+  );
   const imports = files
     .map((file, i) => `import * as f${i} from ${JSON.stringify(file.path)};`)
     .join("\n");
   const source = `import {defineApp} from "@auersperg/flare/server";
 import schema from ${JSON.stringify(schema)};
-${imports}
+${hasConfig ? `import appConfig from ${JSON.stringify(config)};\nif(!appConfig || typeof appConfig !== "object" || Array.isArray(appConfig) || Object.keys(appConfig).some(key=>key !== "mcp"))throw Error("Invalid app configuration: flare/_app.ts must default-export only optional mcp metadata");\n` : ""}${imports}
 const functions={};
 ${files.map((file, i) => `functions[${JSON.stringify(file.name)}]=Object.fromEntries(Object.entries(f${i}).filter(([,fn])=>fn && typeof fn === "object" && ["query","mutation","action"].includes(fn.kind)));`).join("\n")}
 const tree=Object.create(null);
@@ -83,7 +91,7 @@ for(const [path,exports] of Object.entries(functions)) {
   const key=parts.at(-1); if(key in node)throw Error("Function namespace conflict: "+path);
   node[key]=exports;
 }
-export default defineApp({schema,functions:tree});
+export default defineApp({schema,functions:tree${hasConfig ? ",...(appConfig.mcp === undefined ? {} : {mcp:appConfig.mcp})" : ""}});
 `;
   await writeFile(entry, source);
   const metadata = resolve(`.flare/build/metadata-${randomUUID()}.mjs`);
