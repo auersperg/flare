@@ -66,6 +66,14 @@ try {
   const runtime = await mf.getWorker("runtime");
   const request = (path, init = {}) =>
     mf.dispatchFetch(issuer + path, { redirect: "manual", ...init });
+  for (const path of ["/oauth/token", "/oauth/register"]) {
+    const oversized = await request(path, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "x=" + "a".repeat(16384),
+    });
+    assert.equal(oversized.status, 413);
+  }
   let response = await request("/.well-known/oauth-authorization-server");
   const metadata = await response.json();
   assert.equal(metadata.issuer, issuer);

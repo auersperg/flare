@@ -66,11 +66,12 @@ ${details.redirectIsLoopback ? "<p><strong>Это приложение на ва
 <p>Прочитанные агентом сведения попадут в соответствующий сервис. Отозвать доступ можно на AI-странице приложения. Распространение отзыва может занимать время; токены доступа живут не более 5 минут.</p>
 <button name="decision" value="approve">Разрешить выбранное</button><button name="decision" value="deny" formnovalidate>Отказать</button></form></html>`;
 }
+class BodyLimitError extends Error {}
 async function bodyText(request: Request | Response) {
   if (!request.body) throw Error("Missing body");
   return new TextDecoder().decode(
     await readBody(request.body, 16384, () => {
-      throw Error("Body too large");
+      throw new BodyLimitError();
     }),
   );
 }
@@ -254,6 +255,10 @@ export async function handleRequest(
         { headers },
       );
     }
+    // The provider parses JSON/form bodies. Bound the stream first, including
+    // chunked requests without a trustworthy Content-Length header.
+    if (request.body)
+      request = new Request(request, { body: await bodyText(request) });
     return await server.fetch(request, env, ctx);
   } catch (error) {
     const headers = {
@@ -264,6 +269,8 @@ export async function handleRequest(
         ? { "access-control-allow-origin": env.APP_ORIGIN, vary: "Origin" }
         : {}),
     };
+    if (error instanceof BodyLimitError)
+      return new Response("Request body too large", { status: 413, headers });
     if (error instanceof AuthorizationError || error instanceof CimdFetchError)
       return new Response(
         error instanceof AuthorizationError
