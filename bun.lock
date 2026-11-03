@@ -20,14 +20,14 @@
     },
     "packages/codex": {
       "name": "@flare/codex-runner",
-      "version": "0.3.16",
+      "version": "0.3.17",
       "dependencies": {
         "@cloudflare/sandbox": "1.0.3",
       },
     },
     "packages/core": {
       "name": "@flare/platform",
-      "version": "0.3.16",
+      "version": "0.3.17",
       "dependencies": {
         "@modelcontextprotocol/server": "2.3.0",
         "agents": "0.28.0",
@@ -35,7 +35,7 @@
     },
     "packages/core/dashboard": {
       "name": "@flare/dashboard",
-      "version": "0.3.16",
+      "version": "0.3.17",
       "dependencies": {
         "@astrojs/react": "7.0.1",
         "@auersperg/flare": "workspace:*",
@@ -59,7 +59,7 @@
     },
     "packages/flare": {
       "name": "@auersperg/flare",
-      "version": "0.3.16",
+      "version": "0.3.17",
       "bin": {
         "flare": "./dist/cli/flare.js",
       },

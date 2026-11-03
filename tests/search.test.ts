@@ -56,15 +56,10 @@ function fixture(onWake?: (count: number) => Promise<void>) {
         items.set(key, info);
         await duringUpload?.();
         if (failUpload) throw Error("private provider body");
-        return info;
+        return { id: info.id, key: info.key };
       },
-      uploadAndPoll: async (
-        key: string,
-        body: ReadableStream,
-        options: any,
-      ) => {
-        expect(options).toEqual({ timeoutMs: 30_000, pollIntervalMs: 2_000 });
-        return provider.items.upload(key, body);
+      uploadAndPoll: async () => {
+        throw Error("Indexing must not block the recovery batch");
       },
       get: (id: string) => ({
         info: async () => [...items.values()].find((i) => i.id === id),

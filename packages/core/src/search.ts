@@ -678,14 +678,15 @@ export class SearchStore {
             object?.version ?? row.version,
             row.id,
           );
-          this.updateInfo(
-            row,
-            await instance.items.uploadAndPoll(row.key, content, {
-              timeoutMs: 30_000,
-              pollIntervalMs: 2_000,
-              ...(row.metadata ? { metadata: JSON.parse(row.metadata) } : {}),
-            }),
-          );
+          const uploaded = await instance.items.upload(row.key, content, {
+            ...(row.metadata ? { metadata: JSON.parse(row.metadata) } : {}),
+          });
+          // Upload acknowledges queueing, not readiness. Do not block the next
+          // document on provider indexing; status() reads actual progress.
+          this.updateInfo(row, {
+            ...uploaded,
+            status: uploaded.status ?? "queued",
+          });
         }
       } catch (error) {
         this.storage.sql.exec(
