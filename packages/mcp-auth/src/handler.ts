@@ -136,6 +136,13 @@ export async function handleRequest(
           throw new AuthorizationError("invalid_request", {
             description: "PKCE S256 is required",
           });
+        // parseAuthRequest already validates the registered HTTPS/loopback callback.
+        // Only its origin belongs in CSP, never client-controlled paths or queries.
+        const redirect = new URL(auth.redirectUri);
+        if (!/^[a-z0-9.:[\]-]+$/i.test(redirect.host))
+          throw new AuthorizationError("invalid_request", {
+            description: "Invalid redirect hostname",
+          });
         const details = await oauth.describeConsent(auth),
           consent = await oauth.beginConsent(auth);
         consent.headers.set("content-type", "text/html; charset=utf-8");
@@ -144,7 +151,8 @@ export async function handleRequest(
         consent.headers.set("referrer-policy", "strict-origin");
         consent.headers.set(
           "content-security-policy",
-          "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+          // Chromium also checks the destination of the form's OAuth redirect.
+          `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${redirect.origin}; frame-ancestors 'none'; base-uri 'none'`,
         );
         return new Response(consentPage(details, consent.handle), {
           headers: consent.headers,

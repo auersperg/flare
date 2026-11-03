@@ -109,10 +109,9 @@ try {
   assert.ok(!page.includes("<script>bad</script>"));
   assert.ok(page.includes("127.0.0.1"));
   assert.equal(response.headers.get("referrer-policy"), "strict-origin");
-  assert.ok(
-    response.headers
-      .get("content-security-policy")
-      .includes("frame-ancestors 'none'"),
+  assert.equal(
+    response.headers.get("content-security-policy"),
+    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' http://127.0.0.1:9100; frame-ancestors 'none'; base-uri 'none'",
   );
   const handle = page.match(/name="handle" value="([^"]+)"/)[1];
   const cookie = response.headers
@@ -279,6 +278,36 @@ try {
   response = await request("/authorize?" + bad);
   assert.equal(response.status, 400);
   assert.equal(response.headers.get("location"), null);
+  for (const [redirect, expectedOrigin] of [
+    [
+      "https://client.example.test/callback?next=;form-action%20*",
+      "https://client.example.test",
+    ],
+    ["http://[::1]:9100/callback", "http://[::1]:9100"],
+    ["https://*.example.test/callback", null],
+    ["https://client.example.test;form-action/callback", null],
+  ]) {
+    const registered = await request("/oauth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        redirect_uris: [redirect],
+        token_endpoint_auth_method: "none",
+      }),
+    });
+    assert.equal(registered.status, 201);
+    const testParams = new URLSearchParams(params);
+    testParams.set("client_id", (await registered.json()).client_id);
+    testParams.set("redirect_uri", redirect);
+    const consent = await request("/authorize?" + testParams);
+    assert.equal(consent.status, expectedOrigin ? 200 : 400);
+    assert.equal(
+      consent.headers.get("content-security-policy"),
+      expectedOrigin
+        ? `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${expectedOrigin}; frame-ancestors 'none'; base-uri 'none'`
+        : null,
+    );
+  }
   console.log(
     "PASS: native OAuth metadata, DCR, escaped consent, CSRF/browser binding, PKCE, one-time code, audience, read-only scope, refresh, grant listing and revocation",
   );
