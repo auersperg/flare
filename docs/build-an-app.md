@@ -293,6 +293,7 @@ Query возвращает `{fileId,name,text,score}[]`, без публично
 Общий порядок работы нескольких tools можно задать один раз в необязательном `flare/_app.ts`:
 
 ```ts
+// flare/_app.ts
 import type { AppConfig } from "@auersperg/flare/server";
 
 export default {

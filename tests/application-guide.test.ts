@@ -25,6 +25,7 @@ it("builds the actual application guide, checks its types and per-user handlers 
       ),
     ];
     expect(examples.map((match) => match[1]).sort()).toEqual([
+      "flare/_app.ts",
       "flare/_model.ts",
       "flare/schema.ts",
       "flare/tasks.ts",
@@ -61,6 +62,8 @@ it("builds the actual application guide, checks its types and per-user handlers 
       const source=await prepare();await buildApplication({...source,outdir:'release'});await generateApi('release');
       const manifest=JSON.parse(await readFile('release/manifest.json','utf8'));
       assert.deepEqual(Object.keys(manifest.functions).sort(),['tasks/create','tasks/list','tasks/setDone']);
+      assert.equal(typeof manifest.mcp.instructions,'string');
+      assert.ok(manifest.mcp.instructions.length > 0);
       for(const fn of Object.values(manifest.functions))assert.equal(fn.auth,'required');
       const {create,list,setDone}=await import('./flare/tasks.ts');
       const {taskFields,subject}=await import('./flare/_model.ts');
