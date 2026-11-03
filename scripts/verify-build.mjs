@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFile, readdir, writeFile, access, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
-import { loadPlatformRelease } from "../packages/flare/src/cli/platform-release.mjs";
+import {
+  loadPlatformRelease,
+  assertUpgrade,
+} from "../packages/flare/src/cli/platform-release.mjs";
 
 const dashboard = "packages/core/dist/dashboard";
 const html = await readFile(`${dashboard}/index.html`, "utf8");
@@ -12,6 +15,11 @@ const sourcePackage = JSON.parse(
   await readFile("packages/flare/package.json", "utf8"),
 );
 assert.equal(payload.manifest.version, sourcePackage.version);
+// Canonical installed baseline: packaging must retain an executable upgrade path.
+assertUpgrade(
+  { version: "0.3.13", runtimeAbi: 4, protocol: 1 },
+  payload.manifest,
+);
 for (const role of ["admin", "runtime"])
   assert.deepEqual(
     await readFile(`packages/flare/dist/platform/${role}.js`),
