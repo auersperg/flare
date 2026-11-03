@@ -108,6 +108,7 @@ try {
   const page = await response.text();
   assert.ok(!page.includes("<script>bad</script>"));
   assert.ok(page.includes("127.0.0.1"));
+  assert.equal(response.headers.get("referrer-policy"), "strict-origin");
   assert.ok(
     response.headers
       .get("content-security-policy")
@@ -141,6 +142,7 @@ try {
     (await approve({ origin: "https://attacker.test" })).status,
     403,
   );
+  assert.equal((await approve({ origin: "null" })).status, 403);
   {
     const missing = await approve({ cookie: "" });
     assert.ok([400, 403].includes(missing.status), await missing.text());

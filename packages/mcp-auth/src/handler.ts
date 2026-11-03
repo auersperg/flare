@@ -139,7 +139,9 @@ export async function handleRequest(
         const details = await oauth.describeConsent(auth),
           consent = await oauth.beginConsent(auth);
         consent.headers.set("content-type", "text/html; charset=utf-8");
-        consent.headers.set("referrer-policy", "no-referrer");
+        // no-referrer makes native form POSTs send Origin: null, failing CSRF checks.
+        // strict-origin keeps the real origin without disclosing OAuth URL parameters.
+        consent.headers.set("referrer-policy", "strict-origin");
         consent.headers.set(
           "content-security-policy",
           "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
