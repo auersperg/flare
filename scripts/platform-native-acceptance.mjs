@@ -1,5 +1,6 @@
 import {
   Client,
+  InsufficientScopeError,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import assert from "node:assert/strict";
@@ -679,14 +680,26 @@ try {
         ),
         ["private MCP note"],
       );
-      assert.equal(
-        (
-          await readClient.callTool({
+      // Native clients must see an OAuth step-up, not a tool-level HTTP 200 error.
+      // This fixture has no OAuth provider, so it must reject without executing.
+      await assert.rejects(
+        () =>
+          readClient.callTool({
             name: "notes.write",
             arguments: { title: "forbidden" },
-          })
-        ).isError,
-        true,
+          }),
+        (error) =>
+          error instanceof InsufficientScopeError &&
+          error.requiredScope === "mcp:read mcp:write" &&
+          error.resourceMetadataUrl?.pathname ===
+            `/.well-known/oauth-protected-resource/p/${project}/dev/v1/mcp`,
+      );
+      assert.deepEqual(
+        JSON.parse(
+          (await readClient.callTool({ name: "notes.mine", arguments: {} }))
+            .content[0].text,
+        ),
+        ["private MCP note"],
       );
       assert.deepEqual(
         (await writeClient.listTools()).tools.map((t) => t.name).sort(),
