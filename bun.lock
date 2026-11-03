@@ -35,7 +35,7 @@
     },
     "packages/core/dashboard": {
       "name": "@flare/dashboard",
-      "version": "0.3.21",
+      "version": "0.3.22",
       "dependencies": {
         "@astrojs/react": "7.0.1",
         "@auersperg/flare": "workspace:*",
